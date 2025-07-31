@@ -52,7 +52,7 @@ Real data from verified sources:
 git clone <your-repo-url>
 
 # Navigate to the app
-cd zihwa-digital-suite/apps/invero
+cd invero
 
 # Install dependencies
 pnpm install

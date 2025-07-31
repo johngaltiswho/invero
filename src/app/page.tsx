@@ -149,25 +149,6 @@ export default function Home(): React.ReactElement {
         </div>
       </section>
 
-      {/* Enterprise Clients - Palantir-style */}
-      <section className="py-20 md:py-28">
-        <div className="container mx-auto px-4">
-          <div className="max-w-4xl mx-auto text-center">
-            <div className="text-accent-amber text-sm font-semibold uppercase tracking-wide mb-4">
-              ENTERPRISE PARTNERSHIPS
-            </div>
-            <h2 className="text-4xl md:text-5xl font-bold text-primary mb-12 leading-tight">
-              Powering Projects for Industry Leaders
-            </h2>
-            <div className="flex flex-wrap justify-center items-center gap-12 opacity-60">
-              <div className="text-2xl font-bold text-primary">ABB</div>
-              <div className="text-2xl font-bold text-primary">SIEMENS</div>
-              <div className="text-2xl font-bold text-primary">TVS GROUP</div>
-              <div className="text-2xl font-bold text-primary">BOSCH</div>
-            </div>
-          </div>
-        </div>
-      </section>
 
       {/* Market Insights Section */}
       <section className="py-20 md:py-28">

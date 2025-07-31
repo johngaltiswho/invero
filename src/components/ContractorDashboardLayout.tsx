@@ -82,7 +82,7 @@ export function ContractorDashboardLayout({ children, activeTab }: ContractorDas
                   <div className="w-full h-0.5 bg-primary"></div>
                 </div>
               </button>
-              <Link href="/dashboard/contractor" className="flex items-center space-x-3">
+              <Link href="/" className="flex items-center space-x-3 hover:text-accent-orange transition-colors">
                 <div className="text-2xl">🏗️</div>
                 <div>
                   <div className="text-lg font-bold text-primary">Invero</div>
@@ -93,6 +93,9 @@ export function ContractorDashboardLayout({ children, activeTab }: ContractorDas
 
             {/* User Actions */}
             <div className="flex items-center space-x-4">
+              <Link href="/" className="text-sm text-secondary hover:text-primary transition-colors">
+                ← Back to Home
+              </Link>
               <Button variant="primary" size="sm">
                 Submit Report
               </Button>

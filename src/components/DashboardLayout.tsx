@@ -25,7 +25,7 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children, acti
         <div className="px-6 py-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-4">
-              <Link href="/" className="text-xl font-bold inline-block">
+              <Link href="/" className="text-xl font-bold inline-block hover:text-accent-amber transition-colors">
                 <span className="accent-amber">INVERO</span>
               </Link>
               <div className="text-secondary text-sm">
@@ -33,6 +33,9 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children, acti
               </div>
             </div>
             <div className="flex items-center space-x-4">
+              <Link href="/" className="text-sm text-secondary hover:text-primary transition-colors">
+                ← Back to Home
+              </Link>
               <div className="text-sm text-secondary">
                 <span className="text-primary font-medium">Rajesh Sharma</span>
                 <br />

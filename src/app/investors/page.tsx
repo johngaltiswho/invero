@@ -1,244 +1,368 @@
-import { Layout, Button } from '@/components';
-import Link from 'next/link';
+import React from 'react';
+import { Layout } from '@/components/Layout';
+import { Button } from '@/components/Button';
 
-export default function InvestorsPage(): React.ReactElement {
+export default function InvestorsPage() {
   return (
     <Layout>
-      {/* Header Section */}
-      <section className="container mx-auto px-4 py-16 md:py-24">
-        <div className="text-center max-w-4xl mx-auto">
-          <h1 className="text-4xl md:text-6xl font-bold text-primary mb-8 leading-tight">
-            Unlock High-Yield, <span className="accent-orange">Impactful Investment</span> Opportunities
+      <div className="container mx-auto px-4 py-12 max-w-6xl">
+        {/* Hero Section */}
+        <div className="text-center mb-20">
+          <h1 className="text-5xl font-bold text-primary mb-6">
+            Infrastructure as an <span className="text-accent-orange">Asset Class</span>
           </h1>
-          <p className="text-xl md:text-2xl text-secondary mb-8 leading-relaxed">
-            Access a new institutional asset class that powers India's project economy while generating superior returns.
+          <p className="text-xl text-secondary max-w-4xl mx-auto mb-8 leading-relaxed">
+            Access pre-vetted, MNC-backed infrastructure projects through a regulated, 
+            transparent investment vehicle designed for sophisticated capital allocation.
+          </p>
+          <div className="bg-neutral-light rounded-lg p-6 max-w-2xl mx-auto">
+            <p className="text-lg text-primary font-medium">
+              Target Returns: <span className="text-accent-orange font-bold">16-20% IRR</span> | 
+              Investment Horizon: <span className="text-accent-orange font-bold">6-18 months</span> | 
+              SEBI Regulated AIF Structure
+            </p>
+          </div>
+        </div>
+
+        {/* Investment Thesis */}
+        <div className="mb-20">
+          <h2 className="text-3xl font-bold text-primary text-center mb-12">Investment Thesis</h2>
+          
+          <div className="grid lg:grid-cols-2 gap-16 items-center">
+            <div>
+              <h3 className="text-2xl font-semibold text-primary mb-6">The Opportunity</h3>
+              <div className="space-y-6">
+                <div className="border-l-4 border-accent-orange pl-6">
+                  <h4 className="font-semibold text-primary mb-2">Structural Market Inefficiency</h4>
+                  <p className="text-secondary">
+                    India's ₹25 lakh crore MSME credit gap creates a significant arbitrage opportunity. 
+                    Traditional financing fails to serve creditworthy contractors with confirmed MNC orders.
+                  </p>
+                </div>
+                <div className="border-l-4 border-accent-orange pl-6">
+                  <h4 className="font-semibold text-primary mb-2">Infrastructure Growth Catalyst</h4>
+                  <p className="text-secondary">
+                    India's infrastructure sector is projected to grow at 8% CAGR, reaching $280.6B by 2030. 
+                    We're financing the execution layer of this massive expansion.
+                  </p>
+                </div>
+                <div className="border-l-4 border-accent-orange pl-6">
+                  <h4 className="font-semibold text-primary mb-2">De-risked Revenue Streams</h4>
+                  <p className="text-secondary">
+                    Unlike traditional SME lending, our investments are secured by payment obligations 
+                    from blue-chip MNCs, not contractor balance sheets.
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <div className="bg-gradient-to-br from-neutral-light to-neutral-medium rounded-lg p-8">
+              <h3 className="text-2xl font-semibold text-primary mb-6 text-center">Risk-Return Profile</h3>
+              
+              <div className="space-y-6">
+                <div className="flex justify-between items-center py-3 border-b border-neutral-medium">
+                  <span className="text-secondary">Target IRR</span>
+                  <span className="text-primary font-bold">16-20%</span>
+                </div>
+                <div className="flex justify-between items-center py-3 border-b border-neutral-medium">
+                  <span className="text-secondary">Investment Duration</span>
+                  <span className="text-primary font-bold">6-18 months</span>
+                </div>
+                <div className="flex justify-between items-center py-3 border-b border-neutral-medium">
+                  <span className="text-secondary">Minimum Investment</span>
+                  <span className="text-primary font-bold">₹1 Crore</span>
+                </div>
+                <div className="flex justify-between items-center py-3 border-b border-neutral-medium">
+                  <span className="text-secondary">Fund Structure</span>
+                  <span className="text-primary font-bold">SEBI Regulated AIF</span>
+                </div>
+                <div className="flex justify-between items-center py-3">
+                  <span className="text-secondary">Capital Protection</span>
+                  <span className="text-primary font-bold">MNC Payment Security</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Investment Process */}
+        <div className="mb-20">
+          <h2 className="text-3xl font-bold text-primary text-center mb-12">Investment Architecture</h2>
+          
+          <div className="grid md:grid-cols-4 gap-8">
+            <div className="text-center">
+              <div className="w-16 h-16 bg-accent-orange rounded-lg flex items-center justify-center mx-auto mb-6">
+                <svg className="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+              </div>
+              <h3 className="text-lg font-semibold text-primary mb-3">Due Diligence</h3>
+              <p className="text-secondary text-sm">
+                Proprietary vetting algorithm combined with human expertise evaluates contractor capability and MNC payment reliability.
+              </p>
+            </div>
+
+            <div className="text-center">
+              <div className="w-16 h-16 bg-accent-orange rounded-lg flex items-center justify-center mx-auto mb-6">
+                <svg className="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1" />
+                </svg>
+              </div>
+              <h3 className="text-lg font-semibold text-primary mb-3">Capital Deployment</h3>
+              <p className="text-secondary text-sm">
+                AIF capital flows through SPVs into revenue-linked NCDs, providing contractors working capital against confirmed orders.
+              </p>
+            </div>
+
+            <div className="text-center">
+              <div className="w-16 h-16 bg-accent-orange rounded-lg flex items-center justify-center mx-auto mb-6">
+                <svg className="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                </svg>
+              </div>
+              <h3 className="text-lg font-semibold text-primary mb-3">Real-time Monitoring</h3>
+              <p className="text-secondary text-sm">
+                Continuous project oversight with automated milestone tracking and revenue collection via bank mandates.
+              </p>
+            </div>
+
+            <div className="text-center">
+              <div className="w-16 h-16 bg-accent-orange rounded-lg flex items-center justify-center mx-auto mb-6">
+                <svg className="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
+                </svg>
+              </div>
+              <h3 className="text-lg font-semibold text-primary mb-3">Return Generation</h3>
+              <p className="text-secondary text-sm">
+                Automated revenue share collection as MNCs pay contractors, generating predictable returns throughout project lifecycle.
+              </p>
+            </div>
+          </div>
+        </div>
+
+        {/* Competitive Advantages */}
+        <div className="mb-20">
+          <h2 className="text-3xl font-bold text-primary text-center mb-12">Competitive Differentiation</h2>
+          
+          <div className="grid md:grid-cols-2 gap-12">
+            <div>
+              <h3 className="text-xl font-semibold text-primary mb-6">Traditional Alternatives</h3>
+              <div className="space-y-4">
+                <div className="flex items-start space-x-3">
+                  <div className="w-2 h-2 bg-red-500 rounded-full mt-3 flex-shrink-0"></div>
+                  <div>
+                    <p className="font-medium text-secondary">Private Equity/VC</p>
+                    <p className="text-sm text-secondary">5-7 year lock-ins, illiquid, concentrated risk</p>
+                  </div>
+                </div>
+                <div className="flex items-start space-x-3">
+                  <div className="w-2 h-2 bg-red-500 rounded-full mt-3 flex-shrink-0"></div>
+                  <div>
+                    <p className="font-medium text-secondary">Real Estate</p>
+                    <p className="text-sm text-secondary">High entry barriers, regulatory complexity, cyclical</p>
+                  </div>
+                </div>
+                <div className="flex items-start space-x-3">
+                  <div className="w-2 h-2 bg-red-500 rounded-full mt-3 flex-shrink-0"></div>
+                  <div>
+                    <p className="font-medium text-secondary">Fixed Deposits/Bonds</p>
+                    <p className="text-sm text-secondary">Low returns, inflation erosion, limited upside</p>
+                  </div>
+                </div>
+                <div className="flex items-start space-x-3">
+                  <div className="w-2 h-2 bg-red-500 rounded-full mt-3 flex-shrink-0"></div>
+                  <div>
+                    <p className="font-medium text-secondary">Stock Markets</p>
+                    <p className="text-sm text-secondary">Volatile, correlation risk, requires active management</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div>
+              <h3 className="text-xl font-semibold text-primary mb-6">Invero Advantage</h3>
+              <div className="space-y-4">
+                <div className="flex items-start space-x-3">
+                  <div className="w-2 h-2 bg-green-500 rounded-full mt-3 flex-shrink-0"></div>
+                  <div>
+                    <p className="font-medium text-primary">Short Duration, High Yield</p>
+                    <p className="text-sm text-secondary">6-18 month cycles with 16-20% IRR potential</p>
+                  </div>
+                </div>
+                <div className="flex items-start space-x-3">
+                  <div className="w-2 h-2 bg-green-500 rounded-full mt-3 flex-shrink-0"></div>
+                  <div>
+                    <p className="font-medium text-primary">Credit-secured Returns</p>
+                    <p className="text-sm text-secondary">Backed by MNC payment obligations, not market speculation</p>
+                  </div>
+                </div>
+                <div className="flex items-start space-x-3">
+                  <div className="w-2 h-2 bg-green-500 rounded-full mt-3 flex-shrink-0"></div>
+                  <div>
+                    <p className="font-medium text-primary">Portfolio Diversification</p>
+                    <p className="text-sm text-secondary">Uncorrelated to traditional asset classes</p>
+                  </div>
+                </div>
+                <div className="flex items-start space-x-3">
+                  <div className="w-2 h-2 bg-green-500 rounded-full mt-3 flex-shrink-0"></div>
+                  <div>
+                    <p className="font-medium text-primary">Technology-enabled Transparency</p>
+                    <p className="text-sm text-secondary">Real-time visibility into project execution and cash flows</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Risk Management */}
+        <div className="mb-20">
+          <h2 className="text-3xl font-bold text-primary text-center mb-12">Risk Framework</h2>
+          
+          <div className="bg-neutral-light rounded-lg p-8">
+            <div className="grid md:grid-cols-3 gap-8">
+              <div className="text-center">
+                <div className="w-16 h-16 bg-neutral-medium rounded-lg flex items-center justify-center mx-auto mb-4 border border-accent-orange/20">
+                  <svg className="w-8 h-8 text-accent-orange" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+                  </svg>
+                </div>
+                <h3 className="text-lg font-semibold text-primary mb-3">Credit Risk Mitigation</h3>
+                <p className="text-secondary text-sm">
+                  Focus on MNC counterparties with strong credit ratings. Payment obligations secured at contract level, not dependent on contractor solvency.
+                </p>
+              </div>
+
+              <div className="text-center">
+                <div className="w-16 h-16 bg-neutral-medium rounded-lg flex items-center justify-center mx-auto mb-4 border border-accent-orange/20">
+                  <svg className="w-8 h-8 text-accent-orange" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+                  </svg>
+                </div>
+                <h3 className="text-lg font-semibold text-primary mb-3">Portfolio Diversification</h3>
+                <p className="text-secondary text-sm">
+                  Spread investments across multiple contractors, industries, and project types. No single exposure exceeds risk concentration limits.
+                </p>
+              </div>
+
+              <div className="text-center">
+                <div className="w-16 h-16 bg-neutral-medium rounded-lg flex items-center justify-center mx-auto mb-4 border border-accent-orange/20">
+                  <svg className="w-8 h-8 text-accent-orange" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                  </svg>
+                </div>
+                <h3 className="text-lg font-semibold text-primary mb-3">Operational Oversight</h3>
+                <p className="text-secondary text-sm">
+                  Continuous project monitoring through third-party PMCs. Early warning systems for milestone delays or quality issues.
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Fund Terms */}
+        <div className="mb-20">
+          <h2 className="text-3xl font-bold text-primary text-center mb-12">Fund Structure & Terms</h2>
+          
+          <div className="grid md:grid-cols-2 gap-12">
+            <div className="bg-gradient-to-br from-neutral-light to-neutral-medium rounded-lg p-8">
+              <h3 className="text-xl font-semibold text-primary mb-6">Investment Parameters</h3>
+              <div className="space-y-4">
+                <div className="flex justify-between py-2 border-b border-neutral-medium">
+                  <span className="text-secondary">Fund Type</span>
+                  <span className="text-primary font-medium">Category II AIF</span>
+                </div>
+                <div className="flex justify-between py-2 border-b border-neutral-medium">
+                  <span className="text-secondary">Minimum Commitment</span>
+                  <span className="text-primary font-medium">₹1 Crore</span>
+                </div>
+                <div className="flex justify-between py-2 border-b border-neutral-medium">
+                  <span className="text-secondary">Fund Size</span>
+                  <span className="text-primary font-medium">₹100 Crore (Target)</span>
+                </div>
+                <div className="flex justify-between py-2 border-b border-neutral-medium">
+                  <span className="text-secondary">Management Fee</span>
+                  <span className="text-primary font-medium">2% p.a.</span>
+                </div>
+                <div className="flex justify-between py-2">
+                  <span className="text-secondary">Performance Fee</span>
+                  <span className="text-primary font-medium">20% above 12% hurdle</span>
+                </div>
+              </div>
+            </div>
+
+            <div className="bg-gradient-to-br from-neutral-light to-neutral-medium rounded-lg p-8">
+              <h3 className="text-xl font-semibold text-primary mb-6">Regulatory Framework</h3>
+              <div className="space-y-4">
+                <div className="flex items-start space-x-3">
+                  <div className="w-2 h-2 bg-accent-orange rounded-full mt-3 flex-shrink-0"></div>
+                  <div>
+                    <p className="font-medium text-primary">SEBI Registration</p>
+                    <p className="text-sm text-secondary">Fully compliant Category II AIF structure</p>
+                  </div>
+                </div>
+                <div className="flex items-start space-x-3">
+                  <div className="w-2 h-2 bg-accent-orange rounded-full mt-3 flex-shrink-0"></div>
+                  <div>
+                    <p className="font-medium text-primary">Custodian Services</p>
+                    <p className="text-sm text-secondary">SEBI-registered custodian for asset protection</p>
+                  </div>
+                </div>
+                <div className="flex items-start space-x-3">
+                  <div className="w-2 h-2 bg-accent-orange rounded-full mt-3 flex-shrink-0"></div>
+                  <div>
+                    <p className="font-medium text-primary">Independent Oversight</p>
+                    <p className="text-sm text-secondary">Third-party fund administrator and auditor</p>
+                  </div>
+                </div>
+                <div className="flex items-start space-x-3">
+                  <div className="w-2 h-2 bg-accent-orange rounded-full mt-3 flex-shrink-0"></div>
+                  <div>
+                    <p className="font-medium text-primary">Transparent Reporting</p>
+                    <p className="text-sm text-secondary">Monthly NAV updates, quarterly detailed reports</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* CTA Section */}
+        <div className="bg-gradient-to-r from-primary to-neutral-dark rounded-lg p-12 text-center text-white mb-20">
+          <h2 className="text-3xl font-bold mb-6">Ready to Explore Infrastructure Finance?</h2>
+          <p className="text-xl mb-8 max-w-3xl mx-auto opacity-90">
+            Join sophisticated investors in accessing India's infrastructure opportunity through our regulated, transparent platform.
+          </p>
+          <div className="flex flex-col sm:flex-row gap-4 justify-center">
+            <Button variant="secondary" className="bg-white text-primary hover:bg-neutral-light px-8 py-3">
+              Download Investment Memorandum
+            </Button>
+            <Button variant="primary" className="bg-accent-orange hover:bg-orange-600 px-8 py-3">
+              Schedule Private Discussion
+            </Button>
+          </div>
+          <p className="text-sm mt-6 opacity-75">
+            For accredited investors only. Past performance does not guarantee future results.
           </p>
         </div>
-      </section>
 
-      {/* Investment Thesis Section */}
-      <section className="bg-neutral-dark py-16 md:py-20">
-        <div className="container mx-auto px-4">
-          <div className="max-w-4xl mx-auto text-center">
-            <h2 className="text-3xl md:text-4xl font-bold text-primary mb-8">
-              The Project Delivery Asset Class Revolution
-            </h2>
-            <div className="text-lg md:text-xl text-secondary leading-relaxed space-y-6">
-              <p>
-                Invero introduces investors to the <strong className="text-primary">Project Delivery Asset Class</strong> – 
-                a previously inaccessible investment category that directly powers India's infrastructure growth.
-              </p>
-              <p>
-                By financing working capital for vetted SME contractors executing projects for blue-chip clients, 
-                we create a win-win ecosystem where your capital drives economic development while generating 
-                attractive, risk-adjusted returns.
-              </p>
-              <p>
-                Our proprietary risk management framework de-risks investor capital through comprehensive 
-                contractor vetting, contract-backed security, and milestone-linked disbursements.
-              </p>
-            </div>
-          </div>
+        {/* Dashboard Access */}
+        <div className="bg-neutral-light rounded-lg p-8 text-center">
+          <h2 className="text-2xl font-bold text-primary mb-4">Existing Investor?</h2>
+          <p className="text-secondary mb-6 max-w-2xl mx-auto">
+            Access your personalized investment dashboard to monitor portfolio performance, review fund statements, and track project updates.
+          </p>
+          <Button variant="secondary" className="px-8 py-3">
+            <a href="/dashboard/investor" className="flex items-center space-x-2">
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+              </svg>
+              <span>Access Investor Dashboard</span>
+            </a>
+          </Button>
         </div>
-      </section>
-
-      {/* Key Investment Features */}
-      <section className="py-16 md:py-20">
-        <div className="container mx-auto px-4">
-          <h2 className="text-3xl md:text-4xl font-bold text-primary mb-12 text-center">
-            Key Investment Features
-          </h2>
-          
-          <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-8 max-w-6xl mx-auto">
-            {/* Tailored Opportunities */}
-            <div className="bg-neutral-dark p-6 rounded-lg text-center">
-              <div className="text-3xl accent-orange mb-4">🎯</div>
-              <h3 className="text-xl font-bold text-primary mb-3">
-                Tailored Opportunities
-              </h3>
-              <p className="text-secondary">
-                Transparent, carefully curated investment opportunities aligned with your risk appetite and return expectations.
-              </p>
-            </div>
-
-            {/* Proprietary Vetting */}
-            <div className="bg-neutral-dark p-6 rounded-lg text-center">
-              <div className="text-3xl accent-orange mb-4">🔍</div>
-              <h3 className="text-xl font-bold text-primary mb-3">
-                Proprietary Vetting
-              </h3>
-              <p className="text-secondary">
-                Our rigorous due diligence process evaluates contractor track records, project viability, and client creditworthiness.
-              </p>
-            </div>
-
-            {/* Tech-Enabled Monitoring */}
-            <div className="bg-neutral-dark p-6 rounded-lg text-center">
-              <div className="text-3xl accent-orange mb-4">📊</div>
-              <h3 className="text-xl font-bold text-primary mb-3">
-                Tech-Enabled Monitoring
-              </h3>
-              <p className="text-secondary">
-                Continuous project monitoring and real-time updates ensure transparency and proactive risk management.
-              </p>
-            </div>
-
-            {/* High-Yield Returns */}
-            <div className="bg-neutral-dark p-6 rounded-lg text-center">
-              <div className="text-3xl accent-orange mb-4">📈</div>
-              <h3 className="text-xl font-bold text-primary mb-3">
-                High-Yield Returns
-              </h3>
-              <p className="text-secondary">
-                Target IRRs of 12-14% with structured security mechanisms and milestone-linked payouts.
-              </p>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* Pilot Investment Opportunity */}
-      <section className="bg-neutral-dark py-16 md:py-20">
-        <div className="container mx-auto px-4">
-          <div className="max-w-5xl mx-auto">
-            <h2 className="text-3xl md:text-4xl font-bold text-primary mb-12 text-center">
-              Pilot Investment Opportunity
-            </h2>
-            
-            <div className="bg-neutral-medium p-8 rounded-lg mb-8">
-              <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
-                <div className="text-center">
-                  <h3 className="text-sm font-medium text-secondary mb-2">MINIMUM TICKET SIZE</h3>
-                  <p className="text-2xl font-bold accent-orange">₹50,000</p>
-                </div>
-                <div className="text-center">
-                  <h3 className="text-sm font-medium text-secondary mb-2">TARGET IRR</h3>
-                  <p className="text-2xl font-bold accent-orange">12–14%</p>
-                </div>
-                <div className="text-center">
-                  <h3 className="text-sm font-medium text-secondary mb-2">TENURE</h3>
-                  <p className="text-2xl font-bold accent-orange">3–9 Months</p>
-                </div>
-              </div>
-            </div>
-
-            <div className="grid md:grid-cols-2 gap-8">
-              <div className="bg-neutral-medium p-6 rounded-lg">
-                <h3 className="text-xl font-bold text-primary mb-4">Structure</h3>
-                <ul className="text-secondary space-y-2">
-                  <li className="flex items-start">
-                    <span className="accent-orange mr-2">•</span>
-                    SPV/Revenue-Share Model
-                  </li>
-                  <li className="flex items-start">
-                    <span className="accent-orange mr-2">•</span>
-                    Contract/PO-backed execution
-                  </li>
-                  <li className="flex items-start">
-                    <span className="accent-orange mr-2">•</span>
-                    Milestone-linked payouts
-                  </li>
-                  <li className="flex items-start">
-                    <span className="accent-orange mr-2">•</span>
-                    Transparent fee structure
-                  </li>
-                </ul>
-              </div>
-
-              <div className="bg-neutral-medium p-6 rounded-lg">
-                <h3 className="text-xl font-bold text-primary mb-4">Security Features</h3>
-                <ul className="text-secondary space-y-2">
-                  <li className="flex items-start">
-                    <span className="accent-orange mr-2">•</span>
-                    Contract-backed security
-                  </li>
-                  <li className="flex items-start">
-                    <span className="accent-orange mr-2">•</span>
-                    Blue-chip client guarantees
-                  </li>
-                  <li className="flex items-start">
-                    <span className="accent-orange mr-2">•</span>
-                    Milestone-based disbursements
-                  </li>
-                  <li className="flex items-start">
-                    <span className="accent-orange mr-2">•</span>
-                    Real-time project monitoring
-                  </li>
-                </ul>
-              </div>
-            </div>
-
-            {/* Live Project Pipeline */}
-            <div className="mt-12">
-              <h3 className="text-2xl font-bold text-primary mb-6 text-center">
-                Live Project Pipeline
-              </h3>
-              <div className="bg-neutral-medium p-6 rounded-lg">
-                <p className="text-secondary mb-4 text-center">
-                  Current projects backed by industry-leading clients:
-                </p>
-                <div className="flex flex-wrap justify-center gap-6">
-                  <div className="bg-primary px-6 py-3 rounded-lg">
-                    <span className="text-xl font-bold accent-orange">ABB</span>
-                  </div>
-                  <div className="bg-primary px-6 py-3 rounded-lg">
-                    <span className="text-xl font-bold accent-orange">Siemens</span>
-                  </div>
-                  <div className="bg-primary px-6 py-3 rounded-lg">
-                    <span className="text-xl font-bold accent-orange">TVS Group</span>
-                  </div>
-                  <div className="bg-primary px-6 py-3 rounded-lg">
-                    <span className="text-xl font-bold accent-orange">Bosch</span>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* Invest Now CTA */}
-      <section className="py-16 md:py-20">
-        <div className="container mx-auto px-4">
-          <div className="max-w-4xl mx-auto text-center">
-            <h2 className="text-3xl md:text-4xl font-bold text-primary mb-8">
-              Ready to Invest in India's Growth Story?
-            </h2>
-            <p className="text-lg text-secondary mb-8 max-w-2xl mx-auto">
-              Join our pilot investment program and be among the first to access this revolutionary asset class. 
-              Limited spots available for qualified investors.
-            </p>
-            <Link href="/investors/inquire">
-              <Button variant="primary" size="lg">
-                Invest Now
-              </Button>
-            </Link>
-            <p className="text-sm text-secondary mt-4">
-              Investment subject to qualification and regulatory requirements
-            </p>
-          </div>
-        </div>
-      </section>
-
-      {/* Login Section */}
-      <section className="bg-neutral-dark py-16 md:py-20">
-        <div className="container mx-auto px-4">
-          <div className="max-w-4xl mx-auto text-center">
-            <h2 className="text-3xl md:text-4xl font-bold text-primary mb-8">
-              Already an Investor?
-            </h2>
-            <p className="text-lg text-secondary mb-8 max-w-2xl mx-auto">
-              Access your personalized investment dashboard to track your portfolio performance, 
-              view project updates, and manage your investments.
-            </p>
-            <Link href="/dashboard/investor">
-              <Button variant="secondary" size="lg">
-                Access Your Investment Dashboard
-              </Button>
-            </Link>
-          </div>
-        </div>
-      </section>
+      </div>
     </Layout>
   );
 }
