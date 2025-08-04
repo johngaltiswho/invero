@@ -1,102 +1,130 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { ContractorDashboardLayout } from '@/components/ContractorDashboardLayout';
 import { Button } from '@/components';
-import { mockProjects, mockClients, getClientById, getProjectsByContractor } from '@/data/mockData';
+import { useUser } from '@clerk/nextjs';
+import { useRouter } from 'next/navigation';
+import { useContractor } from '@/contexts/ContractorContext';
 
 export default function ContractorDashboard(): React.ReactElement {
-  // Mock contractor ID - in real app this would come from auth
-  const currentContractorId = 'CONTRACTOR_001';
+  const { user, isLoaded } = useUser();
+  const router = useRouter();
+  const { contractor, loading: contractorLoading, error } = useContractor();
   
-  // Get projects for current contractor
-  const contractorProjects = getProjectsByContractor(currentContractorId);
+  // Get contractor ID from authenticated user
+  const currentContractorId = user?.publicMetadata?.contractorId as string || 'CONTRACTOR_001';
+
+  // Redirect if not authenticated
+  useEffect(() => {
+    if (!isLoaded) return;
+    
+    if (!user) {
+      router.push('/sign-in');
+      return;
+    }
+  }, [user, isLoaded, router]);
+
+  // Show loading state while Clerk loads OR contractor data loads
+  if (!isLoaded || contractorLoading) {
+    return (
+      <div className="min-h-screen bg-neutral-darker flex items-center justify-center">
+        <div className="text-center">
+          <div className="text-4xl mb-4">🔄</div>
+          <h2 className="text-xl font-bold text-primary mb-2">Loading...</h2>
+          <p className="text-secondary">
+            {!isLoaded ? 'Authenticating your access' : 'Loading contractor data from Google Sheets'}
+          </p>
+        </div>
+      </div>
+    );
+  }
+  
+  // If there's an error, show error state
+  if (error && !contractor && !contractorLoading) {
+    return (
+      <div className="min-h-screen bg-neutral-darker flex items-center justify-center">
+        <div className="text-center">
+          <div className="text-4xl mb-4">❌</div>
+          <h2 className="text-xl font-bold text-primary mb-2">Access Denied</h2>
+          <p className="text-secondary mb-4">
+            Your email is not registered as a contractor in our system.
+          </p>
+          <p className="text-xs text-secondary mb-4">{error}</p>
+          <div className="space-x-4">
+            <Button onClick={() => window.location.href = '/sign-in'} variant="outline" size="sm">
+              Back to Login
+            </Button>
+            <Button onClick={() => window.location.reload()} variant="primary" size="sm">
+              Retry
+            </Button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+  
+  // If no contractor found after loading, show access denied
+  if (!contractor && !contractorLoading) {
+    return (
+      <div className="min-h-screen bg-neutral-darker flex items-center justify-center">
+        <div className="text-center">
+          <div className="text-4xl mb-4">🚫</div>
+          <h2 className="text-xl font-bold text-primary mb-2">Access Not Found</h2>
+          <p className="text-secondary mb-4">
+            No contractor account found for your email address.
+          </p>
+          <p className="text-secondary mb-4">
+            Please contact the administrator to get access to the contractor portal.
+          </p>
+          <Button onClick={() => window.location.href = '/sign-in'} variant="primary" size="sm">
+            Back to Login
+          </Button>
+        </div>
+      </div>
+    );
+  }
+  
+  // Use only Google Sheets data (no mockdata fallback)
+  const contractorProjects = contractor.currentProjects || [];
+  const projectMilestones = contractor.projectMilestones || [];
+  const financialMilestones = contractor.financialMilestones || [];
+  const recentActivity = contractor.activities || [];
+  
+  // Dashboard data ready
+  
+  // Convert financial milestones to recent activity format
+  const financialActivities = financialMilestones.map(fm => ({
+    id: fm.id,
+    type: fm.transactionType.includes('received') ? 'payment_received' as const : 'funding_request' as const,
+    title: fm.description,
+    description: fm.category,
+    date: fm.date,
+    project: `Project ${fm.project_ID}`,
+    amount: fm.amount,
+    status: fm.transactionType.includes('Disbursed') ? 'completed' as const : 'payment_released' as const
+  }));
+  
+  // Combine activities with financial milestones
+  const allRecentActivity = [...recentActivity, ...financialActivities]
+    .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+    .slice(0, 10); // Show last 10 activities
   
   const contractorData = {
-    companyName: 'TechnoMax Solutions Pvt Ltd',
+    companyName: contractor.companyName,
     totalProjects: contractorProjects.length,
     activeProjects: contractorProjects.filter(p => p.status === 'Active').length,
     totalContractValue: contractorProjects.reduce((sum, p) => sum + p.projectValue, 0),
-    pendingPayments: 2850000,
-    nextMilestone: 'System Integration - Dec 15',
-    creditUtilization: 42,
-    availableCredit: 15000000
+    pendingPayments: contractorProjects
+      .filter(p => p.status === 'Active')
+      .reduce((sum, p) => sum + (p.projectValue * 0.3), 0), // Assume 30% pending
+    nextMilestone: contractorProjects.find(p => p.status === 'Active')?.nextMilestone || 'No upcoming milestones',
+    creditUtilization: contractor.capacityUtilization || 0,
+    availableCredit: contractor.availableCapacity || 0
   };
 
-  const recentActivity = [
-    {
-      id: 'ACT_001',
-      type: 'milestone_completed',
-      title: 'Milestone Completed',
-      description: 'Equipment Procurement milestone completed for Tata Motors project',
-      date: '2024-12-01',
-      project: 'Smart Manufacturing - Tata Motors',
-      amount: 1050000,
-      status: 'payment_released'
-    },
-    {
-      id: 'ACT_002',
-      type: 'payment_received',
-      title: 'Payment Received',
-      description: 'Advance payment received for HCL Tech project',
-      date: '2024-11-30',
-      project: 'Digital Infrastructure - HCL Tech',
-      amount: 550000,
-      status: 'completed'
-    },
-    {
-      id: 'ACT_003',
-      type: 'document_uploaded',
-      title: 'Document Uploaded',
-      description: 'Progress report uploaded for November milestone',
-      date: '2024-11-28',
-      project: 'Smart Manufacturing - Tata Motors',
-      status: 'pending_review'
-    },
-    {
-      id: 'ACT_004',
-      type: 'funding_request',
-      title: 'Funding Request Approved',
-      description: 'Working capital request of ₹25L approved',
-      date: '2024-11-25',
-      project: 'Digital Infrastructure - HCL Tech',
-      amount: 2500000,
-      status: 'approved'
-    }
-  ];
-
-  const upcomingMilestones = [
-    {
-      id: 'MS_002',
-      projectName: 'Smart Manufacturing - Tata Motors',
-      milestone: 'System Integration',
-      dueDate: '2024-12-15',
-      progress: 85,
-      paymentAmount: 1050000,
-      status: 'on_track',
-      priority: 'high'
-    },
-    {
-      id: 'MS_006',
-      projectName: 'Digital Infrastructure - HCL Tech',
-      milestone: 'System Deployment',
-      dueDate: '2025-02-15',
-      progress: 25,
-      paymentAmount: 748000,
-      status: 'planning',
-      priority: 'medium'
-    },
-    {
-      id: 'MS_010',
-      projectName: 'Industrial Automation - Mahindra',
-      milestone: 'Equipment Procurement',
-      dueDate: '2025-04-30',
-      progress: 0,
-      paymentAmount: 5000000,
-      status: 'pending',
-      priority: 'low'
-    }
-  ];
+  // Data now comes from Google Sheets via contractor context
+  // recentActivity and upcomingMilestones are defined above from contractor data
 
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat('en-IN', {
@@ -157,6 +185,8 @@ export default function ContractorDashboard(): React.ReactElement {
           <p className="text-secondary mb-4">
             Welcome back to {contractorData.companyName}
           </p>
+          
+          
           <div className="flex space-x-4">
             <Button variant="primary" size="sm">
               Request Funding
@@ -210,7 +240,7 @@ export default function ContractorDashboard(): React.ReactElement {
               </div>
               <div className="p-6">
                 <div className="space-y-6">
-                  {recentActivity.map((activity) => (
+                  {allRecentActivity.map((activity) => (
                     <div key={activity.id} className="flex items-start space-x-4">
                       <div className="text-2xl">{getActivityIcon(activity.type)}</div>
                       <div className="flex-1">
@@ -249,42 +279,48 @@ export default function ContractorDashboard(): React.ReactElement {
               </div>
               <div className="p-6">
                 <div className="space-y-4">
-                  {upcomingMilestones.map((milestone) => (
-                    <div 
-                      key={milestone.id} 
-                      className={`p-4 rounded-lg border-l-4 bg-neutral-medium/30 ${getPriorityColor(milestone.priority)}`}
-                    >
-                      <div className="flex justify-between items-start mb-2">
-                        <div>
-                          <h3 className="font-semibold text-primary text-sm">{milestone.milestone}</h3>
-                          <p className="text-xs text-secondary">{milestone.projectName}</p>
+                  {projectMilestones.map((milestone) => {
+                    // Find the project name for this milestone
+                    const project = contractorProjects.find(p => p.id === milestone.projectId);
+                    const projectName = project?.projectName || 'Unknown Project';
+                    
+                    return (
+                      <div 
+                        key={milestone.id} 
+                        className={`p-4 rounded-lg border-l-4 bg-neutral-medium/30 ${getPriorityColor(milestone.priority)}`}
+                      >
+                        <div className="flex justify-between items-start mb-2">
+                          <div>
+                            <h3 className="font-semibold text-primary text-sm">{milestone.milestone}</h3>
+                            <p className="text-xs text-secondary">{projectName}</p>
+                          </div>
+                          <div className="text-xs text-secondary">{formatDate(milestone.dueDate)}</div>
                         </div>
-                        <div className="text-xs text-secondary">{formatDate(milestone.dueDate)}</div>
+                        
+                        <div className="mb-3">
+                          <div className="flex justify-between text-xs mb-1">
+                            <span className="text-secondary">Progress</span>
+                            <span className="text-primary">{milestone.progress}%</span>
+                          </div>
+                          <div className="w-full bg-neutral-medium rounded-full h-2">
+                            <div 
+                              className="bg-accent-amber h-2 rounded-full" 
+                              style={{ width: `${milestone.progress}%` }}
+                            ></div>
+                          </div>
+                        </div>
+                        
+                        <div className="flex justify-between items-center">
+                          <div className="text-xs text-secondary">
+                            Project: {milestone.projectId}
+                          </div>
+                          <div className={`text-xs font-medium ${getStatusColor(milestone.status)}`}>
+                            {milestone.status.replace(/_/g, ' ').toUpperCase()}
+                          </div>
+                        </div>
                       </div>
-                      
-                      <div className="mb-3">
-                        <div className="flex justify-between text-xs mb-1">
-                          <span className="text-secondary">Progress</span>
-                          <span className="text-primary">{milestone.progress}%</span>
-                        </div>
-                        <div className="w-full bg-neutral-medium rounded-full h-2">
-                          <div 
-                            className="bg-accent-amber h-2 rounded-full" 
-                            style={{ width: `${milestone.progress}%` }}
-                          ></div>
-                        </div>
-                      </div>
-                      
-                      <div className="flex justify-between items-center">
-                        <div className="text-xs text-secondary">
-                          Payment: {formatCurrency(milestone.paymentAmount)}
-                        </div>
-                        <div className={`text-xs font-medium ${getStatusColor(milestone.status)}`}>
-                          {milestone.status.replace(/_/g, ' ').toUpperCase()}
-                        </div>
-                      </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </div>
             </div>
@@ -317,6 +353,71 @@ export default function ContractorDashboard(): React.ReactElement {
           </div>
         </div>
 
+        {/* Financial Milestones Timeline */}
+        <div className="bg-neutral-dark rounded-lg border border-neutral-medium mt-8">
+          <div className="p-6 border-b border-neutral-medium">
+            <h2 className="text-xl font-bold text-primary">Financial Timeline</h2>
+            <p className="text-sm text-secondary">Billing and payment milestones from Google Sheets</p>
+          </div>
+          <div className="p-6">
+            <div className="space-y-4">
+              {financialMilestones.length > 0 ? (
+                financialMilestones
+                  .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+                  .map((fm) => {
+                    const project = contractorProjects.find(p => p.id === fm.project_ID);
+                    const projectName = project?.projectName || `Project ${fm.project_ID}`;
+                    
+                    return (
+                      <div key={fm.id} className="flex items-start space-x-4 p-4 rounded-lg bg-neutral-medium/20 border border-neutral-medium">
+                        <div className="text-2xl">
+                          {fm.transactionType.includes('received') ? '💰' : 
+                           fm.transactionType.includes('Disbursed') ? '📤' : 
+                           fm.transactionType.includes('Invoice') ? '📄' : '💼'}
+                        </div>
+                        <div className="flex-1">
+                          <div className="flex justify-between items-start mb-2">
+                            <div>
+                              <h3 className="font-semibold text-primary">{fm.description}</h3>
+                              <p className="text-sm text-secondary">{projectName} • {fm.category}</p>
+                            </div>
+                            <div className="text-right">
+                              <div className="text-xs text-secondary">{formatDate(fm.date)}</div>
+                              <div className="text-sm font-medium text-accent-amber">
+                                {formatCurrency(fm.amount)}
+                              </div>
+                            </div>
+                          </div>
+                          <div className="flex justify-between items-center">
+                            <div className="text-xs text-secondary">
+                              Type: {fm.transactionType}
+                            </div>
+                            {fm.Remarks && (
+                              <div className="text-xs text-secondary max-w-xs truncate">
+                                {fm.Remarks}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })
+              ) : (
+                <div className="text-center py-8">
+                  <div className="text-4xl mb-4">📊</div>
+                  <h3 className="text-lg font-semibold text-primary mb-2">No Financial Data</h3>
+                  <p className="text-secondary">
+                    No financial milestones found. Make sure your FinancialMilestones sheet has data and the project IDs match your projects.
+                  </p>
+                  <div className="text-xs text-secondary mt-4">
+                    Debug: Found {financialMilestones.length} financial milestones
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+
         {/* Project Overview */}
         <div className="bg-neutral-dark rounded-lg border border-neutral-medium mt-8">
           <div className="p-6 border-b border-neutral-medium">
@@ -337,8 +438,19 @@ export default function ContractorDashboard(): React.ReactElement {
               </thead>
               <tbody>
                 {contractorProjects.map((project) => {
-                  const client = getClientById(project.clientId);
-                  const nextMilestone = project.milestones.find(m => m.status === 'In Progress' || m.status === 'Pending');
+                  // Handle both mock project structure and Google Sheets project structure
+                  const isGoogleSheetsProject = 'clientName' in project;
+                  const clientName = isGoogleSheetsProject ? 
+                    (project as any).clientName : 
+                    'Unknown Client';
+                  
+                  const projectProgress = isGoogleSheetsProject ? 
+                    (project as any).currentProgress : 
+                    (project as any).progress || 0;
+
+                  const nextMilestone = isGoogleSheetsProject ?
+                    { name: (project as any).nextMilestone, expectedDate: (project as any).nextMilestoneDate } :
+                    (project as any).milestones?.find((m: any) => m.status === 'In Progress' || m.status === 'Pending');
                   
                   return (
                     <tr key={project.id} className="border-b border-neutral-medium">
@@ -346,15 +458,15 @@ export default function ContractorDashboard(): React.ReactElement {
                         <div className="text-sm font-medium text-primary">{project.projectName}</div>
                         <div className="text-xs text-secondary">{project.id}</div>
                       </td>
-                      <td className="p-4 text-sm text-secondary">{client?.name}</td>
+                      <td className="p-4 text-sm text-secondary">{clientName}</td>
                       <td className="p-4 text-sm text-primary text-right">{formatCurrency(project.projectValue)}</td>
                       <td className="p-4">
                         <div className="text-center">
-                          <div className="text-sm text-primary mb-1">{project.progress}%</div>
+                          <div className="text-sm text-primary mb-1">{projectProgress}%</div>
                           <div className="w-full bg-neutral-medium rounded-full h-2">
                             <div 
                               className="bg-accent-amber h-2 rounded-full" 
-                              style={{ width: `${project.progress}%` }}
+                              style={{ width: `${projectProgress}%` }}
                             ></div>
                           </div>
                         </div>
@@ -363,6 +475,9 @@ export default function ContractorDashboard(): React.ReactElement {
                         <span className={`px-2 py-1 rounded text-xs font-medium ${
                           project.status === 'Active' ? 'bg-success/10 text-success' :
                           project.status === 'Planning' ? 'bg-accent-blue/10 text-accent-blue' :
+                          project.status === 'On Hold' ? 'bg-warning/10 text-warning' :
+                          project.status === 'Delayed' ? 'bg-error/10 text-error' :
+                          project.status === 'Completing' ? 'bg-success/10 text-success' :
                           'bg-neutral-medium text-secondary'
                         }`}>
                           {project.status}

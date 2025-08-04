@@ -1,5 +1,7 @@
 import type { Metadata } from "next";
 import "./globals.css";
+import { ClerkProvider } from '@clerk/nextjs';
+import { ContractorProvider } from '@/contexts/ContractorContext';
 
 export const metadata: Metadata = {
   title: "Invero - Financial Intelligence Platform",
@@ -12,10 +14,14 @@ export default function RootLayout({
   children: React.ReactNode;
 }>): React.ReactElement {
   return (
-    <html lang="en">
-      <body className="antialiased">
-        {children}
-      </body>
-    </html>
+    <ClerkProvider>
+      <html lang="en">
+        <body className="antialiased" suppressHydrationWarning={true}>
+          <ContractorProvider>
+            {children}
+          </ContractorProvider>
+        </body>
+      </html>
+    </ClerkProvider>
   );
 }

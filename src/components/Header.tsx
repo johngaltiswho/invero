@@ -1,11 +1,33 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { Button } from './Button';
+import { useUser, SignOutButton } from '@clerk/nextjs';
+import { useContractor } from '@/contexts/ContractorContext';
 
 export const Header: React.FC = () => {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const { user, isLoaded } = useUser();
+  const { contractor, loading: contractorLoading } = useContractor();
+  const [isMounted, setIsMounted] = useState(false);
+
+  useEffect(() => {
+    setIsMounted(true);
+  }, []);
+
+  // Get display name - prefer contractor contactPerson, fallback to firstName, username or email
+  const getDisplayName = () => {
+    if (contractor?.contactPerson) return contractor.contactPerson;
+    if (user?.firstName) return user.firstName;
+    if (user?.username) return user.username;
+    return user?.emailAddresses[0]?.emailAddress?.split('@')[0] || 'User';
+  };
+
+  // Get contractor company name
+  const getCompanyName = () => {
+    return contractor?.companyName || null;
+  };
 
   const navItems = [
     { label: 'Home', href: '/' },
@@ -43,17 +65,44 @@ export const Header: React.FC = () => {
 
           {/* Desktop Auth Buttons */}
           <div className="hidden md:flex items-center space-x-4">
-            <Link
-              href="/auth"
-              className="text-secondary hover:text-accent-amber transition-colors duration-200 text-sm font-medium uppercase tracking-wide"
-            >
-              Login
-            </Link>
-            <Link href="/auth" className="inline-block">
-              <Button variant="primary" size="sm">
-                Sign Up
-              </Button>
-            </Link>
+            {!isMounted || !isLoaded ? (
+              // Loading state to prevent hydration mismatch
+              <div className="w-24 h-8 bg-neutral-medium animate-pulse rounded"></div>
+            ) : user ? (
+              // Logged in state
+              <>
+                <div className="text-right">
+                  <div className="text-secondary text-sm">
+                    Welcome, {getDisplayName()}
+                  </div>
+                  {getCompanyName() && (
+                    <div className="text-xs text-accent-amber">
+                      {getCompanyName()}
+                    </div>
+                  )}
+                </div>
+                <SignOutButton>
+                  <Button variant="outline" size="sm">
+                    Logout
+                  </Button>
+                </SignOutButton>
+              </>
+            ) : (
+              // Not logged in state
+              <>
+                <Link
+                  href="/sign-in"
+                  className="text-secondary hover:text-accent-amber transition-colors duration-200 text-sm font-medium uppercase tracking-wide"
+                >
+                  Login
+                </Link>
+                <Link href="/sign-up" className="inline-block">
+                  <Button variant="primary" size="sm">
+                    Sign Up
+                  </Button>
+                </Link>
+              </>
+            )}
           </div>
 
           {/* Mobile Menu Button */}
@@ -102,18 +151,45 @@ export const Header: React.FC = () => {
                 </Link>
               ))}
               <div className="flex flex-col space-y-2 pt-4 border-t border-neutral-dark">
-                <Link
-                  href="/auth"
-                  className="text-secondary hover:text-primary transition-colors duration-200"
-                  onClick={() => setIsMenuOpen(false)}
-                >
-                  Login
-                </Link>
-                <Link href="/auth" className="inline-block">
-                  <Button variant="primary" size="sm" className="w-fit">
-                    Sign Up
-                  </Button>
-                </Link>
+                {!isMounted || !isLoaded ? (
+                  // Mobile loading state
+                  <div className="w-24 h-8 bg-neutral-medium animate-pulse rounded"></div>
+                ) : user ? (
+                  // Mobile logged in state
+                  <>
+                    <div className="text-left">
+                      <div className="text-secondary text-sm">
+                        Welcome, {getDisplayName()}
+                      </div>
+                      {getCompanyName() && (
+                        <div className="text-xs text-accent-amber">
+                          {getCompanyName()}
+                        </div>
+                      )}
+                    </div>
+                    <SignOutButton>
+                      <Button variant="outline" size="sm" className="w-fit">
+                        Logout
+                      </Button>
+                    </SignOutButton>
+                  </>
+                ) : (
+                  // Mobile not logged in state
+                  <>
+                    <Link
+                      href="/sign-in"
+                      className="text-secondary hover:text-primary transition-colors duration-200"
+                      onClick={() => setIsMenuOpen(false)}
+                    >
+                      Login
+                    </Link>
+                    <Link href="/sign-up" className="inline-block">
+                      <Button variant="primary" size="sm" className="w-fit">
+                        Sign Up
+                      </Button>
+                    </Link>
+                  </>
+                )}
               </div>
             </nav>
           </div>

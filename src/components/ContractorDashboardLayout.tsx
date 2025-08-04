@@ -4,6 +4,8 @@ import React, { useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { Button } from './Button';
+import { UserButton, useUser } from '@clerk/nextjs';
+import { useContractor } from '@/contexts/ContractorContext';
 
 interface ContractorDashboardLayoutProps {
   children: React.ReactNode;
@@ -13,6 +15,8 @@ interface ContractorDashboardLayoutProps {
 export function ContractorDashboardLayout({ children, activeTab }: ContractorDashboardLayoutProps) {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const pathname = usePathname();
+  const { user } = useUser();
+  const { contractor } = useContractor();
 
   const navigationItems = [
     {
@@ -101,12 +105,25 @@ export function ContractorDashboardLayout({ children, activeTab }: ContractorDas
               </Button>
               <div className="flex items-center space-x-3">
                 <div className="text-right">
-                  <div className="text-sm font-medium text-primary">TechnoMax Solutions</div>
-                  <div className="text-xs text-secondary">Amit Sharma</div>
+                  <div className="text-sm font-medium text-primary">
+                    {contractor?.contactPerson || user?.firstName + ' ' + user?.lastName || 'User'}
+                  </div>
+                  <div className="text-xs text-secondary">
+                    {contractor?.id && `ID: ${contractor.id}`}
+                    {contractor?.companyName && ` • ${contractor.companyName}`}
+                  </div>
                 </div>
-                <div className="w-8 h-8 bg-accent-amber rounded-full flex items-center justify-center text-primary font-bold">
-                  AS
-                </div>
+                <UserButton 
+                  appearance={{
+                    elements: {
+                      avatarBox: "w-8 h-8",
+                      userButtonPopoverCard: "bg-neutral-dark border border-neutral-medium",
+                      userButtonPopoverActionButton: "text-primary hover:bg-neutral-medium",
+                    }
+                  }}
+                  afterSignOutUrl="/"
+                  showName={false}
+                />
               </div>
             </div>
           </div>

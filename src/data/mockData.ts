@@ -14,6 +14,7 @@ export interface Contractor {
   id: string;
   companyName: string;
   registrationNumber: string;
+  panNumber: string;
   gstin: string;
   contactPerson: string;
   email: string;
@@ -40,6 +41,27 @@ export interface Contractor {
     bankStatements: boolean;
     financialStatements: boolean;
   };
+  currentProjects: ContractorProject[];
+  capacityUtilization: number; // percentage of current capacity being used
+  availableCapacity: number; // remaining project value capacity
+  nextAvailableDate: string; // when contractor will be available for new projects
+}
+
+export interface ContractorProject {
+  id: string;
+  contractorId: string;
+  projectName: string;
+  clientName: string;
+  projectValue: number;
+  startDate: string;
+  expectedEndDate: string;
+  currentProgress: number; // percentage
+  status: 'Planning' | 'Active' | 'On Hold' | 'Delayed' | 'Completing';
+  priority: 'High' | 'Medium' | 'Low';
+  nextMilestone: string;
+  nextMilestoneDate: string;
+  teamSize: number;
+  monthlyBurnRate: number; // monthly expenses for this project
 }
 
 export interface Project {
@@ -571,9 +593,13 @@ export const getClientById = (id: string): Client | undefined => {
   return mockClients.find(client => client.id === id);
 };
 
+// Legacy function for backward compatibility - now supports Google Sheets
 export const getContractorById = (id: string): Contractor | undefined => {
   return mockContractors.find(contractor => contractor.id === id);
 };
+
+// New Google Sheets integration functions (client-side)
+export { fetchContractors, getContractorById as getContractorByIdAsync, getContractorsByCategory, getContractorsBySpecialization, clearContractorCache } from '@/lib/contractor-client';
 
 export const getProjectById = (id: string): Project | undefined => {
   return mockProjects.find(project => project.id === id);
