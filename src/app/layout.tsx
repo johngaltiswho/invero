@@ -13,8 +13,14 @@ export default function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>): React.ReactElement {
+  const publishableKey = process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY;
+  
+  if (!publishableKey) {
+    console.warn('Missing NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY');
+  }
+
   return (
-    <ClerkProvider>
+    <ClerkProvider publishableKey={publishableKey}>
       <html lang="en">
         <body className="antialiased" suppressHydrationWarning={true}>
           <ContractorProvider>

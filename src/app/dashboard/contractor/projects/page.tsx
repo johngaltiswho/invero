@@ -1,5 +1,7 @@
 'use client';
 
+export const dynamic = 'force-dynamic';
+
 import React, { useState, useEffect } from 'react';
 import { ContractorDashboardLayout } from '@/components/ContractorDashboardLayout';
 import { Button } from '@/components';

@@ -7,6 +7,10 @@ const nextConfig = {
   typescript: {
     ignoreBuildErrors: true,
   },
+  // Force dynamic rendering for pages that use Clerk
+  experimental: {
+    missingSuspenseWithCSRBailout: false,
+  },
   // Disable webpack polyfills for Node.js modules in client-side bundles
   webpack: (config, { isServer }) => {
     if (!isServer) {
