@@ -86,15 +86,15 @@ export default function ContractorDashboard(): React.ReactElement {
   }
   
   // Use only Google Sheets data (no mockdata fallback)
-  const contractorProjects = contractor.currentProjects || [];
-  const projectMilestones = contractor.projectMilestones || [];
-  const financialMilestones = contractor.financialMilestones || [];
-  const recentActivity = contractor.activities || [];
+  const contractorProjects = contractor?.currentProjects || [];
+  const projectMilestones = contractor?.projectMilestones || [];
+  const financialMilestones = contractor?.financialMilestones || [];
+  const recentActivity = contractor?.activities || [];
   
   // Dashboard data ready
   
   // Convert financial milestones to recent activity format
-  const financialActivities = financialMilestones.map(fm => ({
+  const financialActivities = financialMilestones.map((fm: any) => ({
     id: fm.id,
     type: fm.transactionType.includes('received') ? 'payment_received' as const : 'funding_request' as const,
     title: fm.description,
@@ -111,7 +111,7 @@ export default function ContractorDashboard(): React.ReactElement {
     .slice(0, 10); // Show last 10 activities
   
   const contractorData = {
-    companyName: contractor.companyName,
+    companyName: contractor?.companyName || '',
     totalProjects: contractorProjects.length,
     activeProjects: contractorProjects.filter(p => p.status === 'Active').length,
     totalContractValue: contractorProjects.reduce((sum, p) => sum + p.projectValue, 0),
@@ -119,8 +119,8 @@ export default function ContractorDashboard(): React.ReactElement {
       .filter(p => p.status === 'Active')
       .reduce((sum, p) => sum + (p.projectValue * 0.3), 0), // Assume 30% pending
     nextMilestone: contractorProjects.find(p => p.status === 'Active')?.nextMilestone || 'No upcoming milestones',
-    creditUtilization: contractor.capacityUtilization || 0,
-    availableCredit: contractor.availableCapacity || 0
+    creditUtilization: contractor?.capacityUtilization || 0,
+    availableCredit: contractor?.availableCapacity || 0
   };
 
   // Data now comes from Google Sheets via contractor context
@@ -279,7 +279,7 @@ export default function ContractorDashboard(): React.ReactElement {
               </div>
               <div className="p-6">
                 <div className="space-y-4">
-                  {projectMilestones.map((milestone) => {
+                  {projectMilestones.map((milestone: any) => {
                     // Find the project name for this milestone
                     const project = contractorProjects.find(p => p.id === milestone.projectId);
                     const projectName = project?.projectName || 'Unknown Project';
@@ -363,8 +363,8 @@ export default function ContractorDashboard(): React.ReactElement {
             <div className="space-y-4">
               {financialMilestones.length > 0 ? (
                 financialMilestones
-                  .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
-                  .map((fm) => {
+                  .sort((a: any, b: any) => new Date(b.date).getTime() - new Date(a.date).getTime())
+                  .map((fm: any) => {
                     const project = contractorProjects.find(p => p.id === fm.project_ID);
                     const projectName = project?.projectName || `Project ${fm.project_ID}`;
                     

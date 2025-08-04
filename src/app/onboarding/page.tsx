@@ -21,7 +21,7 @@ export default function OnboardingPage(): React.ReactElement {
     try {
       // Update user metadata with role information
       await user.update({
-        publicMetadata: {
+        unsafeMetadata: {
           role: selectedRole,
           ...(selectedRole === 'contractor' && contractorId && { contractorId }),
           onboardingComplete: true,

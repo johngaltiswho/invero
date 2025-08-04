@@ -51,4 +51,8 @@ export interface Contractor {
   capacityUtilization: number;
   availableCapacity: number;
   nextAvailableDate: string;
+  // Google Sheets additional properties
+  projectMilestones?: any[];
+  financialMilestones?: any[];
+  activities?: any[];
 }

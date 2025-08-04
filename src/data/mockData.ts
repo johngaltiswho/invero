@@ -194,7 +194,7 @@ export const mockClients: Client[] = [
   }
 ];
 
-export const mockContractors: Contractor[] = [
+export const mockContractors: any[] = [
   {
     id: 'CONTRACTOR_001',
     companyName: 'TechnoMax Solutions Pvt Ltd',

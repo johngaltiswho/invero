@@ -60,7 +60,7 @@ export default function ContractorProjects(): React.ReactElement {
   }
   
   // Use Google Sheets projects from context
-  const contractorProjects = contractor.currentProjects || [];
+  const contractorProjects = contractor?.currentProjects || [];
 
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat('en-IN', {
