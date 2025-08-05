@@ -50,16 +50,20 @@ export function ContractorProvider({ children }: ContractorProviderProps) {
 
       const data = await response.json();
 
+      console.log('📊 ContractorContext: API response status:', response.status);
+      console.log('📊 ContractorContext: API response data:', data);
+      
       if (response.ok) {
         setContractor(data.contractor);
-        console.log('✅ ContractorContext: Contractor data loaded:', data.contractor.companyName);
+        console.log('✅ ContractorContext: Contractor data loaded:', data.contractor?.companyName);
+        console.log('✅ ContractorContext: Projects count:', data.contractor?.currentProjects?.length || 0);
       } else {
         setContractor(null);
         if (response.status === 404) {
-          console.log('ℹ️ ContractorContext: No contractor found for user');
+          console.log('ℹ️ ContractorContext: No contractor found for user - email might not match Google Sheets');
         } else {
           setError(data.message || data.error || 'Failed to load contractor data');
-          console.error('❌ ContractorContext: API error:', data);
+          console.error('❌ ContractorContext: API error:', response.status, data);
         }
       }
     } catch (err) {

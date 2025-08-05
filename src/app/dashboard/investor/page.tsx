@@ -1,60 +1,135 @@
 'use client';
 
-import React from 'react';
+export const dynamic = 'force-dynamic';
+
+import React, { useEffect } from 'react';
 import { DashboardLayout } from '@/components/DashboardLayout';
+import { useUser } from '@clerk/nextjs';
+import { useRouter } from 'next/navigation';
+import { useInvestor } from '@/contexts/InvestorContext';
 
 export default function InvestorDashboard(): React.ReactElement {
-  const portfolioData = {
-    totalInvested: '₹2,45,00,000',
-    currentValue: '₹2,78,50,000',
-    totalReturns: '₹33,50,000',
-    irr: '13.7%',
-    activeInvestments: 8,
-    completedInvestments: 12
+  const { user, isLoaded } = useUser();
+  const router = useRouter();
+  const { investor, loading: investorLoading, error } = useInvestor();
+
+  // Redirect if not authenticated
+  useEffect(() => {
+    if (!isLoaded) return;
+    
+    if (!user) {
+      router.push('/sign-in');
+      return;
+    }
+  }, [user, isLoaded, router]);
+
+  // Show loading state while Clerk loads OR investor data loads
+  if (!isLoaded || investorLoading) {
+    return (
+      <div className="min-h-screen bg-neutral-darker flex items-center justify-center">
+        <div className="text-center">
+          <div className="text-4xl mb-4">🔄</div>
+          <h2 className="text-xl font-bold text-primary mb-2">Loading...</h2>
+          <p className="text-secondary">
+            {!isLoaded ? 'Authenticating your access' : 'Loading investor data from Google Sheets'}
+          </p>
+        </div>
+      </div>
+    );
+  }
+  
+  // If there's an error, show error state
+  if (error && !investor && !investorLoading) {
+    return (
+      <div className="min-h-screen bg-neutral-darker flex items-center justify-center">
+        <div className="text-center">
+          <div className="text-4xl mb-4">❌</div>
+          <h2 className="text-xl font-bold text-primary mb-2">Access Denied</h2>
+          <p className="text-secondary mb-4">
+            Your email is not registered as an investor in our system.
+          </p>
+          <p className="text-xs text-secondary mb-4">{error}</p>
+          <div className="space-x-4">
+            <button onClick={() => window.location.href = '/sign-in'} className="bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded text-sm">
+              Back to Login
+            </button>
+            <button onClick={() => window.location.reload()} className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded text-sm">
+              Retry
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+  
+  // If no investor found after loading, show access denied
+  if (!investor && !investorLoading) {
+    return (
+      <div className="min-h-screen bg-neutral-darker flex items-center justify-center">
+        <div className="text-center">
+          <div className="text-4xl mb-4">🚫</div>
+          <h2 className="text-xl font-bold text-primary mb-2">Access Not Found</h2>
+          <p className="text-secondary mb-4">
+            No investor account found for your email address.
+          </p>
+          <p className="text-secondary mb-4">
+            Please contact the administrator to get access to the investor portal.
+          </p>
+          <button onClick={() => window.location.href = '/sign-in'} className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded text-sm">
+            Back to Login
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // Use Google Sheets data
+  const portfolioMetrics = investor?.portfolioMetrics || {
+    totalInvested: 0,
+    totalReturns: 0,
+    currentValue: 0,
+    roi: 0,
+    activeInvestments: 0,
+    completedInvestments: 0,
+    totalInvestments: 0
   };
 
-  const recentProjects = [
-    {
-      id: 'INV-2024-089',
-      projectName: 'Industrial Automation - ABB Contract',
-      contractor: 'TechnoMax Solutions Pvt Ltd',
-      investment: '₹50,00,000',
-      expectedIRR: '14.2%',
-      tenure: '6 months',
-      status: 'Active',
-      progress: 65,
-      nextMilestone: 'System Integration - Dec 15'
-    },
-    {
-      id: 'INV-2024-076',
-      projectName: 'Manufacturing Setup - Siemens Project',
-      contractor: 'Precision Engineering Corp',
-      investment: '₹75,00,000',
-      expectedIRR: '12.8%',
-      tenure: '8 months',
-      status: 'Active',
-      progress: 40,
-      nextMilestone: 'Equipment Installation - Dec 28'
-    },
-    {
-      id: 'INV-2024-063',
-      projectName: 'IT Infrastructure - Bosch Expansion',
-      contractor: 'Digital Solutions Ltd',
-      investment: '₹35,00,000',
-      expectedIRR: '15.1%',
-      tenure: '4 months',
-      status: 'Completed',
-      progress: 100,
-      nextMilestone: 'Final Payment Received'
-    }
-  ];
+  const recentInvestments = investor?.investments?.slice(0, 5) || [];
 
-  const sectorAllocation = [
-    { sector: 'Industrial Automation', percentage: 35, amount: '₹85,75,000' },
-    { sector: 'Manufacturing', percentage: 28, amount: '₹68,60,000' },
-    { sector: 'IT Services', percentage: 22, amount: '₹53,90,000' },
-    { sector: 'Engineering Services', percentage: 15, amount: '₹36,75,000' }
-  ];
+  // Calculate sector allocation from investments
+  const sectorData: { [key: string]: number } = {};
+  investor?.relatedContractors?.forEach(contractor => {
+    const contractorInvestments = investor.investments.filter(inv => inv.contractorId === contractor.id);
+    const contractorTotal = contractorInvestments.reduce((sum, inv) => sum + inv.investmentAmount, 0);
+    
+    if (contractor.businessCategory) {
+      sectorData[contractor.businessCategory] = (sectorData[contractor.businessCategory] || 0) + contractorTotal;
+    }
+  });
+
+  const sectorAllocation = Object.entries(sectorData).map(([sector, amount]) => ({
+    sector,
+    amount,
+    percentage: portfolioMetrics.totalInvested > 0 ? Math.round((amount / portfolioMetrics.totalInvested) * 100) : 0
+  })).sort((a, b) => b.amount - a.amount);
+
+  // Helper functions
+  const formatCurrency = (amount: number) => {
+    return new Intl.NumberFormat('en-IN', {
+      style: 'currency',
+      currency: 'INR',
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 0,
+    }).format(amount);
+  };
+
+  const formatDate = (dateString: string) => {
+    return new Date(dateString).toLocaleDateString('en-IN', {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric'
+    });
+  };
 
   return (
     <DashboardLayout activeTab="overview">
@@ -62,8 +137,8 @@ export default function InvestorDashboard(): React.ReactElement {
         {/* Header */}
         <div className="mb-8">
           <h1 className="text-3xl font-bold text-primary mb-2">Portfolio Overview</h1>
-          <p className="text-secondary">
-            Real-time insights into your project financing investments
+          <p className="text-secondary mb-4">
+            Welcome back, {investor?.investorName}! Real-time insights into your project financing investments
           </p>
         </div>
 
@@ -71,31 +146,31 @@ export default function InvestorDashboard(): React.ReactElement {
         <div className="grid lg:grid-cols-4 md:grid-cols-2 gap-6 mb-8">
           <div className="bg-neutral-dark p-6 rounded-lg border border-neutral-medium">
             <div className="text-accent-amber text-sm font-mono mb-2">TOTAL INVESTED</div>
-            <div className="text-2xl font-bold text-primary mb-1">{portfolioData.totalInvested}</div>
-            <div className="text-xs text-secondary">Across {portfolioData.activeInvestments + portfolioData.completedInvestments} investments</div>
+            <div className="text-2xl font-bold text-primary mb-1">{formatCurrency(portfolioMetrics.totalInvested)}</div>
+            <div className="text-xs text-secondary">Across {portfolioMetrics.totalInvestments} investments</div>
           </div>
           
           <div className="bg-neutral-dark p-6 rounded-lg border border-neutral-medium">
             <div className="text-accent-amber text-sm font-mono mb-2">CURRENT VALUE</div>
-            <div className="text-2xl font-bold text-primary mb-1">{portfolioData.currentValue}</div>
-            <div className="text-xs text-success">+{portfolioData.totalReturns} returns</div>
+            <div className="text-2xl font-bold text-primary mb-1">{formatCurrency(portfolioMetrics.currentValue)}</div>
+            <div className="text-xs text-success">+{formatCurrency(portfolioMetrics.totalReturns)} returns</div>
           </div>
           
           <div className="bg-neutral-dark p-6 rounded-lg border border-neutral-medium">
-            <div className="text-accent-amber text-sm font-mono mb-2">CURRENT IRR</div>
-            <div className="text-2xl font-bold text-accent-amber mb-1">{portfolioData.irr}</div>
-            <div className="text-xs text-secondary">Annualized return rate</div>
+            <div className="text-accent-amber text-sm font-mono mb-2">CURRENT ROI</div>
+            <div className="text-2xl font-bold text-accent-amber mb-1">{portfolioMetrics.roi.toFixed(1)}%</div>
+            <div className="text-xs text-secondary">Return on investment</div>
           </div>
           
           <div className="bg-neutral-dark p-6 rounded-lg border border-neutral-medium">
-            <div className="text-accent-amber text-sm font-mono mb-2">ACTIVE PROJECTS</div>
-            <div className="text-2xl font-bold text-primary mb-1">{portfolioData.activeInvestments}</div>
-            <div className="text-xs text-secondary">{portfolioData.completedInvestments} completed</div>
+            <div className="text-accent-amber text-sm font-mono mb-2">ACTIVE INVESTMENTS</div>
+            <div className="text-2xl font-bold text-primary mb-1">{portfolioMetrics.activeInvestments}</div>
+            <div className="text-xs text-secondary">{portfolioMetrics.completedInvestments} completed</div>
           </div>
         </div>
 
         <div className="grid lg:grid-cols-3 gap-8">
-          {/* Recent Projects */}
+          {/* Recent Investments */}
           <div className="lg:col-span-2">
             <div className="bg-neutral-dark rounded-lg border border-neutral-medium">
               <div className="p-6 border-b border-neutral-medium">
@@ -104,58 +179,64 @@ export default function InvestorDashboard(): React.ReactElement {
               </div>
               <div className="p-6">
                 <div className="space-y-6">
-                  {recentProjects.map((project) => (
-                    <div key={project.id} className="border border-neutral-medium rounded-lg p-4">
+                  {recentInvestments.length > 0 ? recentInvestments.map((investment) => {
+                    // Find related contractor and project
+                    const contractor = investor?.relatedContractors?.find(c => c.id === investment.contractorId);
+                    const project = investor?.relatedProjects?.find(p => p.id === investment.projectId);
+                    
+                    return (
+                    <div key={investment.id} className="border border-neutral-medium rounded-lg p-4">
                       <div className="flex justify-between items-start mb-3">
                         <div>
-                          <h3 className="font-semibold text-primary mb-1">{project.projectName}</h3>
-                          <p className="text-sm text-secondary">{project.contractor}</p>
+                          <h3 className="font-semibold text-primary mb-1">
+                            {project?.projectName || `Project ${investment.projectId}`}
+                          </h3>
+                          <p className="text-sm text-secondary">
+                            {contractor?.companyName || `Contractor ${investment.contractorId}`}
+                          </p>
                         </div>
                         <div className={`px-2 py-1 rounded text-xs font-medium ${
-                          project.status === 'Active' 
+                          investment.status === 'Active' 
                             ? 'bg-accent-blue/10 text-accent-blue'
-                            : 'bg-success/10 text-success'
+                            : investment.status === 'Completed'
+                            ? 'bg-success/10 text-success'
+                            : 'bg-error/10 text-error'
                         }`}>
-                          {project.status}
+                          {investment.status}
                         </div>
                       </div>
                       
                       <div className="grid grid-cols-3 gap-4 mb-3">
                         <div>
                           <div className="text-xs text-secondary">Investment</div>
-                          <div className="font-semibold text-primary">{project.investment}</div>
+                          <div className="font-semibold text-primary">{formatCurrency(investment.investmentAmount)}</div>
                         </div>
                         <div>
-                          <div className="text-xs text-secondary">Expected IRR</div>
-                          <div className="font-semibold text-accent-amber">{project.expectedIRR}</div>
+                          <div className="text-xs text-secondary">Expected Return</div>
+                          <div className="font-semibold text-accent-amber">{investment.expectedReturn.toFixed(1)}%</div>
                         </div>
                         <div>
-                          <div className="text-xs text-secondary">Tenure</div>
-                          <div className="font-semibold text-primary">{project.tenure}</div>
+                          <div className="text-xs text-secondary">Date</div>
+                          <div className="font-semibold text-primary">{formatDate(investment.investmentDate)}</div>
                         </div>
                       </div>
                       
-                      {project.status === 'Active' && (
-                        <>
-                          <div className="mb-2">
-                            <div className="flex justify-between text-xs mb-1">
-                              <span className="text-secondary">Progress</span>
-                              <span className="text-primary">{project.progress}%</span>
-                            </div>
-                            <div className="w-full bg-neutral-medium rounded-full h-2">
-                              <div 
-                                className="bg-accent-amber h-2 rounded-full" 
-                                style={{ width: `${project.progress}%` }}
-                              ></div>
-                            </div>
-                          </div>
-                          <div className="text-xs text-secondary">
-                            Next: {project.nextMilestone}
-                          </div>
-                        </>
+                      {investment.actualReturn !== undefined && (
+                        <div className="text-xs text-success">
+                          Actual Return: {investment.actualReturn.toFixed(1)}%
+                        </div>
                       )}
                     </div>
-                  ))}
+                    );
+                  }) : (
+                    <div className="text-center py-8">
+                      <div className="text-4xl mb-4">💰</div>
+                      <h3 className="text-lg font-semibold text-primary mb-2">No Investments Yet</h3>
+                      <p className="text-secondary">
+                        No investments found. Make sure your Investments sheet has data and your email matches the investorEmail column.
+                      </p>
+                    </div>
+                  )}
                 </div>
               </div>
             </div>

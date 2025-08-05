@@ -248,6 +248,19 @@ class GoogleSheetsAPI {
   async getActivitiesData(): Promise<any[][]> {
     return this.getSheetData('Activities', 'A:H');
   }
+
+  // New investor-related sheet methods
+  async getInvestorProfilesData(): Promise<any[][]> {
+    return this.getSheetData('InvestorProfile', 'A:I');
+  }
+
+  async getInvestmentsData(): Promise<any[][]> {
+    return this.getSheetData('InvestmentSheet', 'A:J');
+  }
+
+  async getReturnsData(): Promise<any[][]> {
+    return this.getSheetData('ReturnSheet', 'A:F');
+  }
 }
 
 // Singleton instance

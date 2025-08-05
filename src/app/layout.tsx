@@ -1,7 +1,6 @@
 import type { Metadata } from "next";
 import "./globals.css";
 import { ClerkProvider } from '@clerk/nextjs';
-import { ContractorProvider } from '@/contexts/ContractorContext';
 
 export const metadata: Metadata = {
   title: "Invero - Financial Intelligence Platform",
@@ -23,9 +22,7 @@ export default function RootLayout({
     <ClerkProvider publishableKey={publishableKey}>
       <html lang="en">
         <body className="antialiased" suppressHydrationWarning={true}>
-          <ContractorProvider>
-            {children}
-          </ContractorProvider>
+          {children}
         </body>
       </html>
     </ClerkProvider>

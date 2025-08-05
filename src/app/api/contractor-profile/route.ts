@@ -101,12 +101,18 @@ export async function GET(request: NextRequest) {
       );
     }
     
+    // Debug: Log contractor and project IDs to identify linking issue
+    console.log('🔍 Debug contractor ID:', contractor.id);
+    console.log('🔍 Debug project contractor IDs:', projects.map(p => ({ id: p.id, contractorId: p.contractorId, name: p.projectName })));
+    
     // Link projects, milestones, and activities to the contractor  
     const contractorProjects = projects.filter(project => project.contractorId === contractor.id);
     const contractorProjectIds = contractorProjects.map(p => p.id);
     const contractorProjectMilestones = projectMilestones.filter(milestone => contractorProjectIds.includes(milestone.projectId));
     const contractorFinancialMilestones = financialMilestones.filter(milestone => contractorProjectIds.includes(milestone.project_ID));
     const contractorActivities = activities.filter(activity => activity.contractorId === contractor.id);
+    
+    console.log('🔍 Debug filtered projects:', contractorProjects.length, 'out of', projects.length);
     
     const contractorWithData = {
       ...contractor,

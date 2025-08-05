@@ -23,14 +23,14 @@ export default function Home(): React.ReactElement {
                   and risk-mitigated financing solutions.
                 </p>
                 <div className="flex flex-col sm:flex-row gap-4">
-                  <Link href="/contractors">
+                  <Link href="/dashboard/contractor">
                     <Button variant="primary" size="lg" className="min-w-[200px]">
-                      For Contractors
+                      Contractor Portal
                     </Button>
                   </Link>
-                  <Link href="/investors">
+                  <Link href="/dashboard/investor">
                     <Button variant="outline" size="lg" className="min-w-[200px]">
-                      For Investors
+                      Investor Portal
                     </Button>
                   </Link>
                 </div>

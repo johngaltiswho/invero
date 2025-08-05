@@ -1,6 +1,7 @@
 import React from 'react';
 import Link from 'next/link';
 import { Button } from './Button';
+import { useInvestor } from '@/contexts/InvestorContext';
 
 interface DashboardLayoutProps {
   children: React.ReactNode;
@@ -8,6 +9,8 @@ interface DashboardLayoutProps {
 }
 
 export const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children, activeTab = 'overview' }) => {
+  const { investor } = useInvestor();
+  
   const sidebarItems = [
     { id: 'overview', label: 'Portfolio Overview', icon: '📊', href: '/dashboard/investor' },
     { id: 'opportunities', label: 'Investment Opportunities', icon: '🎯', href: '/dashboard/investor/opportunities' },
@@ -37,12 +40,17 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children, acti
                 ← Back to Home
               </Link>
               <div className="text-sm text-secondary">
-                <span className="text-primary font-medium">Rajesh Sharma</span>
+                <span className="text-primary font-medium">
+                  {investor?.investorName || 'Investor'}
+                </span>
                 <br />
                 <span className="text-xs">Premium Investor</span>
               </div>
               <div className="w-8 h-8 bg-accent-amber rounded-full flex items-center justify-center text-primary font-bold text-sm">
-                RS
+                {investor?.investorName ? 
+                  investor.investorName.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2) : 
+                  'IN'
+                }
               </div>
             </div>
           </div>

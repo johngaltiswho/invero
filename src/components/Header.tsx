@@ -4,29 +4,21 @@ import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { Button } from './Button';
 import { useUser, SignOutButton } from '@clerk/nextjs';
-import { useContractor } from '@/contexts/ContractorContext';
 
 export const Header: React.FC = () => {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const { user, isLoaded } = useUser();
-  const { contractor, loading: contractorLoading } = useContractor();
   const [isMounted, setIsMounted] = useState(false);
 
   useEffect(() => {
     setIsMounted(true);
   }, []);
 
-  // Get display name - prefer contractor contactPerson, fallback to firstName, username or email
+  // Get display name from user data
   const getDisplayName = () => {
-    if (contractor?.contactPerson) return contractor.contactPerson;
     if (user?.firstName) return user.firstName;
     if (user?.username) return user.username;
     return user?.emailAddresses[0]?.emailAddress?.split('@')[0] || 'User';
-  };
-
-  // Get contractor company name
-  const getCompanyName = () => {
-    return contractor?.companyName || null;
   };
 
   const navItems = [
@@ -75,11 +67,6 @@ export const Header: React.FC = () => {
                   <div className="text-secondary text-sm">
                     Welcome, {getDisplayName()}
                   </div>
-                  {getCompanyName() && (
-                    <div className="text-xs text-accent-amber">
-                      {getCompanyName()}
-                    </div>
-                  )}
                 </div>
                 <SignOutButton>
                   <Button variant="outline" size="sm">
@@ -161,11 +148,6 @@ export const Header: React.FC = () => {
                       <div className="text-secondary text-sm">
                         Welcome, {getDisplayName()}
                       </div>
-                      {getCompanyName() && (
-                        <div className="text-xs text-accent-amber">
-                          {getCompanyName()}
-                        </div>
-                      )}
                     </div>
                     <SignOutButton>
                       <Button variant="outline" size="sm" className="w-fit">
