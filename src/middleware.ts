@@ -12,6 +12,8 @@ export default clerkMiddleware(async (auth, req) => {
   // If accessing a protected route and not authenticated, redirect to sign-in
   if (isProtectedRoute(req) && !userId) {
     const signInUrl = new URL('/sign-in', req.url);
+    // Preserve the original URL so we can redirect back after login
+    signInUrl.searchParams.set('redirect_url', req.url);
     return NextResponse.redirect(signInUrl);
   }
 
