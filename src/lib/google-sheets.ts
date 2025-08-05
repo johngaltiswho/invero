@@ -42,12 +42,14 @@ class GoogleSheetsAPI {
         // Fix private key format
         const privateKey = GOOGLE_PRIVATE_KEY.replace(/\\n/g, '\n');
         
-        const auth = new google.auth.JWT(
-          GOOGLE_CLIENT_EMAIL,
-          undefined,
-          privateKey,
-          ['https://www.googleapis.com/auth/spreadsheets.readonly']
-        );
+        const auth = new google.auth.GoogleAuth({
+          credentials: {
+            client_email: GOOGLE_CLIENT_EMAIL,
+            private_key: privateKey,
+            project_id: GOOGLE_PROJECT_ID,
+          },
+          scopes: ['https://www.googleapis.com/auth/spreadsheets.readonly'],
+        });
 
         this.sheets = google.sheets({ version: 'v4', auth });
         return;
@@ -84,13 +86,15 @@ class GoogleSheetsAPI {
         });
         // Direct credentials successful
       } catch (directError) {
-        // Fallback: JWT Client
-        auth = new google.auth.JWT(
-          credentials.client_email,
-          undefined,
-          credentials.private_key,
-          ['https://www.googleapis.com/auth/spreadsheets.readonly']
-        );
+        // Fallback: Alternative GoogleAuth approach
+        auth = new google.auth.GoogleAuth({
+          credentials: {
+            client_email: credentials.client_email,
+            private_key: credentials.private_key,
+            project_id: credentials.project_id,
+          },
+          scopes: ['https://www.googleapis.com/auth/spreadsheets.readonly'],
+        });
       }
 
       this.sheets = google.sheets({ version: 'v4', auth });
