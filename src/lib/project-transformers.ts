@@ -2,20 +2,26 @@ import type { ContractorProject } from '@/data/mockData';
 
 // Google Sheets column mapping for Projects sheet
 const PROJECT_COLUMNS = {
-  PROJECT_ID: 0,
-  CONTRACTOR_ID: 1,
-  PROJECT_NAME: 2,
-  CLIENT_NAME: 3,
-  PROJECT_VALUE: 4,
-  START_DATE: 5,
-  EXPECTED_END_DATE: 6,
-  CURRENT_PROGRESS: 7,
-  STATUS: 8,
-  PRIORITY: 9,
-  NEXT_MILESTONE: 10,
-  NEXT_MILESTONE_DATE: 11,
-  TEAM_SIZE: 12,
-  MONTHLY_BURN_RATE: 13,
+  PROJECT_ID: 0,           // A
+  CONTRACTOR_ID: 1,        // B
+  PROJECT_NAME: 2,         // C
+  CLIENT_NAME: 3,          // D
+  PROJECT_VALUE: 4,        // E
+  START_DATE: 5,           // F
+  EXPECTED_END_DATE: 6,    // G
+  CURRENT_PROGRESS: 7,     // H
+  STATUS: 8,               // I
+  PRIORITY: 9,             // J
+  NEXT_MILESTONE: 10,      // K
+  NEXT_MILESTONE_DATE: 11, // L
+  TEAM_SIZE: 12,           // M
+  FUNDING_REQUIRED: 13,    // N
+  FUNDING_STATUS: 14,      // O
+  EXPECTED_IRR: 15,        // P
+  PROJECT_TENURE: 16,      // Q
+  ESG_COMPLIANCE: 17,      // R
+  RISK_LEVEL: 18,          // S
+  MONTHLY_BURN_RATE: 19,   // T
 } as const;
 
 export function transformSheetToProjects(sheetData: any[][]): ContractorProject[] {
@@ -98,6 +104,13 @@ function transformRowToProject(row: any[]): ContractorProject {
     nextMilestoneDate: getCell(PROJECT_COLUMNS.NEXT_MILESTONE_DATE, '2024-12-31'),
     teamSize: parseNumber(getCell(PROJECT_COLUMNS.TEAM_SIZE), 1),
     monthlyBurnRate: parseNumber(getCell(PROJECT_COLUMNS.MONTHLY_BURN_RATE), 0),
+    // New funding and opportunity fields
+    fundingRequired: parseNumber(getCell(PROJECT_COLUMNS.FUNDING_REQUIRED), 0),
+    fundingStatus: getCell(PROJECT_COLUMNS.FUNDING_STATUS, 'Open'),
+    expectedIRR: parseNumber(getCell(PROJECT_COLUMNS.EXPECTED_IRR), 0),
+    projectTenure: parseNumber(getCell(PROJECT_COLUMNS.PROJECT_TENURE), 6),
+    esgCompliance: getCell(PROJECT_COLUMNS.ESG_COMPLIANCE, 'Yes'),
+    riskLevel: getCell(PROJECT_COLUMNS.RISK_LEVEL, 'Medium'),
   };
 }
 

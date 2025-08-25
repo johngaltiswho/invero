@@ -6,3 +6,4 @@ export { Layout } from './Layout';
 export { AuthLayout } from './AuthLayout';
 export { DashboardLayout } from './DashboardLayout';
 export { ContractorDashboardLayout } from './ContractorDashboardLayout';
+export { LoadingSpinner } from './LoadingSpinner';

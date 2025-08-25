@@ -4,7 +4,7 @@ export const dynamic = 'force-dynamic';
 
 import React, { useState, useEffect } from 'react';
 import { ContractorDashboardLayout } from '@/components/ContractorDashboardLayout';
-import { Button } from '@/components';
+import { Button, LoadingSpinner } from '@/components';
 import { useUser } from '@clerk/nextjs';
 import { useRouter } from 'next/navigation';
 import { useContractor } from '@/contexts/ContractorContext';
@@ -31,14 +31,25 @@ export default function ContractorProjects(): React.ReactElement {
   // Show loading state while Clerk loads OR contractor data loads
   if (!isLoaded || contractorLoading) {
     return (
-      <div className="min-h-screen bg-neutral-darker flex items-center justify-center">
-        <div className="text-center">
-          <div className="text-4xl mb-4">🔄</div>
-          <h2 className="text-xl font-bold text-primary mb-2">Loading...</h2>
-          <p className="text-secondary">
-            {!isLoaded ? 'Authenticating your access' : 'Loading project data from Google Sheets'}
-          </p>
-        </div>
+      <div className="min-h-screen bg-neutral-darker">
+        <LoadingSpinner 
+          title={!isLoaded ? "Authenticating Access" : "Loading Project Portfolio"}
+          description={!isLoaded ? 
+            "Verifying your contractor credentials and setting up secure access" : 
+            "Retrieving your active projects, milestones, and progress tracking data"
+          }
+          icon="📋"
+          fullScreen={true}
+          steps={!isLoaded ? [
+            "Validating contractor account...",
+            "Setting up secure session...",
+            "Preparing project workspace..."
+          ] : [
+            "Loading active projects...",
+            "Fetching milestone data...",
+            "Calculating progress metrics..."
+          ]}
+        />
       </div>
     );
   }

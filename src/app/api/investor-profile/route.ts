@@ -71,6 +71,23 @@ export async function GET(request: NextRequest) {
       totalContractors: contractors.length,
       totalProjects: projects.length,
     });
+
+    // Debug contractor data
+    console.log('📊 First few contractors:', contractors.slice(0, 3).map(c => ({ 
+      id: c.id, 
+      name: c.companyName, 
+      category: c.businessCategory,
+      riskRating: c.riskRating
+    })));
+    
+    // Debug project data  
+    console.log('📊 First few projects:', projects.slice(0, 3).map(p => ({ 
+      id: p.id, 
+      name: p.projectName, 
+      contractorId: p.contractorId,
+      status: p.status,
+      value: p.projectValue
+    })));
     
     // Find investor by email
     console.log(`🔍 Searching for investor with email: ${userEmail}`);
@@ -103,6 +120,9 @@ export async function GET(request: NextRequest) {
     const investorContractorIds = [...new Set(investorInvestments.map(inv => inv.contractorId))];
     const investorProjectIds = [...new Set(investorInvestments.map(inv => inv.projectId))];
     
+    console.log('💼 Investor contractor IDs:', investorContractorIds);
+    console.log('💼 Investor project IDs:', investorProjectIds);
+    
     const relatedContractors = contractors.filter(c => 
       investorContractorIds.includes(c.id)
     );
@@ -110,6 +130,9 @@ export async function GET(request: NextRequest) {
     const relatedProjects = projects.filter(p => 
       investorProjectIds.includes(p.id)
     );
+    
+    console.log('💼 Related contractors:', relatedContractors.length);
+    console.log('💼 Related projects:', relatedProjects.length);
     
     // Calculate portfolio metrics
     const totalInvested = investorInvestments.reduce((sum, inv) => sum + inv.investmentAmount, 0);
@@ -127,6 +150,19 @@ export async function GET(request: NextRequest) {
       totalInvestments: investorInvestments.length
     };
     
+    // Calculate available opportunities
+    const availableOpportunities = contractors.filter(c => 
+      !investorContractorIds.includes(c.id)
+    );
+    
+    console.log('🚀 Available opportunities:', availableOpportunities.length);
+    console.log('🚀 First few available contractors:', availableOpportunities.slice(0, 3).map(c => ({
+      id: c.id,
+      name: c.companyName,
+      category: c.businessCategory
+    })));
+
+    // For opportunities, we need access to ALL contractors and projects, not just related ones
     const investorWithData = {
       ...investor,
       investments: investorInvestments,
@@ -134,10 +170,10 @@ export async function GET(request: NextRequest) {
       relatedContractors,
       relatedProjects,
       portfolioMetrics,
-      // Available opportunities (contractors not yet invested in)
-      availableOpportunities: contractors.filter(c => 
-        !investorContractorIds.includes(c.id)
-      ).slice(0, 10) // Limit to top 10 opportunities
+      availableOpportunities,
+      // Include all contractors and projects for opportunities generation
+      allContractors: contractors,
+      allProjects: projects
     };
     
     console.log('✅ Found investor:', investor.investorName, 'with', investorInvestments.length, 'investments,', investorReturns.length, 'returns');

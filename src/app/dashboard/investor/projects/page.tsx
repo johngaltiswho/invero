@@ -2,17 +2,45 @@
 
 import React, { useState } from 'react';
 import { DashboardLayout } from '@/components/DashboardLayout';
-import { Button } from '@/components';
-import { mockProjects, mockClients, mockContractors, getClientById, getContractorById } from '@/data/mockData';
+import { Button, LoadingSpinner } from '@/components';
+import { useInvestor } from '@/contexts/InvestorContext';
 
 export default function ProjectMonitoring(): React.ReactElement {
   const [selectedProject, setSelectedProject] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<'overview' | 'timeline' | 'financials'>('overview');
+  const { investor, loading } = useInvestor();
 
-  // Get projects for current investor (INV_001 - Rajesh Sharma)
-  const investorProjects = mockProjects.filter(project => 
-    project.currentInvestors.includes('INV_001')
-  );
+  // Get projects that the investor has actually invested in
+  const getInvestorProjects = () => {
+    if (!investor || !investor.investments || !investor.relatedProjects) {
+      return [];
+    }
+
+    // Get project IDs that the investor has invested in
+    const investedProjectIds = [...new Set(investor.investments.map(inv => inv.projectId))];
+    
+    // Filter related projects to only show invested ones
+    const investorProjects = investor.relatedProjects.filter(project => 
+      investedProjectIds.includes(project.id)
+    );
+
+    // Add investment data to each project
+    return investorProjects.map(project => {
+      const projectInvestments = investor.investments.filter(inv => inv.projectId === project.id);
+      const totalInvestment = projectInvestments.reduce((sum, inv) => sum + inv.investmentAmount, 0);
+      const avgIRR = projectInvestments.reduce((sum, inv) => sum + inv.expectedReturn, 0) / projectInvestments.length;
+      
+      return {
+        ...project,
+        myInvestment: totalInvestment,
+        myExpectedIRR: avgIRR,
+        investmentCount: projectInvestments.length,
+        investments: projectInvestments
+      };
+    });
+  };
+
+  const investorProjects = getInvestorProjects();
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -54,16 +82,68 @@ export default function ProjectMonitoring(): React.ReactElement {
   };
 
   const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString('en-IN', {
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric'
-    });
+    if (!dateString || dateString.trim() === '') {
+      return 'Date not set';
+    }
+
+    try {
+      let date: Date;
+      
+      // Handle DD/MM/YYYY format (common in Indian data)
+      if (dateString.includes('/')) {
+        const parts = dateString.split('/');
+        if (parts.length === 3) {
+          const day = parseInt(parts[0]);
+          const month = parseInt(parts[1]) - 1; // Month is 0-indexed
+          const year = parseInt(parts[2]);
+          date = new Date(year, month, day);
+        } else {
+          date = new Date(dateString);
+        }
+      } else {
+        date = new Date(dateString);
+      }
+
+      if (isNaN(date.getTime())) {
+        return 'Invalid date';
+      }
+
+      return date.toLocaleDateString('en-IN', {
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric'
+      });
+    } catch (error) {
+      return 'Invalid date';
+    }
   };
 
-  const selectedProjectData = selectedProject ? mockProjects.find(p => p.id === selectedProject) : null;
-  const client = selectedProjectData ? getClientById(selectedProjectData.clientId) : null;
-  const contractor = selectedProjectData ? getContractorById(selectedProjectData.contractorId) : null;
+  const selectedProjectData = selectedProject ? investorProjects.find(p => p.id === selectedProject) : null;
+  
+  // Find contractor from investor data
+  const contractor = selectedProjectData ? 
+    investor?.relatedContractors?.find(c => c.id === selectedProjectData.contractorId) ||
+    investor?.allContractors?.find(c => c.id === selectedProjectData.contractorId) : null;
+
+  if (loading) {
+    return (
+      <DashboardLayout activeTab="projects">
+        <div className="p-6">
+          <LoadingSpinner 
+            title="Loading Your Portfolio"
+            description="Gathering real-time data from your investments, project progress, and contractor information"
+            icon="📊"
+            fullScreen={true}
+            steps={[
+              "Fetching investment data...",
+              "Loading project updates...",
+              "Synchronizing contractor information..."
+            ]}
+          />
+        </div>
+      </DashboardLayout>
+    );
+  }
 
   return (
     <DashboardLayout activeTab="projects">
@@ -88,22 +168,30 @@ export default function ProjectMonitoring(): React.ReactElement {
           
           <div className="bg-neutral-dark p-6 rounded-lg border border-neutral-medium">
             <div className="text-accent-amber text-sm font-mono mb-2">TOTAL INVESTED</div>
-            <div className="text-2xl font-bold text-primary mb-1">₹1.75 Cr</div>
+            <div className="text-2xl font-bold text-primary mb-1">
+              {formatCurrency(investorProjects.reduce((sum, p) => sum + p.myInvestment, 0))}
+            </div>
             <div className="text-xs text-success">Across {investorProjects.length} projects</div>
           </div>
           
           <div className="bg-neutral-dark p-6 rounded-lg border border-neutral-medium">
             <div className="text-accent-amber text-sm font-mono mb-2">AVG PROGRESS</div>
             <div className="text-2xl font-bold text-accent-amber mb-1">
-              {Math.round(investorProjects.reduce((sum, p) => sum + p.progress, 0) / investorProjects.length)}%
+              {investorProjects.length > 0 ? 
+                Math.round(investorProjects.reduce((sum, p) => sum + (p.currentProgress || 0), 0) / investorProjects.length) 
+                : 0}%
             </div>
             <div className="text-xs text-secondary">Weighted average</div>
           </div>
           
           <div className="bg-neutral-dark p-6 rounded-lg border border-neutral-medium">
-            <div className="text-accent-amber text-sm font-mono mb-2">NEXT PAYOUT</div>
-            <div className="text-2xl font-bold text-primary mb-1">Dec 15</div>
-            <div className="text-xs text-secondary">₹1.5L expected</div>
+            <div className="text-accent-amber text-sm font-mono mb-2">AVG EXPECTED IRR</div>
+            <div className="text-2xl font-bold text-primary mb-1">
+              {investorProjects.length > 0 ? 
+                (investorProjects.reduce((sum, p) => sum + (p.myExpectedIRR || 0), 0) / investorProjects.length).toFixed(1) 
+                : 0}%
+            </div>
+            <div className="text-xs text-secondary">Portfolio average</div>
           </div>
         </div>
 
@@ -117,41 +205,57 @@ export default function ProjectMonitoring(): React.ReactElement {
               </div>
               <div className="p-4">
                 <div className="space-y-3">
-                  {investorProjects.map((project) => {
-                    const client = getClientById(project.clientId);
-                    const contractor = getContractorById(project.contractorId);
-                    return (
-                      <div
-                        key={project.id}
-                        onClick={() => setSelectedProject(project.id)}
-                        className={`p-4 rounded-lg border cursor-pointer transition-all ${
-                          selectedProject === project.id
-                            ? 'border-accent-amber bg-accent-amber/5'
-                            : 'border-neutral-medium hover:border-neutral-light'
-                        }`}
-                      >
-                        <div className="flex justify-between items-start mb-2">
-                          <h3 className="font-semibold text-primary text-sm leading-tight">
-                            {project.projectName}
-                          </h3>
-                          <span className={`text-xs font-medium ${getStatusColor(project.status)}`}>
-                            {project.status}
-                          </span>
+                  {investorProjects.length === 0 ? (
+                    <div className="text-center py-8">
+                      <div className="text-4xl mb-4">📊</div>
+                      <h3 className="text-lg font-semibold text-primary mb-2">No Projects Yet</h3>
+                      <p className="text-secondary text-sm">
+                        You haven't invested in any projects yet. Visit the opportunities section to find projects to invest in.
+                      </p>
+                    </div>
+                  ) : (
+                    investorProjects.map((project) => {
+                      const projectContractor = investor?.relatedContractors?.find(c => c.id === project.contractorId) ||
+                                                investor?.allContractors?.find(c => c.id === project.contractorId);
+                      return (
+                        <div
+                          key={project.id}
+                          onClick={() => setSelectedProject(project.id)}
+                          className={`p-4 rounded-lg border cursor-pointer transition-all ${
+                            selectedProject === project.id
+                              ? 'border-accent-amber bg-accent-amber/5'
+                              : 'border-neutral-medium hover:border-neutral-light'
+                          }`}
+                        >
+                          <div className="flex justify-between items-start mb-2">
+                            <h3 className="font-semibold text-primary text-sm leading-tight">
+                              {project.projectName}
+                            </h3>
+                            <span className={`text-xs font-medium ${getStatusColor(project.status)}`}>
+                              {project.status}
+                            </span>
+                          </div>
+                          <p className="text-xs text-secondary mb-2">
+                            Client: {project.clientName} • Contractor: {projectContractor?.companyName || 'Unknown'}
+                          </p>
+                          <div className="flex justify-between text-xs mb-2">
+                            <span className="text-secondary">My Investment</span>
+                            <span className="text-accent-amber font-semibold">{formatCurrency(project.myInvestment)}</span>
+                          </div>
+                          <div className="flex justify-between text-xs">
+                            <span className="text-secondary">Progress</span>
+                            <span className="text-primary">{project.currentProgress || 0}%</span>
+                          </div>
+                          <div className="w-full bg-neutral-medium rounded-full h-1 mt-1">
+                            <div 
+                              className="bg-accent-amber h-1 rounded-full" 
+                              style={{ width: `${project.currentProgress || 0}%` }}
+                            ></div>
+                          </div>
                         </div>
-                        <p className="text-xs text-secondary mb-2">{client?.name}</p>
-                        <div className="flex justify-between text-xs">
-                          <span className="text-secondary">Progress</span>
-                          <span className="text-primary">{project.progress}%</span>
-                        </div>
-                        <div className="w-full bg-neutral-medium rounded-full h-1 mt-1">
-                          <div 
-                            className="bg-accent-amber h-1 rounded-full" 
-                            style={{ width: `${project.progress}%` }}
-                          ></div>
-                        </div>
-                      </div>
-                    );
-                  })}
+                      );
+                    })
+                  )}
                 </div>
               </div>
             </div>
@@ -168,9 +272,9 @@ export default function ProjectMonitoring(): React.ReactElement {
                         {selectedProjectData.projectName}
                       </h2>
                       <div className="flex items-center space-x-4 text-sm text-secondary">
-                        <span>Client: {client?.name}</span>
+                        <span>Client: {selectedProjectData.clientName}</span>
                         <span>•</span>
-                        <span>Contractor: {contractor?.companyName}</span>
+                        <span>Contractor: {contractor?.companyName || 'Unknown'}</span>
                       </div>
                     </div>
                     <div className="flex items-center space-x-3">
@@ -219,13 +323,13 @@ export default function ProjectMonitoring(): React.ReactElement {
                         <div>
                           <div className="text-xs text-secondary mb-1">Your Investment</div>
                           <div className="text-lg font-bold text-accent-amber">
-                            ₹50 Lakh
+                            {formatCurrency(selectedProjectData.myInvestment)}
                           </div>
                         </div>
                         <div>
                           <div className="text-xs text-secondary mb-1">Expected IRR</div>
                           <div className="text-lg font-bold text-accent-amber">
-                            {selectedProjectData.expectedIRR}%
+                            {selectedProjectData.myExpectedIRR?.toFixed(1) || 0}%
                           </div>
                         </div>
                       </div>
@@ -234,44 +338,40 @@ export default function ProjectMonitoring(): React.ReactElement {
                       <div>
                         <div className="flex justify-between text-sm mb-2">
                           <span className="text-secondary">Overall Progress</span>
-                          <span className="text-primary">{selectedProjectData.progress}%</span>
+                          <span className="text-primary">{selectedProjectData.currentProgress || 0}%</span>
                         </div>
                         <div className="w-full bg-neutral-medium rounded-full h-3">
                           <div 
                             className="bg-accent-amber h-3 rounded-full" 
-                            style={{ width: `${selectedProjectData.progress}%` }}
+                            style={{ width: `${selectedProjectData.currentProgress || 0}%` }}
                           ></div>
                         </div>
                       </div>
 
-                      {/* Project Description */}
-                      <div>
-                        <h3 className="text-sm font-semibold text-primary mb-2">Project Description</h3>
-                        <p className="text-sm text-secondary leading-relaxed">
-                          {selectedProjectData.description}
-                        </p>
-                      </div>
-
-                      {/* Client & Contractor Info */}
+                      {/* Project Details */}
                       <div className="grid md:grid-cols-2 gap-6">
                         <div>
-                          <h3 className="text-sm font-semibold text-primary mb-3">Client Information</h3>
+                          <h3 className="text-sm font-semibold text-primary mb-3">Project Information</h3>
                           <div className="space-y-2 text-sm">
                             <div className="flex justify-between">
-                              <span className="text-secondary">Company</span>
-                              <span className="text-primary">{client?.name}</span>
+                              <span className="text-secondary">Client</span>
+                              <span className="text-primary">{selectedProjectData.clientName}</span>
                             </div>
                             <div className="flex justify-between">
-                              <span className="text-secondary">Type</span>
-                              <span className="text-primary">{client?.type}</span>
+                              <span className="text-secondary">Status</span>
+                              <span className="text-primary">{selectedProjectData.status}</span>
                             </div>
                             <div className="flex justify-between">
-                              <span className="text-secondary">Credit Rating</span>
-                              <span className="text-success">{client?.creditRating}</span>
+                              <span className="text-secondary">Priority</span>
+                              <span className="text-primary">{selectedProjectData.priority}</span>
                             </div>
                             <div className="flex justify-between">
-                              <span className="text-secondary">Payment Cycle</span>
-                              <span className="text-primary">{client?.avgPaymentCycle} days</span>
+                              <span className="text-secondary">Team Size</span>
+                              <span className="text-primary">{selectedProjectData.teamSize} members</span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span className="text-secondary">Next Milestone</span>
+                              <span className="text-primary">{selectedProjectData.nextMilestone || 'TBD'}</span>
                             </div>
                           </div>
                         </div>
@@ -383,19 +483,19 @@ export default function ProjectMonitoring(): React.ReactElement {
                           <div className="space-y-3 text-sm">
                             <div className="flex justify-between">
                               <span className="text-secondary">Investment Amount</span>
-                              <span className="text-primary">₹50,00,000</span>
+                              <span className="text-primary">{formatCurrency(selectedProjectData.myInvestment)}</span>
                             </div>
                             <div className="flex justify-between">
                               <span className="text-secondary">Expected Returns</span>
-                              <span className="text-accent-amber">₹57,40,000</span>
+                              <span className="text-accent-amber">{formatCurrency(selectedProjectData.myInvestment * (1 + (selectedProjectData.myExpectedIRR || 0) / 100))}</span>
                             </div>
                             <div className="flex justify-between">
                               <span className="text-secondary">IRR</span>
-                              <span className="text-accent-amber">{selectedProjectData.expectedIRR}%</span>
+                              <span className="text-accent-amber">{selectedProjectData.myExpectedIRR?.toFixed(1) || 0}%</span>
                             </div>
                             <div className="flex justify-between">
                               <span className="text-secondary">Tenure</span>
-                              <span className="text-primary">{selectedProjectData.tenure} months</span>
+                              <span className="text-primary">{selectedProjectData.projectTenure || 'TBD'} months</span>
                             </div>
                           </div>
                         </div>

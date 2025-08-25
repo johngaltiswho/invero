@@ -67,7 +67,7 @@ export function transformSheetToInvestorProfiles(data: any[][]): InvestorProfile
         availableCapital: parseFloat(getColumnValue(row, headers, columnMap.availableCapital)) || 0,
         riskTolerance: getColumnValue(row, headers, columnMap.riskTolerance) || 'Medium',
         preferredSectors: getColumnValue(row, headers, columnMap.preferredSectors)?.split(',').map(s => s.trim()) || [],
-        joinDate: getColumnValue(row, headers, columnMap.joinDate) || new Date().toISOString().split('T')[0]
+        joinDate: normalizeDate(getColumnValue(row, headers, columnMap.joinDate)) || new Date().toISOString().split('T')[0]
       };
 
       if (profile.email) {
@@ -112,7 +112,7 @@ export function transformSheetToInvestments(data: any[][]): Investment[] {
         contractorId: getColumnValue(row, headers, columnMap.contractorId) || '',
         projectId: getColumnValue(row, headers, columnMap.projectId) || '',
         investmentAmount: parseFloat(getColumnValue(row, headers, columnMap.investmentAmount)) || 0,
-        investmentDate: getColumnValue(row, headers, columnMap.investmentDate) || new Date().toISOString().split('T')[0],
+        investmentDate: normalizeDate(getColumnValue(row, headers, columnMap.investmentDate)) || new Date().toISOString().split('T')[0],
         expectedReturn: parseFloat(getColumnValue(row, headers, columnMap.expectedReturn)) || 0,
         status: getColumnValue(row, headers, columnMap.status) || 'Active',
         actualReturn: parseFloat(getColumnValue(row, headers, columnMap.actualReturn)) || undefined
@@ -154,7 +154,7 @@ export function transformSheetToReturns(data: any[][]): Return[] {
       const returnRecord: Return = {
         id: getColumnValue(row, headers, columnMap.id) || `RET_${i}`,
         investmentId: getColumnValue(row, headers, columnMap.investmentId) || '',
-        returnDate: getColumnValue(row, headers, columnMap.returnDate) || new Date().toISOString().split('T')[0],
+        returnDate: normalizeDate(getColumnValue(row, headers, columnMap.returnDate)) || new Date().toISOString().split('T')[0],
         returnAmount: parseFloat(getColumnValue(row, headers, columnMap.returnAmount)) || 0,
         returnType: getColumnValue(row, headers, columnMap.returnType) || 'Interest',
         projectMilestone: getColumnValue(row, headers, columnMap.projectMilestone) || undefined
@@ -169,6 +169,37 @@ export function transformSheetToReturns(data: any[][]): Return[] {
   }
 
   return returns;
+}
+
+// Helper function to normalize dates from Google Sheets
+function normalizeDate(dateValue: string): string {
+  if (!dateValue || dateValue.trim() === '') {
+    return '';
+  }
+
+  try {
+    // Handle Excel serial number dates
+    if (!isNaN(Number(dateValue))) {
+      const excelDate = Number(dateValue);
+      if (excelDate > 25569) { // Excel serial date starts from 1900-01-01
+        // Convert Excel serial number to JavaScript date
+        const date = new Date((excelDate - 25569) * 86400 * 1000);
+        return date.toISOString().split('T')[0];
+      }
+    }
+
+    // Try to parse as regular date
+    const date = new Date(dateValue);
+    if (!isNaN(date.getTime())) {
+      return date.toISOString().split('T')[0];
+    }
+
+    // If all else fails, return the original value
+    return dateValue;
+  } catch (error) {
+    console.warn('Error normalizing date:', dateValue, error);
+    return dateValue;
+  }
 }
 
 // Helper function to get column value by header name

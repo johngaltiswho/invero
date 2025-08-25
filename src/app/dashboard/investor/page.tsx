@@ -4,6 +4,7 @@ export const dynamic = 'force-dynamic';
 
 import React, { useEffect } from 'react';
 import { DashboardLayout } from '@/components/DashboardLayout';
+import { LoadingSpinner } from '@/components';
 import { useUser } from '@clerk/nextjs';
 import { useRouter } from 'next/navigation';
 import { useInvestor } from '@/contexts/InvestorContext';
@@ -26,14 +27,25 @@ export default function InvestorDashboard(): React.ReactElement {
   // Show loading state while Clerk loads OR investor data loads
   if (!isLoaded || investorLoading) {
     return (
-      <div className="min-h-screen bg-neutral-darker flex items-center justify-center">
-        <div className="text-center">
-          <div className="text-4xl mb-4">🔄</div>
-          <h2 className="text-xl font-bold text-primary mb-2">Loading...</h2>
-          <p className="text-secondary">
-            {!isLoaded ? 'Authenticating your access' : 'Loading investor data from Google Sheets'}
-          </p>
-        </div>
+      <div className="min-h-screen bg-neutral-darker">
+        <LoadingSpinner 
+          title={!isLoaded ? "Authenticating Access" : "Loading Dashboard"}
+          description={!isLoaded ? 
+            "Verifying your credentials and setting up your secure session" : 
+            "Fetching your investor profile and portfolio data from secure servers"
+          }
+          icon="🔐"
+          fullScreen={true}
+          steps={!isLoaded ? [
+            "Verifying user credentials...",
+            "Establishing secure session...",
+            "Preparing dashboard access..."
+          ] : [
+            "Loading investor profile...",
+            "Fetching portfolio data...",
+            "Synchronizing with Google Sheets..."
+          ]}
+        />
       </div>
     );
   }
@@ -124,11 +136,53 @@ export default function InvestorDashboard(): React.ReactElement {
   };
 
   const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString('en-IN', {
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric'
-    });
+    if (!dateString || dateString.trim() === '') {
+      return 'Date not set';
+    }
+
+    try {
+      let date: Date;
+      
+      if (!isNaN(Number(dateString))) {
+        // Handle Excel serial number dates
+        const excelDate = Number(dateString);
+        if (excelDate > 25569) {
+          date = new Date((excelDate - 25569) * 86400 * 1000);
+        } else {
+          date = new Date(excelDate);
+        }
+      } else {
+        // Handle DD/MM/YYYY format (common in Indian data)
+        if (dateString.includes('/')) {
+          const parts = dateString.split('/');
+          if (parts.length === 3) {
+            const day = parseInt(parts[0]);
+            const month = parseInt(parts[1]) - 1; // Month is 0-indexed
+            const year = parseInt(parts[2]);
+            date = new Date(year, month, day);
+          } else {
+            date = new Date(dateString);
+          }
+        } else {
+          // Try ISO format or other standard formats
+          date = new Date(dateString);
+        }
+      }
+
+      // Check if date is valid
+      if (isNaN(date.getTime())) {
+        return 'Invalid date';
+      }
+
+      return date.toLocaleDateString('en-IN', {
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric'
+      });
+    } catch (error) {
+      console.warn('Error formatting date:', dateString, error);
+      return 'Invalid date';
+    }
   };
 
   return (
@@ -217,7 +271,9 @@ export default function InvestorDashboard(): React.ReactElement {
                         </div>
                         <div>
                           <div className="text-xs text-secondary">Date</div>
-                          <div className="font-semibold text-primary">{formatDate(investment.investmentDate)}</div>
+                          <div className="font-semibold text-primary">
+                            {investment.investmentDate ? formatDate(investment.investmentDate) : 'Not set'}
+                          </div>
                         </div>
                       </div>
                       

@@ -3,6 +3,7 @@
 import React, { useEffect } from 'react';
 import { useUser, SignOutButton } from '@clerk/nextjs';
 import { useRouter } from 'next/navigation';
+import { LoadingSpinner } from '@/components';
 
 export default function DashboardRouter(): React.ReactElement {
   const { user, isLoaded } = useUser();
@@ -55,9 +56,17 @@ export default function DashboardRouter(): React.ReactElement {
 
       <div className="flex items-center justify-center" style={{minHeight: 'calc(100vh - 80px)'}}>
         <div className="text-center max-w-md">
-          <div className="text-4xl mb-4">🔄</div>
-          <h2 className="text-xl font-bold text-primary mb-2">Welcome Back!</h2>
-          <p className="text-secondary mb-6">Access your Invero dashboard</p>
+          <LoadingSpinner 
+            title="Welcome Back!"
+            description="Redirecting you to your personalized dashboard based on your role"
+            icon="🚀"
+            steps={[
+              "Identifying your account type...",
+              "Loading dashboard preferences...",
+              "Preparing your workspace..."
+            ]}
+          />
+          <p className="text-secondary mb-6 mt-8">Access your Invero dashboard</p>
           
           {/* Manual navigation buttons */}
           <div className="space-y-3">

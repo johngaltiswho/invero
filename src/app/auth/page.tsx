@@ -2,6 +2,7 @@
 
 import React, { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
+import { LoadingSpinner } from '@/components';
 
 export default function AuthPage(): React.ReactElement {
   const router = useRouter();
@@ -12,12 +13,18 @@ export default function AuthPage(): React.ReactElement {
   // }, [router]);
 
   return (
-    <div className="min-h-screen bg-neutral-darker flex items-center justify-center">
-      <div className="text-center">
-        <div className="text-4xl mb-4">🔄</div>
-        <h2 className="text-xl font-bold text-primary mb-2">Redirecting...</h2>
-        <p className="text-secondary">Taking you to sign up</p>
-      </div>
+    <div className="min-h-screen bg-neutral-darker">
+      <LoadingSpinner 
+        title="Redirecting to Sign Up"
+        description="Taking you to the account creation page where you can join the Invero platform"
+        icon="🔐"
+        fullScreen={true}
+        steps={[
+          "Preparing sign up form...",
+          "Loading security protocols...",
+          "Redirecting to registration..."
+        ]}
+      />
     </div>
   );
 }
