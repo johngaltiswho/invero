@@ -35,18 +35,6 @@ interface FormData {
   existingLoans: string;
   creditScore: string;
   
-  // Project Details
-  projectTitle: string;
-  clientName: string;
-  clientType: string;
-  projectValue: string;
-  fundingRequired: string;
-  projectDuration: string;
-  contractDate: string;
-  projectDescription: string;
-  paymentTerms: string;
-  milestones: string;
-  
   // Previous Experience
   totalProjectsCompleted: string;
   largestProjectValue: string;
@@ -58,9 +46,7 @@ interface FormData {
     gstCertificate: File | null;
     incorporationCertificate: File | null;
     bankStatements: File | null;
-    projectContract: File | null;
     financialStatements: File | null;
-    clientPO: File | null;
   };
 }
 
@@ -68,23 +54,25 @@ const steps = [
   { id: 1, title: 'Company Information', description: 'Basic company details and registration' },
   { id: 2, title: 'Business Profile', description: 'Business operations and capabilities' },
   { id: 3, title: 'Financial Information', description: 'Banking and financial details' },
-  { id: 4, title: 'Project Details', description: 'Specific project information' },
-  { id: 5, title: 'Documents & Review', description: 'Upload documents and review application' }
+  { id: 4, title: 'Documents & Review', description: 'Upload documents and review application' }
 ];
 
 export default function ContractorApplyPage(): React.ReactElement {
   const [currentStep, setCurrentStep] = useState(1);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [submitStatus, setSubmitStatus] = useState<{
+    type: 'success' | 'error' | null;
+    message: string;
+    applicationId?: string;
+  }>({ type: null, message: '' });
   const [formData, setFormData] = useState<FormData>({
     companyName: '', registrationNumber: '', gstin: '', incorporationDate: '', companyType: '', businessAddress: '',
     contactPerson: '', designation: '', email: '', phone: '', alternatePhone: '',
     yearsInBusiness: '', employeeCount: '', annualTurnover: '', businessCategory: '', specializations: '',
     bankName: '', accountNumber: '', ifscCode: '', currentWorkingCapital: '', existingLoans: '', creditScore: '',
-    projectTitle: '', clientName: '', clientType: '', projectValue: '', fundingRequired: '', projectDuration: '', 
-    contractDate: '', projectDescription: '', paymentTerms: '', milestones: '',
     totalProjectsCompleted: '', largestProjectValue: '', clientReferences: '',
     documents: {
-      panCard: null, gstCertificate: null, incorporationCertificate: null, bankStatements: null,
-      projectContract: null, financialStatements: null, clientPO: null
+      panCard: null, gstCertificate: null, incorporationCertificate: null, bankStatements: null, financialStatements: null
     }
   });
 
@@ -100,8 +88,76 @@ export default function ContractorApplyPage(): React.ReactElement {
     });
   };
 
-  const nextStep = () => setCurrentStep(prev => Math.min(prev + 1, 5));
+  const nextStep = () => setCurrentStep(prev => Math.min(prev + 1, 4));
   const prevStep = () => setCurrentStep(prev => Math.max(prev - 1, 1));
+
+  const handleSubmit = async () => {
+    setIsSubmitting(true);
+    setSubmitStatus({ type: null, message: '' });
+
+    try {
+      // Prepare FormData with both text fields and files
+      const submitFormData = new FormData();
+      
+      // Add text fields
+      submitFormData.append('companyName', formData.companyName);
+      submitFormData.append('registrationNumber', formData.registrationNumber);
+      submitFormData.append('incorporationDate', formData.incorporationDate);
+      submitFormData.append('companyType', formData.companyType);
+      submitFormData.append('businessAddress', formData.businessAddress);
+      submitFormData.append('city', ''); // Extract from address if needed
+      submitFormData.append('state', ''); // Extract from address if needed
+      submitFormData.append('pincode', ''); // Extract from address if needed
+      submitFormData.append('contactPerson', formData.contactPerson);
+      submitFormData.append('designation', formData.designation);
+      submitFormData.append('email', formData.email);
+      submitFormData.append('phone', formData.phone);
+      submitFormData.append('gstNumber', formData.gstin);
+      submitFormData.append('panNumber', ''); // Would need to be added to form
+      submitFormData.append('bankName', formData.bankName);
+      submitFormData.append('accountNumber', formData.accountNumber);
+      submitFormData.append('ifscCode', formData.ifscCode);
+      submitFormData.append('annualRevenue', formData.annualTurnover);
+      submitFormData.append('yearsInBusiness', formData.yearsInBusiness);
+      submitFormData.append('keyServices', formData.specializations);
+      submitFormData.append('clientReferences', formData.clientReferences);
+      
+      // Add file uploads
+      Object.entries(formData.documents).forEach(([docType, file]) => {
+        if (file) {
+          submitFormData.append(docType, file);
+        }
+      });
+
+      const response = await fetch('/api/contractor-application', {
+        method: 'POST',
+        // Don't set Content-Type header - let browser set it with boundary for FormData
+        body: submitFormData,
+      });
+
+      const result = await response.json();
+
+      if (response.ok && result.success) {
+        setSubmitStatus({
+          type: 'success',
+          message: result.message,
+          applicationId: result.applicationId,
+        });
+      } else {
+        setSubmitStatus({
+          type: 'error',
+          message: result.error || 'Failed to submit application. Please try again.',
+        });
+      }
+    } catch (error) {
+      setSubmitStatus({
+        type: 'error',
+        message: 'Network error. Please check your connection and try again.',
+      });
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
 
   const FileUpload = ({ label, docType, required = false }: { label: string; docType: keyof FormData['documents']; required?: boolean }) => (
     <div>
@@ -226,49 +282,6 @@ export default function ContractorApplyPage(): React.ReactElement {
         return (
           <div className="space-y-6">
             <div className="grid md:grid-cols-2 gap-6">
-              <Input label="Project Title *" name="projectTitle" value={formData.projectTitle} onChange={handleInputChange} required />
-              <Input label="Client Name *" name="clientName" value={formData.clientName} onChange={handleInputChange} required />
-            </div>
-            <div className="grid md:grid-cols-3 gap-6">
-              <div>
-                <label className="block text-sm font-medium text-primary mb-2">Client Type *</label>
-                <select name="clientType" value={formData.clientType} onChange={handleInputChange} className="w-full px-4 py-3 rounded-lg border bg-neutral-dark text-primary focus:outline-none focus:ring-2 focus:ring-accent-orange border-neutral-medium" required>
-                  <option value="">Select client type</option>
-                  <option value="mnc">MNC</option>
-                  <option value="large-enterprise">Large Enterprise</option>
-                  <option value="government">Government</option>
-                  <option value="psu">PSU</option>
-                  <option value="sme">SME</option>
-                </select>
-              </div>
-              <Input label="Project Value (₹) *" name="projectValue" value={formData.projectValue} onChange={handleInputChange} required />
-              <Input label="Funding Required (₹) *" name="fundingRequired" value={formData.fundingRequired} onChange={handleInputChange} required />
-            </div>
-            <div className="grid md:grid-cols-2 gap-6">
-              <Input label="Project Duration (months) *" name="projectDuration" type="number" value={formData.projectDuration} onChange={handleInputChange} required />
-              <Input label="Contract Date *" name="contractDate" type="date" value={formData.contractDate} onChange={handleInputChange} required />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-primary mb-2">Project Description *</label>
-              <textarea name="projectDescription" value={formData.projectDescription} onChange={handleInputChange} className="w-full px-4 py-3 rounded-lg border bg-neutral-dark text-primary placeholder-text-secondary focus:outline-none focus:ring-2 focus:ring-accent-orange border-neutral-medium" rows={4} required />
-            </div>
-            <div className="grid md:grid-cols-2 gap-6">
-              <div>
-                <label className="block text-sm font-medium text-primary mb-2">Payment Terms *</label>
-                <textarea name="paymentTerms" value={formData.paymentTerms} onChange={handleInputChange} className="w-full px-4 py-3 rounded-lg border bg-neutral-dark text-primary placeholder-text-secondary focus:outline-none focus:ring-2 focus:ring-accent-orange border-neutral-medium" rows={3} required />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-primary mb-2">Project Milestones *</label>
-                <textarea name="milestones" value={formData.milestones} onChange={handleInputChange} className="w-full px-4 py-3 rounded-lg border bg-neutral-dark text-primary placeholder-text-secondary focus:outline-none focus:ring-2 focus:ring-accent-orange border-neutral-medium" rows={3} required />
-              </div>
-            </div>
-          </div>
-        );
-
-      case 5:
-        return (
-          <div className="space-y-6">
-            <div className="grid md:grid-cols-2 gap-6">
               <FileUpload label="PAN Card" docType="panCard" required />
               <FileUpload label="GST Certificate" docType="gstCertificate" required />
             </div>
@@ -277,11 +290,7 @@ export default function ContractorApplyPage(): React.ReactElement {
               <FileUpload label="Bank Statements (6 months)" docType="bankStatements" required />
             </div>
             <div className="grid md:grid-cols-2 gap-6">
-              <FileUpload label="Project Contract/Agreement" docType="projectContract" required />
               <FileUpload label="Financial Statements" docType="financialStatements" />
-            </div>
-            <div className="grid md:grid-cols-2 gap-6">
-              <FileUpload label="Client Purchase Order" docType="clientPO" required />
               <div></div>
             </div>
             
@@ -289,11 +298,37 @@ export default function ContractorApplyPage(): React.ReactElement {
               <h3 className="text-xl font-bold text-primary mb-4">Application Summary</h3>
               <div className="grid md:grid-cols-2 gap-4 text-sm">
                 <div><span className="text-secondary">Company:</span> <span className="text-primary">{formData.companyName}</span></div>
-                <div><span className="text-secondary">Project Value:</span> <span className="text-primary">₹{formData.projectValue}</span></div>
-                <div><span className="text-secondary">Funding Required:</span> <span className="text-primary">₹{formData.fundingRequired}</span></div>
-                <div><span className="text-secondary">Client:</span> <span className="text-primary">{formData.clientName}</span></div>
+                <div><span className="text-secondary">GST Number:</span> <span className="text-primary">{formData.gstin}</span></div>
+                <div><span className="text-secondary">Annual Revenue:</span> <span className="text-primary">₹{formData.annualTurnover}</span></div>
+                <div><span className="text-secondary">Years in Business:</span> <span className="text-primary">{formData.yearsInBusiness}</span></div>
               </div>
             </div>
+            
+            {/* Submission Status */}
+            {submitStatus.type && (
+              <div className={`mt-6 p-4 rounded-lg ${
+                submitStatus.type === 'success' 
+                  ? 'bg-green-900/20 border border-green-500 text-green-400' 
+                  : 'bg-red-900/20 border border-red-500 text-red-400'
+              }`}>
+                <div className="flex items-center">
+                  <div className="mr-3">
+                    {submitStatus.type === 'success' ? '✅' : '❌'}
+                  </div>
+                  <div>
+                    <div className="font-medium">
+                      {submitStatus.type === 'success' ? 'Application Submitted!' : 'Submission Failed'}
+                    </div>
+                    <div className="text-sm mt-1">{submitStatus.message}</div>
+                    {submitStatus.applicationId && (
+                      <div className="text-sm mt-2 font-mono bg-black/20 px-2 py-1 rounded">
+                        Application ID: {submitStatus.applicationId}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         );
 
@@ -372,13 +407,17 @@ export default function ContractorApplyPage(): React.ReactElement {
                   Previous
                 </Button>
                 
-                {currentStep < 5 ? (
+                {currentStep < 4 ? (
                   <Button variant="primary" onClick={nextStep}>
                     Next Step
                   </Button>
                 ) : (
-                  <Button variant="primary" type="submit">
-                    Submit Application
+                  <Button 
+                    variant="primary" 
+                    onClick={handleSubmit}
+                    disabled={isSubmitting}
+                  >
+                    {isSubmitting ? 'Submitting...' : 'Submit Application'}
                   </Button>
                 )}
               </div>
