@@ -16,7 +16,7 @@ export default function AuthPage(): React.ReactElement {
     <div className="min-h-screen bg-neutral-darker">
       <LoadingSpinner 
         title="Redirecting to Sign Up"
-        description="Taking you to the account creation page where you can join the Invero platform"
+        description="Taking you to the account creation page where you can join the Finverno platform"
         icon="🔐"
         fullScreen={true}
         steps={[

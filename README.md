@@ -1,4 +1,4 @@
-# Invero - Project Financing Platform
+# Finverno - Project Financing Platform
 
 A sophisticated fintech MVP for project financing in India's economy, connecting SME contractors with HNI investors.
 
@@ -52,7 +52,7 @@ Real data from verified sources:
 git clone <your-repo-url>
 
 # Navigate to the app
-cd invero
+cd finverno
 
 # Install dependencies
 pnpm install

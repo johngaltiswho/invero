@@ -9,11 +9,11 @@ export default function AboutUs() {
         {/* Hero Section */}
         <div className="text-center mb-16">
           <h1 className="text-5xl font-bold text-primary mb-6">
-            Capital That <span className="text-accent-orange">Builds</span>
+            Supply Chains That <span className="text-accent-orange">Enable</span>
           </h1>
           <p className="text-xl text-secondary max-w-3xl mx-auto mb-8">
-            Bridging the funding gap for those building the bridges to a better India. 
-            We empower SME contractors with flexible working capital while delivering superior returns to investors.
+            Bridging the supply gap for those building the infrastructure of tomorrow's India. 
+            We empower SME contractors with contract-backed project supplies while delivering superior returns to institutional partners.
           </p>
           <div className="flex flex-col sm:flex-row gap-4 justify-center">
             <Button variant="primary" className="px-8 py-3">
@@ -36,7 +36,7 @@ export default function AboutUs() {
             <h2 className="text-2xl font-semibold text-primary mb-4">Our Mission</h2>
             <p className="text-secondary">
               To empower Indian SMEs to deliver world-class infrastructure and industrial services — not by changing who they are, 
-              but by giving them the financial firepower to perform without compromise.
+              but by giving them the supply chain capability to execute without compromise.
             </p>
           </div>
           
@@ -112,16 +112,16 @@ export default function AboutUs() {
 
         {/* How It Works */}
         <div className="mb-16">
-          <h2 className="text-3xl font-bold text-primary text-center mb-12">How Invero Works</h2>
+          <h2 className="text-3xl font-bold text-primary text-center mb-12">How Finverno Works</h2>
           
           <div className="grid md:grid-cols-3 gap-8">
             <div className="text-center">
               <div className="w-16 h-16 bg-accent-orange rounded-full flex items-center justify-center mx-auto mb-6">
                 <span className="text-2xl font-bold text-white">1</span>
               </div>
-              <h3 className="text-xl font-semibold text-primary mb-4">Vet & Connect</h3>
+              <h3 className="text-xl font-semibold text-primary mb-4">Verify & Enable</h3>
               <p className="text-secondary">
-                We rigorously vet SME contractors with confirmed MNC work orders and connect them with HNI capital through our SEBI-regulated AIF structure.
+                We rigorously verify SME contractors with confirmed MNC work orders and enable their supply chain through our institutional partnership structure.
               </p>
             </div>
 
@@ -129,9 +129,9 @@ export default function AboutUs() {
               <div className="w-16 h-16 bg-accent-orange rounded-full flex items-center justify-center mx-auto mb-6">
                 <span className="text-2xl font-bold text-white">2</span>
               </div>
-              <h3 className="text-xl font-semibold text-primary mb-4">Deploy & Monitor</h3>
+              <h3 className="text-xl font-semibold text-primary mb-4">Supply & Monitor</h3>
               <p className="text-secondary">
-                Capital is deployed through revenue-linked securities with real-time project monitoring and automated milestone tracking for complete transparency.
+                Project supplies are delivered through contract-backed arrangements with real-time execution monitoring and automated milestone tracking for complete transparency.
               </p>
             </div>
 
@@ -139,9 +139,9 @@ export default function AboutUs() {
               <div className="w-16 h-16 bg-accent-orange rounded-full flex items-center justify-center mx-auto mb-6">
                 <span className="text-2xl font-bold text-white">3</span>
               </div>
-              <h3 className="text-xl font-semibold text-primary mb-4">Generate Returns</h3>
+              <h3 className="text-xl font-semibold text-primary mb-4">Execute & Return</h3>
               <p className="text-secondary">
-                As projects complete and MNCs pay, revenue shares flow back to investors automatically, generating superior risk-adjusted returns.
+                As projects complete and MNCs pay, supply settlements flow through our platform automatically, generating superior risk-adjusted returns for partners.
               </p>
             </div>
           </div>
@@ -232,7 +232,7 @@ export default function AboutUs() {
                 </svg>
               </div>
               <h3 className="font-semibold text-primary mb-2">Alignment</h3>
-              <p className="text-sm text-secondary">Investors, vendors, and Invero win or lose together</p>
+              <p className="text-sm text-secondary">Investors, vendors, and Finverno win or lose together</p>
             </div>
 
             <div className="text-center">
@@ -273,7 +273,7 @@ export default function AboutUs() {
           <h2 className="text-3xl font-bold text-primary mb-4">Ready to Build India's Future?</h2>
           <p className="text-lg text-secondary mb-8 max-w-2xl mx-auto">
             Join us in transforming India's infrastructure financing ecosystem. Whether you're an investor seeking superior returns 
-            or a contractor needing flexible capital, Invero is your partner in growth.
+            or a contractor needing flexible capital, Finverno is your partner in growth.
           </p>
           <div className="flex flex-col sm:flex-row gap-4 justify-center">
             <Button variant="primary" className="px-8 py-3">

@@ -3,8 +3,8 @@ import "./globals.css";
 import { ClerkProvider } from '@clerk/nextjs';
 
 export const metadata: Metadata = {
-  title: "Invero - Financial Intelligence Platform",
-  description: "Modern financial intelligence and analytics platform",
+  title: "Finverno - Project Supply Enablement Platform",
+  description: "Contract-backed supply enablement for infrastructure project execution",
 };
 
 export default function RootLayout({

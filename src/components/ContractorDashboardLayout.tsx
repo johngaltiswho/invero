@@ -89,7 +89,7 @@ export function ContractorDashboardLayout({ children, activeTab }: ContractorDas
               <Link href="/" className="flex items-center space-x-3 hover:text-accent-orange transition-colors">
                 <div className="text-2xl">🏗️</div>
                 <div>
-                  <div className="text-lg font-bold text-primary">Invero</div>
+                  <div className="text-lg font-bold text-primary">Finverno</div>
                   <div className="text-xs text-secondary">Contractor Portal</div>
                 </div>
               </Link>

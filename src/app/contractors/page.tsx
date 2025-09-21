@@ -9,21 +9,21 @@ export default function ContractorsPage() {
         {/* Hero Section */}
         <div className="text-center mb-20">
           <h1 className="text-5xl font-bold text-primary mb-6">
-            <span className="text-accent-orange">Working Capital</span> for Confirmed Projects
+            <span className="text-accent-orange">Project Supply Enablement</span> for Confirmed Orders
           </h1>
           <p className="text-xl text-secondary max-w-3xl mx-auto mb-8 leading-relaxed">
-            Access flexible financing for your infrastructure and industrial projects backed by established corporate clients.
+            Access materials, equipment, fuel, and project essentials for your infrastructure projects backed by verified corporate work orders.
           </p>
           <div className="bg-neutral-light rounded-lg p-6 max-w-2xl mx-auto">
             <p className="text-lg text-primary font-medium">
-              Order-based financing | Streamlined process | Competitive terms
+              Contract-backed supply | Direct-to-site delivery | Competitive terms
             </p>
           </div>
         </div>
 
         {/* The Problem */}
         <div className="mb-20">
-          <h2 className="text-3xl font-bold text-primary text-center mb-12">Common Working Capital Challenges</h2>
+          <h2 className="text-3xl font-bold text-primary text-center mb-12">Common Project Supply Challenges</h2>
           
           <div className="grid md:grid-cols-3 gap-8">
             <div className="bg-neutral-light rounded-lg p-6 text-center">
@@ -32,9 +32,9 @@ export default function ContractorsPage() {
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                 </svg>
               </div>
-              <h3 className="text-lg font-semibold text-primary mb-3">Payment Timing Gaps</h3>
+              <h3 className="text-lg font-semibold text-primary mb-3">Procurement Timing Gaps</h3>
               <p className="text-secondary text-sm">
-                Project expenses are immediate while client payments typically follow 60-120 day cycles.
+                Project supplies are needed immediately while client payments typically follow 60-120 day cycles.
               </p>
             </div>
 
@@ -44,9 +44,9 @@ export default function ContractorsPage() {
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728L5.636 5.636m12.728 12.728L12 12m6.364 6.364L12 12m0 0L5.636 5.636M12 12l6.364-6.364M12 12l-6.364 6.364" />
                 </svg>
               </div>
-              <h3 className="text-lg font-semibold text-primary mb-3">Traditional Financing Limitations</h3>
+              <h3 className="text-lg font-semibold text-primary mb-3">Traditional Procurement Limitations</h3>
               <p className="text-secondary text-sm">
-                Conventional lenders require substantial collateral and lengthy approval processes unsuited for project-based needs.
+                Conventional suppliers require upfront payments and lengthy approval processes unsuited for urgent project needs.
               </p>
             </div>
 
@@ -262,9 +262,9 @@ export default function ContractorsPage() {
 
         {/* CTA Section */}
         <div className="bg-gradient-to-br from-neutral-light to-neutral-medium rounded-lg p-12 text-center border border-neutral-medium mb-20">
-          <h2 className="text-3xl font-bold text-primary mb-6">Partner with Invero</h2>
+          <h2 className="text-3xl font-bold text-primary mb-6">Partner with Finverno</h2>
           <p className="text-xl text-secondary mb-8 max-w-2xl mx-auto">
-            Access working capital solutions designed for infrastructure and industrial contractors with confirmed corporate orders.
+            Access project supply solutions designed for infrastructure and industrial contractors with verified corporate work orders.
           </p>
           <div className="flex flex-col sm:flex-row gap-4 justify-center">
             <Button variant="primary" className="bg-accent-orange hover:bg-orange-600 text-white px-8 py-3">

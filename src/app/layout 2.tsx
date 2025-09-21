@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Invero - Financial Intelligence Platform",
+  title: "Finverno - Financial Intelligence Platform",
   description: "Modern financial intelligence and analytics platform",
 };
 

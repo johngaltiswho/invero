@@ -8,7 +8,7 @@ export default {
   theme: {
     extend: {
       colors: {
-        // Invero institutional color scheme
+        // Finverno institutional color scheme
         primary: {
           background: 'var(--color-primary-background)',
           DEFAULT: 'var(--color-primary-background)',

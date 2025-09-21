@@ -1,4 +1,4 @@
-// Unified data model for Invero platform - ready for backend integration
+// Unified data model for Finverno platform - ready for backend integration
 
 export interface Client {
   id: string;

@@ -15,19 +15,19 @@ export default function TermsOfService() {
           <section className="mb-8">
             <h2 className="text-2xl font-semibold text-primary mb-4">1. Acceptance of Terms</h2>
             <p className="mb-4">
-              By accessing and using Invero's financial intelligence platform ("Service"), you accept and agree to be bound by the terms and provision of this agreement. If you do not agree to abide by the above, please do not use this service.
+              By accessing and using Finverno's financial intelligence platform ("Service"), you accept and agree to be bound by the terms and provision of this agreement. If you do not agree to abide by the above, please do not use this service.
             </p>
           </section>
 
           <section className="mb-8">
             <h2 className="text-2xl font-semibold text-primary mb-4">2. Description of Service</h2>
             <p className="mb-4">
-              Invero provides a financial intelligence platform that connects investors with contractors and provides analytics, project management, and financial tools. The Service includes but is not limited to:
+              Finverno provides a project supply enablement platform that connects institutional partners with contractors and provides supply chain analytics, project management, and execution tools. The Service includes but is not limited to:
             </p>
             <ul className="list-disc pl-6 mb-4">
-              <li>Investment opportunity matching</li>
+              <li>Partnership opportunity matching</li>
               <li>Contractor verification and management</li>
-              <li>Financial analytics and reporting</li>
+              <li>Supply chain analytics and reporting</li>
               <li>Project tracking and management tools</li>
               <li>Document management and storage</li>
               <li>Communication and collaboration features</li>
@@ -64,23 +64,23 @@ export default function TermsOfService() {
           </section>
 
           <section className="mb-8">
-            <h2 className="text-2xl font-semibold text-primary mb-4">5. Financial Services Disclaimer</h2>
+            <h2 className="text-2xl font-semibold text-primary mb-4">5. Platform Services Disclaimer</h2>
             <p className="mb-4">
-              <strong>Important:</strong> Invero is a technology platform that facilitates connections between investors and contractors. We do not provide investment advice, financial planning services, or act as a broker-dealer. All investment decisions are made solely by users at their own risk.
+              <strong>Important:</strong> Finverno is a technology platform that facilitates supply chain enablement between institutional partners and contractors. We do not provide financial services, lending, or credit facilities. We enable project supply arrangements backed by verified work orders.
             </p>
             <ul className="list-disc pl-6 mb-4">
-              <li>Past performance does not guarantee future results</li>
-              <li>All investments carry risk of loss</li>
-              <li>Users should consult with qualified financial advisors before making investment decisions</li>
-              <li>Invero does not guarantee the accuracy of financial data or projections</li>
-              <li>Users are responsible for their own due diligence</li>
+              <li>Past project performance does not guarantee future execution</li>
+              <li>All project partnerships carry execution risks</li>
+              <li>Users should consult with qualified professionals before making partnership decisions</li>
+              <li>Finverno does not guarantee the accuracy of project data or projections</li>
+              <li>Users are responsible for their own due diligence on contractors and projects</li>
             </ul>
           </section>
 
           <section className="mb-8">
             <h2 className="text-2xl font-semibold text-primary mb-4">6. Intellectual Property</h2>
             <p className="mb-4">
-              The Service and its original content, features, and functionality are and will remain the exclusive property of Invero and its licensors. The Service is protected by copyright, trademark, and other laws. You may not copy, modify, distribute, sell, or lease any part of our Service.
+              The Service and its original content, features, and functionality are and will remain the exclusive property of Finverno and its licensors. The Service is protected by copyright, trademark, and other laws. You may not copy, modify, distribute, sell, or lease any part of our Service.
             </p>
           </section>
 
@@ -138,9 +138,9 @@ export default function TermsOfService() {
             <p className="mb-4">
               If you have any questions about these Terms of Service, please contact us at:
             </p>
-            <p className="mb-2">Email: <a href="mailto:legal@invero.com" className="text-accent-orange hover:underline">legal@invero.com</a></p>
+            <p className="mb-2">Email: <a href="mailto:legal@finverno.com" className="text-accent-orange hover:underline">legal@finverno.com</a></p>
             <p className="mb-2">Phone: <a href="tel:+1-555-0123" className="text-accent-orange hover:underline">+1 (555) 012-3456</a></p>
-            <p className="mb-2">Address: Invero Financial Intelligence, 123 Business Ave, Suite 100, City, State 12345</p>
+            <p className="mb-2">Address: Finverno Financial Intelligence, 123 Business Ave, Suite 100, City, State 12345</p>
           </section>
         </div>
       </div>

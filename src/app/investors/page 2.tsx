@@ -25,7 +25,7 @@ export default function InvestorsPage() {
             </h2>
             <div className="text-lg md:text-xl text-secondary leading-relaxed space-y-6">
               <p>
-                Invero introduces investors to the <strong className="text-primary">Project Delivery Asset Class</strong> – 
+                Finverno introduces investors to the <strong className="text-primary">Project Delivery Asset Class</strong> – 
                 a previously inaccessible investment category that directly powers India's infrastructure growth.
               </p>
               <p>

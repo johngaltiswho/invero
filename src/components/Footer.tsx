@@ -11,10 +11,10 @@ export const Footer: React.FC = () => {
           {/* Logo and Copyright */}
           <div className="flex flex-col md:flex-row items-center space-y-2 md:space-y-0 md:space-x-4">
             <Link href="/" className="text-xl font-bold text-primary">
-              <span className="accent-orange">Invero</span>
+              <span className="accent-orange">Finverno</span>
             </Link>
             <p className="text-sm text-secondary">
-              © {currentYear} Invero. All rights reserved.
+              © {currentYear} Finverno. All rights reserved.
             </p>
           </div>
 
@@ -43,10 +43,10 @@ export const Footer: React.FC = () => {
           {/* Contact Info */}
           <div className="flex flex-col md:flex-row items-center space-y-2 md:space-y-0 md:space-x-4 text-sm text-secondary">
             <a
-              href="mailto:contact@invero.com"
+              href="mailto:contact@finverno.com"
               className="hover:text-primary transition-colors duration-200"
             >
-              contact@invero.com
+              contact@finverno.com
             </a>
             <span className="hidden md:inline">|</span>
             <a

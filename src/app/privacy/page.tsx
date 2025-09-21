@@ -15,7 +15,7 @@ export default function PrivacyPolicy() {
           <section className="mb-8">
             <h2 className="text-2xl font-semibold text-primary mb-4">1. Introduction</h2>
             <p className="mb-4">
-              Welcome to Invero ("we," "our," or "us"). We respect your privacy and are committed to protecting your personal data. This privacy policy will inform you about how we look after your personal data when you visit our website and tell you about your privacy rights and how the law protects you.
+              Welcome to Finverno ("we," "our," or "us"). We respect your privacy and are committed to protecting your personal data. This privacy policy will inform you about how we look after your personal data when you visit our website and tell you about your privacy rights and how the law protects you.
             </p>
           </section>
 
@@ -89,9 +89,9 @@ export default function PrivacyPolicy() {
             <p className="mb-4">
               If you have any questions about this privacy policy or our privacy practices, please contact us at:
             </p>
-            <p className="mb-2">Email: <a href="mailto:privacy@invero.com" className="text-accent-orange hover:underline">privacy@invero.com</a></p>
+            <p className="mb-2">Email: <a href="mailto:privacy@finverno.com" className="text-accent-orange hover:underline">privacy@finverno.com</a></p>
             <p className="mb-2">Phone: <a href="tel:+1-555-0123" className="text-accent-orange hover:underline">+1 (555) 012-3456</a></p>
-            <p className="mb-2">Address: Invero Financial Intelligence, 123 Business Ave, Suite 100, City, State 12345</p>
+            <p className="mb-2">Address: Finverno Financial Intelligence, 123 Business Ave, Suite 100, City, State 12345</p>
           </section>
 
           <section className="mb-8">

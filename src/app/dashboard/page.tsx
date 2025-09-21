@@ -66,7 +66,7 @@ export default function DashboardRouter(): React.ReactElement {
               "Preparing your workspace..."
             ]}
           />
-          <p className="text-secondary mb-6 mt-8">Access your Invero dashboard</p>
+          <p className="text-secondary mb-6 mt-8">Access your Finverno dashboard</p>
           
           {/* Manual navigation buttons */}
           <div className="space-y-3">

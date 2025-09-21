@@ -39,7 +39,7 @@ export const Header: React.FC = () => {
         <div className="flex items-center justify-between">
           {/* Logo */}
           <Link href="/" className="text-2xl font-bold text-primary inline-block">
-            <span className="accent-amber">INVERO</span>
+            <span className="accent-amber">FINVERNO</span>
           </Link>
 
           {/* Desktop Navigation */}

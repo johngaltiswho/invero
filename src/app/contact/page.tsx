@@ -115,7 +115,7 @@ export default function ContactUs() {
                   className="mt-1 h-4 w-4 text-accent-orange focus:ring-accent-orange border-neutral-medium rounded"
                 />
                 <label htmlFor="consent" className="ml-3 text-sm text-secondary">
-                  I agree to receive communications from Invero and understand that I can unsubscribe at any time. 
+                  I agree to receive communications from Finverno and understand that I can unsubscribe at any time. 
                   View our <a href="/privacy" className="text-accent-orange hover:underline">Privacy Policy</a>.
                 </label>
               </div>
@@ -146,8 +146,8 @@ export default function ContactUs() {
                 <div>
                   <h3 className="text-lg font-medium text-primary">Email</h3>
                   <p className="text-secondary">General inquiries</p>
-                  <a href="mailto:contact@invero.com" className="text-accent-orange hover:underline">
-                    contact@invero.com
+                  <a href="mailto:contact@finverno.com" className="text-accent-orange hover:underline">
+                    contact@finverno.com
                   </a>
                 </div>
               </div>
@@ -178,7 +178,7 @@ export default function ContactUs() {
                   <h3 className="text-lg font-medium text-primary">Office</h3>
                   <p className="text-secondary">Visit us at our headquarters</p>
                   <address className="text-secondary not-italic">
-                    Invero Financial Intelligence<br />
+                    Finverno Financial Intelligence<br />
                     123 Business Ave, Suite 100<br />
                     City, State 12345
                   </address>

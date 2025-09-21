@@ -12,8 +12,8 @@ export default function InvestorsPage() {
             Infrastructure as an <span className="text-accent-orange">Asset Class</span>
           </h1>
           <p className="text-xl text-secondary max-w-4xl mx-auto mb-8 leading-relaxed">
-            Access pre-vetted, MNC-backed infrastructure projects through a regulated, 
-            transparent investment vehicle designed for sophisticated capital allocation.
+            Access pre-vetted, MNC-backed infrastructure projects with enhanced execution capability through 
+            our supply enablement platform designed for sophisticated capital allocation.
           </p>
           <div className="bg-neutral-light rounded-lg p-6 max-w-2xl mx-auto">
             <p className="text-lg text-primary font-medium">
@@ -33,17 +33,17 @@ export default function InvestorsPage() {
               <h3 className="text-2xl font-semibold text-primary mb-6">The Opportunity</h3>
               <div className="space-y-6">
                 <div className="border-l-4 border-accent-orange pl-6">
-                  <h4 className="font-semibold text-primary mb-2">Structural Market Inefficiency</h4>
+                  <h4 className="font-semibold text-primary mb-2">Enhanced Infrastructure Execution</h4>
                   <p className="text-secondary">
-                    India's ₹25 lakh crore MSME credit gap creates a significant arbitrage opportunity. 
-                    Traditional financing fails to serve creditworthy contractors with confirmed MNC orders.
+                    India's ₹25 lakh crore MSME working capital gap creates project execution delays. 
+                    Our supply enablement platform ensures reliable delivery for creditworthy contractors with confirmed MNC orders.
                   </p>
                 </div>
                 <div className="border-l-4 border-accent-orange pl-6">
                   <h4 className="font-semibold text-primary mb-2">Infrastructure Growth Catalyst</h4>
                   <p className="text-secondary">
                     India's infrastructure sector is projected to grow at 8% CAGR, reaching $280.6B by 2030. 
-                    We're financing the execution layer of this massive expansion.
+                    We're enabling reliable execution for the contractors delivering this massive expansion.
                   </p>
                 </div>
                 <div className="border-l-4 border-accent-orange pl-6">
@@ -180,7 +180,7 @@ export default function InvestorsPage() {
             </div>
 
             <div>
-              <h3 className="text-xl font-semibold text-primary mb-6">Invero Advantage</h3>
+              <h3 className="text-xl font-semibold text-primary mb-6">Finverno Advantage</h3>
               <div className="space-y-4">
                 <div className="flex items-start space-x-3">
                   <div className="w-2 h-2 bg-green-500 rounded-full mt-3 flex-shrink-0"></div>
@@ -192,8 +192,8 @@ export default function InvestorsPage() {
                 <div className="flex items-start space-x-3">
                   <div className="w-2 h-2 bg-green-500 rounded-full mt-3 flex-shrink-0"></div>
                   <div>
-                    <p className="font-medium text-primary">Credit-secured Returns</p>
-                    <p className="text-sm text-secondary">Backed by MNC payment obligations, not market speculation</p>
+                    <p className="font-medium text-primary">Contract-secured Returns</p>
+                    <p className="text-sm text-secondary">Backed by verified MNC work orders and enhanced execution reliability</p>
                   </div>
                 </div>
                 <div className="flex items-start space-x-3">

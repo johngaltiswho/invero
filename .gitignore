@@ -31,3 +31,6 @@ Thumbs.db
 
 # Logs
 *.log
+
+# clerk configuration (can include secrets)
+/.clerk/

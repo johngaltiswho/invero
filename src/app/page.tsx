@@ -12,15 +12,15 @@ export default function Home(): React.ReactElement {
             <div className="grid lg:grid-cols-2 gap-12 items-center">
               <div>
                 <div className="text-accent-orange text-sm font-semibold uppercase tracking-wide mb-4">
-                  FOUNDATIONAL SOFTWARE OF TOMORROW
+                  PROJECT SUPPLY ENABLEMENT PLATFORM
                 </div>
                 <h1 className="text-5xl md:text-7xl font-bold text-primary mb-6 leading-tight tracking-tight">
-                  Intelligent Capital for India's 
-                  <span className="block accent-amber">Project Economy</span>
+                  Contract-Backed Project Supply for 
+                  <span className="block accent-amber">Infrastructure Execution</span>
                 </h1>
                 <p className="text-xl text-secondary mb-8 leading-relaxed max-w-lg">
-                  Institutionalizing project delivery through ESG-integrated vetting, transparent structures, 
-                  and risk-mitigated financing solutions for sustainable growth.
+                  Streamlining project execution through verified work order-backed supply of materials, equipment, fuel, 
+                  and other project essentials with ESG-compliant delivery solutions.
                 </p>
                 <div className="flex flex-col sm:flex-row gap-4">
                   <Link href="/dashboard/contractor">
@@ -30,7 +30,7 @@ export default function Home(): React.ReactElement {
                   </Link>
                   <Link href="/dashboard/investor">
                     <Button variant="outline" size="lg" className="min-w-[200px]">
-                      Investor Portal
+                      Partner Portal
                     </Button>
                   </Link>
                 </div>
@@ -46,12 +46,12 @@ export default function Home(): React.ReactElement {
                         <span className="text-primary font-bold">127</span>
                       </div>
                       <div className="flex justify-between">
-                        <span className="text-secondary">Capital Deployed</span>
+                        <span className="text-secondary">Materials Supplied</span>
                         <span className="text-primary font-bold">₹2.4B</span>
                       </div>
                       <div className="flex justify-between">
-                        <span className="text-secondary">Average IRR</span>
-                        <span className="text-accent-amber font-bold">13.2%</span>
+                        <span className="text-secondary">On-Time Delivery</span>
+                        <span className="text-accent-amber font-bold">96.8%</span>
                       </div>
                     </div>
                   </div>
@@ -71,34 +71,34 @@ export default function Home(): React.ReactElement {
                 THE CHALLENGE
               </div>
               <h2 className="text-4xl md:text-5xl font-bold text-primary mb-8 leading-tight">
-                The Hidden Bottleneck in India's Growth
+                The Working Capital Constraint in Project Execution
               </h2>
             </div>
             <div className="grid md:grid-cols-2 gap-12 items-center">
               <div>
                 <p className="text-lg text-secondary leading-relaxed mb-6">
-                  India's infrastructure boom faces a critical constraint: working capital shortfall 
-                  for SME execution partners.
+                  India's infrastructure boom faces a critical constraint: SME contractors need to procure 
+                  materials upfront while waiting 60-90 days for client payments.
                 </p>
                 <p className="text-lg text-secondary leading-relaxed">
-                  The credit gap creates project delays, disrupts timelines, and limits the growth 
-                  of India's most dynamic execution partners.
+                  This working capital gap forces contractors to delay material procurement, creating project 
+                  bottlenecks and limiting execution capacity for verified MNC contracts.
                 </p>
               </div>
               <div className="bg-neutral-dark p-8 rounded-lg border border-neutral-medium">
-                <div className="text-accent-amber text-sm font-mono mb-4">IMPACT METRICS</div>
+                <div className="text-accent-amber text-sm font-mono mb-4">MARKET METRICS</div>
                 <div className="space-y-4">
                   <div>
                     <div className="text-2xl font-bold text-primary">₹18T</div>
-                    <div className="text-secondary text-sm">Credit Gap in SME Sector</div>
+                    <div className="text-secondary text-sm">Working Capital Gap in SME Sector</div>
                   </div>
                   <div>
                     <div className="text-2xl font-bold text-primary">60%</div>
-                    <div className="text-secondary text-sm">Projects Delayed by Capital</div>
+                    <div className="text-secondary text-sm">Projects Delayed by Material Procurement</div>
                   </div>
                   <div>
-                    <div className="text-2xl font-bold text-primary">3-6M</div>
-                    <div className="text-secondary text-sm">Average Payment Cycle</div>
+                    <div className="text-2xl font-bold text-primary">60-90D</div>
+                    <div className="text-secondary text-sm">Client Payment Cycle</div>
                   </div>
                 </div>
               </div>
@@ -116,32 +116,32 @@ export default function Home(): React.ReactElement {
                 OUR APPROACH
               </div>
               <h2 className="text-4xl md:text-5xl font-bold text-primary mb-8 leading-tight">
-                Institutionalizing Project Delivery
+                Contract-Backed Material Supply Enablement
               </h2>
             </div>
             <div className="grid md:grid-cols-3 gap-8">
               <div className="bg-neutral-medium p-8 rounded-lg border border-neutral-medium">
                 <div className="text-accent-amber text-sm font-mono mb-4">01</div>
-                <h3 className="text-xl font-bold text-primary mb-4">Proprietary Vetting</h3>
+                <h3 className="text-xl font-bold text-primary mb-4">Contract Verification</h3>
                 <p className="text-secondary leading-relaxed">
-                  Multi-dimensional risk assessment combining financial health, execution track record, 
-                  and project viability analysis.
+                  Multi-dimensional assessment of contractor credentials, MNC client contracts, 
+                  and project execution capabilities before material supply enablement.
                 </p>
               </div>
               <div className="bg-neutral-medium p-8 rounded-lg border border-neutral-medium">
                 <div className="text-accent-amber text-sm font-mono mb-4">02</div>
-                <h3 className="text-xl font-bold text-primary mb-4">Transparent Structures</h3>
+                <h3 className="text-xl font-bold text-primary mb-4">Direct-to-Site Supply</h3>
                 <p className="text-secondary leading-relaxed">
-                  Contract-backed security with milestone-linked disbursements and real-time 
-                  project monitoring capabilities.
+                  Verified work order-backed material procurement with milestone-linked delivery 
+                  and real-time project execution monitoring.
                 </p>
               </div>
               <div className="bg-neutral-medium p-8 rounded-lg border border-neutral-medium">
                 <div className="text-accent-amber text-sm font-mono mb-4">03</div>
-                <h3 className="text-xl font-bold text-primary mb-4">Risk Mitigation</h3>
+                <h3 className="text-xl font-bold text-primary mb-4">Execution Assurance</h3>
                 <p className="text-secondary leading-relaxed">
-                  Blue-chip client guarantees, comprehensive insurance coverage, and continuous 
-                  performance monitoring.
+                  MNC client contract backing, comprehensive material quality assurance, and continuous 
+                  delivery performance monitoring.
                 </p>
               </div>
             </div>
@@ -158,10 +158,10 @@ export default function Home(): React.ReactElement {
                 SUSTAINABLE PROJECT EXECUTION
               </div>
               <h2 className="text-4xl md:text-5xl font-bold text-primary mb-8 leading-tight">
-                ESG-Integrated Infrastructure Financing
+                ESG-Compliant Material Supply Chain
               </h2>
               <p className="text-lg text-secondary max-w-3xl mx-auto">
-                Promoting environmentally, socially, and ethically responsible practices across all SME contractor projects while delivering superior returns.
+                Promoting environmentally, socially, and ethically responsible material sourcing and supply practices across all infrastructure projects while ensuring reliable execution.
               </p>
             </div>
 
@@ -283,7 +283,7 @@ export default function Home(): React.ReactElement {
                 <ul className="text-secondary text-sm space-y-3">
                   <li className="flex items-start gap-2">
                     <span className="text-primary">•</span>
-                    <span>"Invero Green Project" certification and branding</span>
+                    <span>"Finverno Green Project" certification and branding</span>
                   </li>
                   <li className="flex items-start gap-2">
                     <span className="text-primary">•</span>
@@ -621,21 +621,21 @@ export default function Home(): React.ReactElement {
               GET STARTED
             </div>
             <h2 className="text-4xl md:text-5xl font-bold text-primary mb-8 leading-tight">
-              Transform Your Capital Strategy
+              Transform Your Project Execution
             </h2>
             <p className="text-lg text-secondary mb-12 max-w-2xl mx-auto">
-              Join the ESG-integrated revolution in project financing. 
-              Access sustainable capital or deploy it with unprecedented transparency, impact measurement, and control.
+              Join the ESG-compliant revolution in material supply enablement. 
+              Access contract-backed material supply or partner with us for transparent, impact-driven project execution.
             </p>
             <div className="flex flex-col sm:flex-row gap-6 justify-center">
               <Link href="/contractors">
                 <Button variant="primary" size="lg" className="min-w-[200px]">
-                  Access Capital
+                  Access Project Supplies
                 </Button>
               </Link>
               <Link href="/investors">
                 <Button variant="outline" size="lg" className="min-w-[200px]">
-                  Deploy Capital
+                  Partner With Us
                 </Button>
               </Link>
             </div>
