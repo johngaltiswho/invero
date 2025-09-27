@@ -23,13 +23,23 @@ class GoogleDriveAPI {
     try {
       // Try individual environment variables first (for service account)
       if (GOOGLE_CLIENT_EMAIL && GOOGLE_PRIVATE_KEY && GOOGLE_PROJECT_ID) {
-        const privateKey = GOOGLE_PRIVATE_KEY.replace(/\\n/g, '\n');
+        // Fix private key format - handle both escaped and unescaped newlines
+        let privateKey = GOOGLE_PRIVATE_KEY;
+        if (privateKey.includes('\\n')) {
+          privateKey = privateKey.replace(/\\n/g, '\n');
+        }
+        
+        // Ensure proper formatting
+        if (!privateKey.startsWith('-----BEGIN PRIVATE KEY-----')) {
+          throw new Error('Invalid private key format');
+        }
         
         this.auth = new google.auth.GoogleAuth({
           credentials: {
             client_email: GOOGLE_CLIENT_EMAIL,
             private_key: privateKey,
             project_id: GOOGLE_PROJECT_ID,
+            type: 'service_account',
           },
           scopes: [
             'https://www.googleapis.com/auth/drive.file',

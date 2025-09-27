@@ -28,30 +28,39 @@ class GoogleSheetsAPI {
 
   private initializeAuth() {
     try {
-      // Try API key first (most reliable for public sheets)
-      if (GOOGLE_API_KEY) {
-        this.sheets = google.sheets({ 
-          version: 'v4', 
-          auth: GOOGLE_API_KEY 
-        });
-        return;
-      }
-
-      // Try individual environment variables (for service account)
+      // Try individual environment variables first (for service account with write access)
       if (GOOGLE_CLIENT_EMAIL && GOOGLE_PRIVATE_KEY && GOOGLE_PROJECT_ID) {
-        // Fix private key format
-        const privateKey = GOOGLE_PRIVATE_KEY.replace(/\\n/g, '\n');
+        // Fix private key format - handle both escaped and unescaped newlines
+        let privateKey = GOOGLE_PRIVATE_KEY;
+        if (privateKey.includes('\\n')) {
+          privateKey = privateKey.replace(/\\n/g, '\n');
+        }
+        
+        // Ensure proper formatting
+        if (!privateKey.startsWith('-----BEGIN PRIVATE KEY-----')) {
+          throw new Error('Invalid private key format');
+        }
         
         const auth = new google.auth.GoogleAuth({
           credentials: {
             client_email: GOOGLE_CLIENT_EMAIL,
             private_key: privateKey,
             project_id: GOOGLE_PROJECT_ID,
+            type: 'service_account',
           },
-          scopes: ['https://www.googleapis.com/auth/spreadsheets.readonly'],
+          scopes: ['https://www.googleapis.com/auth/spreadsheets'],
         });
 
         this.sheets = google.sheets({ version: 'v4', auth });
+        return;
+      }
+
+      // Try API key (read-only fallback for public sheets)
+      if (GOOGLE_API_KEY) {
+        this.sheets = google.sheets({ 
+          version: 'v4', 
+          auth: GOOGLE_API_KEY 
+        });
         return;
       }
 
@@ -82,7 +91,7 @@ class GoogleSheetsAPI {
         console.log('🔄 Trying direct credentials authentication...');
         auth = new google.auth.GoogleAuth({
           credentials,
-          scopes: ['https://www.googleapis.com/auth/spreadsheets.readonly'],
+          scopes: ['https://www.googleapis.com/auth/spreadsheets'],
         });
         // Direct credentials successful
       } catch (directError) {
@@ -93,7 +102,7 @@ class GoogleSheetsAPI {
             private_key: credentials.private_key,
             project_id: credentials.project_id,
           },
-          scopes: ['https://www.googleapis.com/auth/spreadsheets.readonly'],
+          scopes: ['https://www.googleapis.com/auth/spreadsheets'],
         });
       }
 
@@ -287,9 +296,6 @@ export function getGoogleSheetsAPI(): GoogleSheetsAPI {
     throw new Error('Google credentials environment variables are missing');
   }
 
-  const authMethod = hasApiKey ? 'api-key' : 
-                    hasIndividualVars ? 'individual-env-vars' : 
-                    'json-credentials';
 
   // Config validation passed
 

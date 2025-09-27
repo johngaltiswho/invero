@@ -13,7 +13,8 @@ interface ContractorDashboardLayoutProps {
 }
 
 export function ContractorDashboardLayout({ children, activeTab }: ContractorDashboardLayoutProps) {
-  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [isSidebarOpen, setIsSidebarOpen] = useState(true); // Default to open on desktop
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const pathname = usePathname();
   const { user } = useUser();
   const { contractor } = useContractor();
@@ -32,35 +33,8 @@ export function ContractorDashboardLayout({ children, activeTab }: ContractorDas
       href: '/dashboard/contractor/projects',
       icon: '📋',
       description: 'Project management'
-    },
-    {
-      id: 'progress',
-      name: 'Progress Reports',
-      href: '/dashboard/contractor/progress',
-      icon: '📈',
-      description: 'Submit updates'
-    },
-    {
-      id: 'funding',
-      name: 'Funding Requests',
-      href: '/dashboard/contractor/funding',
-      icon: '💰',
-      description: 'Working capital'
-    },
-    {
-      id: 'documents',
-      name: 'Documents',
-      href: '/dashboard/contractor/documents',
-      icon: '📄',
-      description: 'Upload & manage'
-    },
-    {
-      id: 'payments',
-      name: 'Payments',
-      href: '/dashboard/contractor/payments',
-      icon: '💳',
-      description: 'Track payments'
     }
+    // Hidden: Progress Reports, Funding Requests, Documents, Payments
   ];
 
   const isActive = (itemId: string) => {
@@ -76,6 +50,7 @@ export function ContractorDashboardLayout({ children, activeTab }: ContractorDas
           <div className="flex justify-between items-center">
             {/* Logo & Company */}
             <div className="flex items-center space-x-4">
+              {/* Mobile menu button */}
               <button
                 onClick={() => setIsSidebarOpen(!isSidebarOpen)}
                 className="lg:hidden p-2 rounded-lg hover:bg-neutral-medium"
@@ -84,6 +59,17 @@ export function ContractorDashboardLayout({ children, activeTab }: ContractorDas
                   <div className="w-full h-0.5 bg-primary"></div>
                   <div className="w-full h-0.5 bg-primary"></div>
                   <div className="w-full h-0.5 bg-primary"></div>
+                </div>
+              </button>
+              
+              {/* Desktop collapse button */}
+              <button
+                onClick={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
+                className="hidden lg:block p-2 rounded-lg hover:bg-neutral-medium text-secondary hover:text-primary"
+                title={isSidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+              >
+                <div className="w-5 h-5">
+                  {isSidebarCollapsed ? '→' : '←'}
                 </div>
               </button>
               <Link href="/" className="flex items-center space-x-3 hover:text-accent-orange transition-colors">
@@ -134,52 +120,45 @@ export function ContractorDashboardLayout({ children, activeTab }: ContractorDas
         {/* Sidebar */}
         <nav className={`${
           isSidebarOpen ? 'translate-x-0' : '-translate-x-full'
-        } lg:translate-x-0 fixed lg:static inset-y-0 left-0 z-30 w-64 bg-neutral-dark border-r border-neutral-medium transform transition-transform duration-200 ease-in-out`}>
-          <div className="p-6">
+        } lg:translate-x-0 fixed lg:static inset-y-0 left-0 z-30 ${
+          isSidebarCollapsed ? 'w-16' : 'w-64'
+        } bg-neutral-dark border-r border-neutral-medium transform transition-all duration-200 ease-in-out`}>
+          <div className={`${isSidebarCollapsed ? 'p-2' : 'p-6'}`}>
             <div className="space-y-2">
               {navigationItems.map((item) => (
                 <Link
                   key={item.id}
                   href={item.href}
-                  className={`flex items-center space-x-3 px-4 py-3 rounded-lg transition-colors ${
+                  className={`flex items-center ${
+                    isSidebarCollapsed ? 'justify-center px-2 py-3' : 'space-x-3 px-4 py-3'
+                  } rounded-lg transition-colors ${
                     isActive(item.id)
                       ? 'bg-accent-amber text-primary'
                       : 'text-secondary hover:text-primary hover:bg-neutral-medium'
                   }`}
+                  title={isSidebarCollapsed ? item.name : undefined}
                 >
                   <span className="text-lg">{item.icon}</span>
-                  <div>
-                    <div className="font-medium">{item.name}</div>
-                    <div className="text-xs opacity-70">{item.description}</div>
-                  </div>
+                  {!isSidebarCollapsed && (
+                    <div>
+                      <div className="font-medium">{item.name}</div>
+                      <div className="text-xs opacity-70">{item.description}</div>
+                    </div>
+                  )}
                 </Link>
               ))}
             </div>
           </div>
 
-          {/* Quick Actions Panel */}
-          <div className="p-6 border-t border-neutral-medium">
-            <h3 className="text-sm font-medium text-primary mb-3">Quick Actions</h3>
-            <div className="space-y-2">
-              <button className="w-full text-left px-3 py-2 text-sm text-secondary hover:text-primary hover:bg-neutral-medium rounded">
-                📊 Submit Progress Report
-              </button>
-              <button className="w-full text-left px-3 py-2 text-sm text-secondary hover:text-primary hover:bg-neutral-medium rounded">
-                💰 Request Funding
-              </button>
-              <button className="w-full text-left px-3 py-2 text-sm text-secondary hover:text-primary hover:bg-neutral-medium rounded">
-                📄 Upload Document
-              </button>
+          {/* Support - only show when not collapsed */}
+          {!isSidebarCollapsed && (
+            <div className="p-6 border-t border-neutral-medium">
+              <div className="text-xs text-secondary mb-2">Need Help?</div>
+              <Button variant="outline" size="sm" className="w-full">
+                Contact Support
+              </Button>
             </div>
-          </div>
-
-          {/* Support */}
-          <div className="p-6 border-t border-neutral-medium">
-            <div className="text-xs text-secondary mb-2">Need Help?</div>
-            <Button variant="outline" size="sm" className="w-full">
-              Contact Support
-            </Button>
-          </div>
+          )}
         </nav>
 
         {/* Sidebar Overlay */}

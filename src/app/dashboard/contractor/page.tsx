@@ -14,8 +14,11 @@ export default function ContractorDashboard(): React.ReactElement {
   const router = useRouter();
   const { contractor, loading: contractorLoading, error } = useContractor();
   
+  
   // Get contractor ID from authenticated user
   const currentContractorId = user?.publicMetadata?.contractorId as string || 'CONTRACTOR_001';
+
+  // Note: Metrics calculation moved to project selection in projects page for better performance
 
   // Redirect if not authenticated
   useEffect(() => {
@@ -98,11 +101,12 @@ export default function ContractorDashboard(): React.ReactElement {
     );
   }
   
-  // Use only Google Sheets data (no mockdata fallback)
+  // Use Google Sheets data as base
   const contractorProjects = contractor?.currentProjects || [];
   const projectMilestones = contractor?.projectMilestones || [];
   const financialMilestones = contractor?.financialMilestones || [];
   const recentActivity = contractor?.activities || [];
+
   
   // Dashboard data ready
   
@@ -200,14 +204,6 @@ export default function ContractorDashboard(): React.ReactElement {
           </p>
           
           
-          <div className="flex space-x-4">
-            <Button variant="primary" size="sm">
-              Request Funding
-            </Button>
-            <Button variant="outline" size="sm">
-              Submit Progress Report
-            </Button>
-          </div>
         </div>
 
         {/* Key Metrics */}
@@ -345,12 +341,6 @@ export default function ContractorDashboard(): React.ReactElement {
               </div>
               <div className="p-6">
                 <div className="space-y-3">
-                  <Button variant="primary" size="sm" className="w-full justify-start">
-                    📊 Submit Progress Report
-                  </Button>
-                  <Button variant="outline" size="sm" className="w-full justify-start">
-                    💰 Request Working Capital
-                  </Button>
                   <Button variant="outline" size="sm" className="w-full justify-start">
                     📄 Upload Documents
                   </Button>

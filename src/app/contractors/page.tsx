@@ -1,4 +1,5 @@
 import React from 'react';
+import Link from 'next/link';
 import { Layout } from '@/components/Layout';
 import { Button } from '@/components/Button';
 
@@ -267,9 +268,16 @@ export default function ContractorsPage() {
             Access project supply solutions designed for infrastructure and industrial contractors with verified corporate work orders.
           </p>
           <div className="flex flex-col sm:flex-row gap-4 justify-center">
-            <Button variant="primary" className="bg-accent-orange hover:bg-orange-600 text-white px-8 py-3">
-              Submit Application
-            </Button>
+            <Link href="/contractors/apply">
+              <Button variant="primary" className="bg-accent-orange hover:bg-orange-600 text-white px-8 py-3">
+                Submit Application
+              </Button>
+            </Link>
+            <Link href="/contractors/compare">
+              <Button variant="secondary" className="bg-transparent border-2 border-accent-orange hover:bg-accent-orange/10 text-accent-orange px-8 py-3">
+                Compare Financing Options
+              </Button>
+            </Link>
             <Button variant="secondary" className="bg-transparent border-2 border-neutral-medium hover:bg-neutral-light text-primary px-8 py-3">
               Schedule Consultation
             </Button>

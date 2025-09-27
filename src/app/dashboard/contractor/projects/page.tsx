@@ -8,15 +8,28 @@ import { Button, LoadingSpinner } from '@/components';
 import { useUser } from '@clerk/nextjs';
 import { useRouter } from 'next/navigation';
 import { useContractor } from '@/contexts/ContractorContext';
+import EditableBOQTable from '@/components/EditableBOQTable';
+import EditableScheduleTable from '@/components/EditableScheduleTable';
+import BOQDisplay from '@/components/BOQDisplay';
+import ScheduleDisplay from '@/components/ScheduleDisplay';
 
 export default function ContractorProjects(): React.ReactElement {
   const { user, isLoaded } = useUser();
   const router = useRouter();
   const { contractor, loading: contractorLoading } = useContractor();
   const [selectedProject, setSelectedProject] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState<'overview' | 'boq' | 'schedule'>('overview');
+  const [refreshKey, setRefreshKey] = useState(0);
+  const [enhancedProjectData, setEnhancedProjectData] = useState<any>(null);
+  const [metricsLoading, setMetricsLoading] = useState(false);
+  const [showBOQEntry, setShowBOQEntry] = useState(false);
+  const [showScheduleEntry, setShowScheduleEntry] = useState(false);
   
   // Get contractor ID from authenticated user
   const currentContractorId = user?.publicMetadata?.contractorId as string || 'CONTRACTOR_001';
+
+  // Use Google Sheets projects from context
+  const contractorProjects = contractor?.currentProjects || [];
 
   // Redirect if not authenticated
   useEffect(() => {
@@ -27,6 +40,52 @@ export default function ContractorProjects(): React.ReactElement {
       return;
     }
   }, [user, isLoaded, router]);
+
+  // Calculate enhanced metrics when project is selected
+  useEffect(() => {
+    const calculateProjectMetrics = async () => {
+      if (!selectedProject) {
+        setEnhancedProjectData(null);
+        return;
+      }
+
+      const projectData = contractorProjects.find(p => p.id === selectedProject);
+      if (!projectData) return;
+
+      try {
+        setMetricsLoading(true);
+        
+        // Import metrics calculation function
+        const { calculateProjectMetrics } = await import('@/lib/contractor-metrics');
+        const calculatedMetrics = await calculateProjectMetrics(selectedProject);
+        
+        // Merge Google Sheets data with calculated metrics
+        const enhanced = {
+          ...projectData,
+          // Use calculated values if available, otherwise fallback to Google Sheets
+          projectValue: calculatedMetrics.projectValue ?? projectData.projectValue,
+          currentProgress: calculatedMetrics.currentProgress ?? (projectData as any).currentProgress,
+          expectedEndDate: calculatedMetrics.endDate ?? projectData.expectedEndDate,
+          // Add metadata to show data source
+          _dataSource: {
+            value: calculatedMetrics.projectValue ? 'database' : 'sheets',
+            progress: calculatedMetrics.currentProgress !== undefined ? 'database' : 'sheets',
+            endDate: calculatedMetrics.endDate ? 'database' : 'sheets'
+          }
+        };
+        
+        setEnhancedProjectData(enhanced);
+        console.log('📊 Enhanced project metrics:', enhanced);
+      } catch (error) {
+        console.error('Failed to calculate project metrics:', error);
+        setEnhancedProjectData(projectData);
+      } finally {
+        setMetricsLoading(false);
+      }
+    };
+
+    calculateProjectMetrics();
+  }, [selectedProject, contractorProjects, refreshKey]);
 
   // Show loading state while Clerk loads OR contractor data loads
   if (!isLoaded || contractorLoading) {
@@ -71,9 +130,6 @@ export default function ContractorProjects(): React.ReactElement {
       </div>
     );
   }
-  
-  // Use Google Sheets projects from context
-  const contractorProjects = contractor?.currentProjects || [];
 
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat('en-IN', {
@@ -92,7 +148,7 @@ export default function ContractorProjects(): React.ReactElement {
     });
   };
 
-  const selectedProjectData = selectedProject ? contractorProjects.find(p => p.id === selectedProject) : null;
+  const selectedProjectData = enhancedProjectData || (selectedProject ? contractorProjects.find(p => p.id === selectedProject) : null);
   
   // Handle both data structures for selected project
   const isSelectedGoogleSheetsProject = selectedProjectData && 'clientName' in selectedProjectData;
@@ -100,9 +156,8 @@ export default function ContractorProjects(): React.ReactElement {
     (selectedProjectData as any).clientName : 
     'Unknown Client';
   
-  const selectedProjectProgress = isSelectedGoogleSheetsProject ? 
-    (selectedProjectData as any).currentProgress : 
-    (selectedProjectData as any)?.progress || 0;
+  const selectedProjectProgress = selectedProjectData?.currentProgress ?? 
+    (isSelectedGoogleSheetsProject ? (selectedProjectData as any).currentProgress : (selectedProjectData as any)?.progress || 0);
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -132,20 +187,9 @@ export default function ContractorProjects(): React.ReactElement {
         {/* Header */}
         <div className="mb-8">
           <h1 className="text-3xl font-bold text-primary mb-2">My Projects</h1>
-          <p className="text-secondary mb-4">
+          <p className="text-secondary">
             Manage and track progress of your active projects
           </p>
-          
-          {/* Google Sheets Integration Status */}
-          <div className="p-3 rounded-lg border border-neutral-medium bg-neutral-dark">
-            <div className="text-sm font-medium text-accent-amber mb-2">📊 Data Source Status</div>
-            <div className="space-y-1">
-              <div className="text-sm text-success">
-                📋 Found {contractorProjects.length} projects for this contractor
-                <span className="text-accent-blue"> (from Google Sheets)</span>
-              </div>
-            </div>
-          </div>
         </div>
 
         {/* Project Stats */}
@@ -186,70 +230,29 @@ export default function ContractorProjects(): React.ReactElement {
           </div>
         </div>
 
-        <div className="grid lg:grid-cols-3 gap-8">
-          {/* Projects List */}
-          <div className="lg:col-span-1">
-            <div className="bg-neutral-dark rounded-lg border border-neutral-medium">
-              <div className="p-6 border-b border-neutral-medium">
-                <h2 className="text-xl font-bold text-primary">Project List</h2>
-                <p className="text-sm text-secondary">Select a project to view details</p>
-              </div>
-              <div className="p-4">
-                <div className="space-y-3">
-                  {contractorProjects.map((project) => {
-                    // Handle both mock project structure and Google Sheets project structure
-                    const isGoogleSheetsProject = 'clientName' in project;
-                    const clientName = isGoogleSheetsProject ? 
-                      (project as any).clientName : 
-                      'Unknown Client';
-                    
-                    const projectProgress = isGoogleSheetsProject ? 
-                      (project as any).currentProgress : 
-                      (project as any).progress || 0;
+        {/* Project Selector - Always a dropdown */}
+        <div className="mb-6">
+          <label className="block text-sm font-medium text-primary mb-2">Select Project</label>
+          <select
+            value={selectedProject || ''}
+            onChange={(e) => setSelectedProject(e.target.value)}
+            className="w-full bg-neutral-dark border border-neutral-medium rounded-lg px-4 py-3 text-primary focus:border-accent-amber focus:outline-none"
+          >
+            <option value="">Choose a project...</option>
+            {contractorProjects.map((project) => {
+              const isGoogleSheetsProject = 'clientName' in project;
+              const clientName = isGoogleSheetsProject ? (project as any).clientName : 'Unknown Client';
+              return (
+                <option key={project.id} value={project.id}>
+                  {project.projectName} - {clientName}
+                </option>
+              );
+            })}
+          </select>
+        </div>
 
-                    return (
-                      <div
-                        key={project.id}
-                        onClick={() => setSelectedProject(project.id)}
-                        className={`p-4 rounded-lg border cursor-pointer transition-all ${
-                          selectedProject === project.id
-                            ? 'border-accent-amber bg-accent-amber/5'
-                            : 'border-neutral-medium hover:border-neutral-light'
-                        }`}
-                      >
-                        <div className="flex justify-between items-start mb-2">
-                          <h3 className="font-semibold text-primary text-sm leading-tight">
-                            {project.projectName}
-                          </h3>
-                          <span className={`text-xs font-medium px-2 py-1 rounded ${getStatusColor(project.status)}`}>
-                            {project.status}
-                          </span>
-                        </div>
-                        <p className="text-xs text-secondary mb-2">{clientName}</p>
-                        <div className="flex justify-between text-xs mb-1">
-                          <span className="text-secondary">Progress</span>
-                          <span className="text-primary">{projectProgress}%</span>
-                        </div>
-                        <div className="w-full bg-neutral-medium rounded-full h-1">
-                          <div 
-                            className="bg-accent-amber h-1 rounded-full" 
-                            style={{ width: `${projectProgress}%` }}
-                          ></div>
-                        </div>
-                        <div className="flex justify-between text-xs mt-2">
-                          <span className="text-secondary">Value</span>
-                          <span className="text-primary">{formatCurrency(project.projectValue)}</span>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Project Details */}
-          <div className="lg:col-span-2">
+        {/* Project Details - Always full width */}
+        <div className="w-full">
             {selectedProjectData ? (
               <div className="bg-neutral-dark rounded-lg border border-neutral-medium">
                 <div className="p-6 border-b border-neutral-medium">
@@ -264,135 +267,298 @@ export default function ContractorProjects(): React.ReactElement {
                         <span>Project ID: {selectedProjectData.id}</span>
                       </div>
                     </div>
-                    <div className="flex space-x-3">
-                      <Button variant="outline" size="sm">
-                        Update Progress
-                      </Button>
-                      <Button variant="primary" size="sm">
-                        Submit Report
-                      </Button>
-                    </div>
                   </div>
 
-                  {/* Project Metrics */}
-                  <div className="grid md:grid-cols-4 gap-6">
-                    <div>
-                      <div className="text-xs text-secondary mb-1">Project Value</div>
-                      <div className="text-lg font-bold text-primary">
-                        {formatCurrency(selectedProjectData.projectValue)}
-                      </div>
-                    </div>
-                    <div>
-                      <div className="text-xs text-secondary mb-1">Current Progress</div>
-                      <div className="text-lg font-bold text-accent-amber">
-                        {selectedProjectProgress}%
-                      </div>
-                    </div>
-                    <div>
-                      <div className="text-xs text-secondary mb-1">End Date</div>
-                      <div className="text-lg font-bold text-primary">
-                        {formatDate(selectedProjectData.expectedEndDate)}
-                      </div>
-                    </div>
-                    <div>
-                      <div className="text-xs text-secondary mb-1">Status</div>
-                      <div className={`text-sm font-medium px-2 py-1 rounded inline-block ${getStatusColor(selectedProjectData.status)}`}>
-                        {selectedProjectData.status}
-                      </div>
-                    </div>
+                  {/* Tab Navigation */}
+                  <div className="flex space-x-1 mb-4">
+                    <button
+                      onClick={() => setActiveTab('overview')}
+                      className={`px-4 py-2 text-sm font-medium rounded-lg transition-all ${
+                        activeTab === 'overview'
+                          ? 'bg-accent-amber text-neutral-dark'
+                          : 'text-secondary hover:text-primary hover:bg-neutral-medium'
+                      }`}
+                    >
+                      Overview
+                    </button>
+                    <button
+                      onClick={() => setActiveTab('boq')}
+                      className={`px-4 py-2 text-sm font-medium rounded-lg transition-all ${
+                        activeTab === 'boq'
+                          ? 'bg-accent-amber text-neutral-dark'
+                          : 'text-secondary hover:text-primary hover:bg-neutral-medium'
+                      }`}
+                    >
+                      BOQ
+                    </button>
+                    <button
+                      onClick={() => setActiveTab('schedule')}
+                      className={`px-4 py-2 text-sm font-medium rounded-lg transition-all ${
+                        activeTab === 'schedule'
+                          ? 'bg-accent-amber text-neutral-dark'
+                          : 'text-secondary hover:text-primary hover:bg-neutral-medium'
+                      }`}
+                    >
+                      Schedule
+                    </button>
                   </div>
+
+                  {/* Project Metrics - only show on overview tab */}
+                  {activeTab === 'overview' && (
+                    <>
+                      {metricsLoading && (
+                        <div className="flex items-center justify-center py-4 text-accent-amber">
+                          <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-accent-amber mr-2"></div>
+                          <span className="text-sm">Calculating metrics from BOQ/Schedule...</span>
+                        </div>
+                      )}
+                      <div className="grid md:grid-cols-4 gap-6">
+                        <div>
+                          <div className="text-xs text-secondary mb-1">Project Value</div>
+                          <div className="text-lg font-bold text-primary">
+                            {metricsLoading ? '...' : formatCurrency(selectedProjectData.projectValue)}
+                          </div>
+                          {selectedProjectData?._dataSource?.value === 'database' && (
+                            <div className="text-xs text-success mt-1">📊 From BOQ</div>
+                          )}
+                          {selectedProjectData?._dataSource?.value === 'sheets' && (
+                            <div className="text-xs text-secondary mt-1">📋 From Google Sheets</div>
+                          )}
+                        </div>
+                        <div>
+                          <div className="text-xs text-secondary mb-1">Current Progress</div>
+                          <div className="text-lg font-bold text-accent-amber">
+                            {metricsLoading ? '...' : `${selectedProjectProgress}%`}
+                          </div>
+                          {selectedProjectData?._dataSource?.progress === 'database' && (
+                            <div className="text-xs text-success mt-1">📈 From Schedule</div>
+                          )}
+                          {selectedProjectData?._dataSource?.progress === 'sheets' && (
+                            <div className="text-xs text-secondary mt-1">📋 From Google Sheets</div>
+                          )}
+                        </div>
+                        <div>
+                          <div className="text-xs text-secondary mb-1">End Date</div>
+                          <div className="text-lg font-bold text-primary">
+                            {metricsLoading ? '...' : formatDate(selectedProjectData.expectedEndDate)}
+                          </div>
+                          {selectedProjectData?._dataSource?.endDate === 'database' && (
+                            <div className="text-xs text-success mt-1">📅 From Schedule</div>
+                          )}
+                          {selectedProjectData?._dataSource?.endDate === 'sheets' && (
+                            <div className="text-xs text-secondary mt-1">📋 From Google Sheets</div>
+                          )}
+                        </div>
+                        <div>
+                          <div className="text-xs text-secondary mb-1">Status</div>
+                          <div className={`text-sm font-medium px-2 py-1 rounded inline-block ${getStatusColor(selectedProjectData.status)}`}>
+                            {selectedProjectData.status}
+                          </div>
+                        </div>
+                      </div>
+                    </>
+                  )}
                 </div>
 
                 <div className="p-6">
-                  {/* Project Description */}
-                  {!isSelectedGoogleSheetsProject && (selectedProjectData as any)?.description && (
-                    <div className="mb-6">
-                      <h3 className="text-sm font-semibold text-primary mb-2">Project Description</h3>
-                      <p className="text-sm text-secondary leading-relaxed">
-                        {(selectedProjectData as any).description}
-                      </p>
+                  {/* Overview Tab Content */}
+                  {activeTab === 'overview' && (
+                    <>
+                      {/* Project Description */}
+                      {!isSelectedGoogleSheetsProject && (selectedProjectData as any)?.description && (
+                        <div className="mb-6">
+                          <h3 className="text-sm font-semibold text-primary mb-2">Project Description</h3>
+                          <p className="text-sm text-secondary leading-relaxed">
+                            {(selectedProjectData as any).description}
+                          </p>
+                        </div>
+                      )}
+
+                      {/* Google Sheets Project Info */}
+                      {isSelectedGoogleSheetsProject && (
+                        <div className="mb-6">
+                          <h3 className="text-lg font-bold text-primary mb-4">Project Information</h3>
+                          <div className="grid grid-cols-2 gap-6">
+                            <div>
+                              <div className="text-sm font-semibold text-primary mb-2">Next Milestone</div>
+                              <div className="text-sm text-secondary">
+                                {(selectedProjectData as any).nextMilestone} - {formatDate((selectedProjectData as any).nextMilestoneDate)}
+                              </div>
+                            </div>
+                            <div>
+                              <div className="text-sm font-semibold text-primary mb-2">Team Size</div>
+                              <div className="text-sm text-secondary">
+                                {(selectedProjectData as any).teamSize} team members
+                              </div>
+                            </div>
+                            <div>
+                              <div className="text-sm font-semibold text-primary mb-2">Monthly Burn Rate</div>
+                              <div className="text-sm text-secondary">
+                                {formatCurrency((selectedProjectData as any).monthlyBurnRate)}/month
+                              </div>
+                            </div>
+                            <div>
+                              <div className="text-sm font-semibold text-primary mb-2">Priority</div>
+                              <div className="text-sm text-secondary">
+                                {(selectedProjectData as any).priority}
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Mock Data Milestones */}
+                      {!isSelectedGoogleSheetsProject && (selectedProjectData as any)?.milestones && (
+                        <div>
+                          <h3 className="text-lg font-bold text-primary mb-4">Project Milestones</h3>
+                          <div className="space-y-4">
+                            {(selectedProjectData as any).milestones.map((milestone: any, index: number) => (
+                            <div key={milestone.id} className="flex items-start space-x-4">
+                              <div className="flex flex-col items-center">
+                                <div className={`w-4 h-4 rounded-full ${
+                                  milestone.status === 'Completed' ? 'bg-success' :
+                                  milestone.status === 'In Progress' ? 'bg-accent-blue' :
+                                  milestone.status === 'Delayed' ? 'bg-warning' : 'bg-neutral-medium'
+                                }`}></div>
+                                {index < (selectedProjectData as any).milestones.length - 1 && (
+                                  <div className="w-0.5 h-12 bg-neutral-medium mt-2"></div>
+                                )}
+                              </div>
+                              <div className="flex-1">
+                                <div className="flex justify-between items-start mb-2">
+                                  <h4 className="font-semibold text-primary">{milestone.name}</h4>
+                                  <span className={`text-xs font-medium ${getMilestoneStatusColor(milestone.status)}`}>
+                                    {milestone.status}
+                                  </span>
+                                </div>
+                                <p className="text-sm text-secondary mb-2">{milestone.description}</p>
+                                <div className="grid grid-cols-2 gap-4 text-xs">
+                                  <div>
+                                    <span className="text-secondary">Due: </span>
+                                    <span className="text-primary">{formatDate(milestone.expectedDate)}</span>
+                                  </div>
+                                  <div>
+                                    <span className="text-secondary">Payment: </span>
+                                    <span className="text-accent-amber">{milestone.paymentPercentage}%</span>
+                                  </div>
+                                </div>
+                                {milestone.status === 'In Progress' && (
+                                  <div className="mt-3">
+                                    <Button variant="primary" size="sm">
+                                      Mark Complete
+                                    </Button>
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </>
+                  )}
+
+                  {/* BOQ Tab Content */}
+                  {activeTab === 'boq' && (
+                    <div className="space-y-6">
+                      {!showBOQEntry ? (
+                        /* BOQ Landing Page */
+                        <div className="bg-neutral-dark rounded-lg border border-neutral-medium p-6">
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center space-x-3">
+                              <div className="text-2xl">📊</div>
+                              <div>
+                                <h3 className="text-lg font-semibold text-primary">Bill of Quantities</h3>
+                                <p className="text-sm text-secondary">Add project costs, quantities, and rates</p>
+                              </div>
+                            </div>
+                            <button
+                              onClick={() => setShowBOQEntry(true)}
+                              className="bg-accent-amber text-neutral-dark px-4 py-2 rounded-lg font-medium hover:bg-accent-amber/90 transition-colors text-sm"
+                            >
+                              + Add BOQ
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        /* BOQ Entry Form */
+                        <div className="space-y-6">
+                          <div className="flex items-center justify-between">
+                            <h3 className="text-lg font-bold text-primary">Enter BOQ Details</h3>
+                            <button
+                              onClick={() => setShowBOQEntry(false)}
+                              className="text-secondary hover:text-primary text-sm flex items-center space-x-2"
+                            >
+                              <span>←</span>
+                              <span>Back to Overview</span>
+                            </button>
+                          </div>
+                          <EditableBOQTable
+                            projectId={selectedProjectData.id}
+                            contractorId={currentContractorId}
+                            onSaveSuccess={() => {
+                              setRefreshKey(prev => prev + 1);
+                              setShowBOQEntry(false); // Hide form after successful save
+                              setTimeout(() => setRefreshKey(prev => prev + 1), 500);
+                            }}
+                          />
+                        </div>
+                      )}
+                      
+                      {/* Always show existing BOQ data if available */}
+                      <BOQDisplay key={`boq-${refreshKey}`} projectId={selectedProjectData.id} />
                     </div>
                   )}
 
-                  {/* Google Sheets Project Info */}
-                  {isSelectedGoogleSheetsProject && (
-                    <div className="mb-6">
-                      <h3 className="text-lg font-bold text-primary mb-4">Project Information</h3>
-                      <div className="grid grid-cols-2 gap-6">
-                        <div>
-                          <div className="text-sm font-semibold text-primary mb-2">Next Milestone</div>
-                          <div className="text-sm text-secondary">
-                            {(selectedProjectData as any).nextMilestone} - {formatDate((selectedProjectData as any).nextMilestoneDate)}
-                          </div>
-                        </div>
-                        <div>
-                          <div className="text-sm font-semibold text-primary mb-2">Team Size</div>
-                          <div className="text-sm text-secondary">
-                            {(selectedProjectData as any).teamSize} team members
-                          </div>
-                        </div>
-                        <div>
-                          <div className="text-sm font-semibold text-primary mb-2">Monthly Burn Rate</div>
-                          <div className="text-sm text-secondary">
-                            {formatCurrency((selectedProjectData as any).monthlyBurnRate)}/month
-                          </div>
-                        </div>
-                        <div>
-                          <div className="text-sm font-semibold text-primary mb-2">Priority</div>
-                          <div className="text-sm text-secondary">
-                            {(selectedProjectData as any).priority}
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Mock Data Milestones */}
-                  {!isSelectedGoogleSheetsProject && (selectedProjectData as any)?.milestones && (
-                    <div>
-                      <h3 className="text-lg font-bold text-primary mb-4">Project Milestones</h3>
-                      <div className="space-y-4">
-                        {(selectedProjectData as any).milestones.map((milestone: any, index: number) => (
-                        <div key={milestone.id} className="flex items-start space-x-4">
-                          <div className="flex flex-col items-center">
-                            <div className={`w-4 h-4 rounded-full ${
-                              milestone.status === 'Completed' ? 'bg-success' :
-                              milestone.status === 'In Progress' ? 'bg-accent-blue' :
-                              milestone.status === 'Delayed' ? 'bg-warning' : 'bg-neutral-medium'
-                            }`}></div>
-                            {index < (selectedProjectData as any).milestones.length - 1 && (
-                              <div className="w-0.5 h-12 bg-neutral-medium mt-2"></div>
-                            )}
-                          </div>
-                          <div className="flex-1">
-                            <div className="flex justify-between items-start mb-2">
-                              <h4 className="font-semibold text-primary">{milestone.name}</h4>
-                              <span className={`text-xs font-medium ${getMilestoneStatusColor(milestone.status)}`}>
-                                {milestone.status}
-                              </span>
-                            </div>
-                            <p className="text-sm text-secondary mb-2">{milestone.description}</p>
-                            <div className="grid grid-cols-2 gap-4 text-xs">
+                  {/* Schedule Tab Content */}
+                  {activeTab === 'schedule' && (
+                    <div className="space-y-6">
+                      {!showScheduleEntry ? (
+                        /* Schedule Landing Page */
+                        <div className="bg-neutral-dark rounded-lg border border-neutral-medium p-6">
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center space-x-3">
+                              <div className="text-2xl">📅</div>
                               <div>
-                                <span className="text-secondary">Due: </span>
-                                <span className="text-primary">{formatDate(milestone.expectedDate)}</span>
-                              </div>
-                              <div>
-                                <span className="text-secondary">Payment: </span>
-                                <span className="text-accent-amber">{milestone.paymentPercentage}%</span>
+                                <h3 className="text-lg font-semibold text-primary">Project Schedule</h3>
+                                <p className="text-sm text-secondary">Create timeline with tasks and milestones</p>
                               </div>
                             </div>
-                            {milestone.status === 'In Progress' && (
-                              <div className="mt-3">
-                                <Button variant="primary" size="sm">
-                                  Mark Complete
-                                </Button>
-                              </div>
-                            )}
+                            <button
+                              onClick={() => setShowScheduleEntry(true)}
+                              className="bg-accent-amber text-neutral-dark px-4 py-2 rounded-lg font-medium hover:bg-accent-amber/90 transition-colors text-sm"
+                            >
+                              + Add Schedule
+                            </button>
                           </div>
                         </div>
-                        ))}
-                      </div>
+                      ) : (
+                        /* Schedule Entry Form */
+                        <div className="space-y-6">
+                          <div className="flex items-center justify-between">
+                            <h3 className="text-lg font-bold text-primary">Enter Schedule Details</h3>
+                            <button
+                              onClick={() => setShowScheduleEntry(false)}
+                              className="text-secondary hover:text-primary text-sm flex items-center space-x-2"
+                            >
+                              <span>←</span>
+                              <span>Back to Overview</span>
+                            </button>
+                          </div>
+                          <EditableScheduleTable
+                            projectId={selectedProjectData.id}
+                            contractorId={currentContractorId}
+                            onSaveSuccess={() => {
+                              setRefreshKey(prev => prev + 1);
+                              setShowScheduleEntry(false); // Hide form after successful save
+                              setTimeout(() => setRefreshKey(prev => prev + 1), 500);
+                            }}
+                          />
+                        </div>
+                      )}
+                      
+                      {/* Always show existing Schedule data if available */}
+                      <ScheduleDisplay key={`schedule-${refreshKey}`} projectId={selectedProjectData.id} contractorId={currentContractorId} />
                     </div>
                   )}
                 </div>
@@ -402,12 +568,11 @@ export default function ContractorProjects(): React.ReactElement {
                 <div className="text-6xl mb-4">📋</div>
                 <h3 className="text-xl font-bold text-primary mb-2">Select a Project</h3>
                 <p className="text-secondary">
-                  Choose a project from the list to view detailed information, 
+                  Choose a project from the dropdown above to view detailed information, 
                   track milestones, and manage progress.
                 </p>
               </div>
             )}
-          </div>
         </div>
       </div>
     </ContractorDashboardLayout>
