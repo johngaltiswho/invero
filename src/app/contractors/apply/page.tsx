@@ -20,41 +20,19 @@ interface FormData {
   phone: string;
   alternatePhone: string;
   
-  // Business Profile
-  yearsInBusiness: string;
-  employeeCount: string;
-  annualTurnover: string;
-  businessCategory: string;
-  specializations: string;
   
-  // Financial Information
-  bankName: string;
-  accountNumber: string;
-  ifscCode: string;
-  currentWorkingCapital: string;
-  existingLoans: string;
-  creditScore: string;
-  
-  // Previous Experience
-  totalProjectsCompleted: string;
-  largestProjectValue: string;
-  clientReferences: string;
-  
-  // Documents
+  // KYC Documents
   documents: {
     panCard: File | null;
     gstCertificate: File | null;
-    incorporationCertificate: File | null;
-    bankStatements: File | null;
-    financialStatements: File | null;
+    companyRegistration: File | null;
+    cancelledCheque: File | null;
   };
 }
 
 const steps = [
   { id: 1, title: 'Company Information', description: 'Basic company details and registration' },
-  { id: 2, title: 'Business Profile', description: 'Business operations and capabilities' },
-  { id: 3, title: 'Financial Information', description: 'Banking and financial details' },
-  { id: 4, title: 'Documents & Review', description: 'Upload documents and review application' }
+  { id: 2, title: 'Documents & Review', description: 'Upload documents and review application' }
 ];
 
 export default function ContractorApplyPage(): React.ReactElement {
@@ -68,11 +46,8 @@ export default function ContractorApplyPage(): React.ReactElement {
   const [formData, setFormData] = useState<FormData>({
     companyName: '', registrationNumber: '', gstin: '', incorporationDate: '', companyType: '', businessAddress: '',
     contactPerson: '', designation: '', email: '', phone: '', alternatePhone: '',
-    yearsInBusiness: '', employeeCount: '', annualTurnover: '', businessCategory: '', specializations: '',
-    bankName: '', accountNumber: '', ifscCode: '', currentWorkingCapital: '', existingLoans: '', creditScore: '',
-    totalProjectsCompleted: '', largestProjectValue: '', clientReferences: '',
     documents: {
-      panCard: null, gstCertificate: null, incorporationCertificate: null, bankStatements: null, financialStatements: null
+      panCard: null, gstCertificate: null, companyRegistration: null, cancelledCheque: null
     }
   });
 
@@ -88,7 +63,7 @@ export default function ContractorApplyPage(): React.ReactElement {
     });
   };
 
-  const nextStep = () => setCurrentStep(prev => Math.min(prev + 1, 4));
+  const nextStep = () => setCurrentStep(prev => Math.min(prev + 1, 2));
   const prevStep = () => setCurrentStep(prev => Math.max(prev - 1, 1));
 
   const handleSubmit = async () => {
@@ -114,22 +89,16 @@ export default function ContractorApplyPage(): React.ReactElement {
       submitFormData.append('phone', formData.phone);
       submitFormData.append('gstNumber', formData.gstin);
       submitFormData.append('panNumber', ''); // Would need to be added to form
-      submitFormData.append('bankName', formData.bankName);
-      submitFormData.append('accountNumber', formData.accountNumber);
-      submitFormData.append('ifscCode', formData.ifscCode);
-      submitFormData.append('annualRevenue', formData.annualTurnover);
-      submitFormData.append('yearsInBusiness', formData.yearsInBusiness);
-      submitFormData.append('keyServices', formData.specializations);
-      submitFormData.append('clientReferences', formData.clientReferences);
       
-      // Add file uploads
+      // Add file uploads (map to correct field names)
       Object.entries(formData.documents).forEach(([docType, file]) => {
         if (file) {
           submitFormData.append(docType, file);
         }
       });
+      
 
-      const response = await fetch('/api/contractor-application', {
+      const response = await fetch('/api/contractor-application-v2', {
         method: 'POST',
         // Don't set Content-Type header - let browser set it with boundary for FormData
         body: submitFormData,
@@ -159,11 +128,19 @@ export default function ContractorApplyPage(): React.ReactElement {
     }
   };
 
-  const FileUpload = ({ label, docType, required = false }: { label: string; docType: keyof FormData['documents']; required?: boolean }) => (
+  const FileUpload = ({ label, docType, required = false, helpText }: { 
+    label: string; 
+    docType: keyof FormData['documents']; 
+    required?: boolean;
+    helpText?: string;
+  }) => (
     <div>
       <label className="block text-sm font-medium text-primary mb-2">
         {label} {required && '*'}
       </label>
+      {helpText && (
+        <p className="text-xs text-secondary mb-2">{helpText}</p>
+      )}
       <div className="border-2 border-dashed border-neutral-medium rounded-lg p-4 text-center hover:border-accent-orange transition-colors">
         <input
           type="file"
@@ -177,7 +154,7 @@ export default function ContractorApplyPage(): React.ReactElement {
           <div className="text-sm text-secondary">
             {formData.documents[docType] ? formData.documents[docType]!.name : 'Click to upload or drag and drop'}
           </div>
-          <div className="text-xs text-secondary mt-1">PDF, JPG, PNG up to 10MB</div>
+          <div className="text-xs text-secondary mt-1">PDF, JPG, PNG up to 5MB</div>
         </label>
       </div>
     </div>
@@ -224,74 +201,20 @@ export default function ContractorApplyPage(): React.ReactElement {
       case 2:
         return (
           <div className="space-y-6">
-            <div className="grid md:grid-cols-3 gap-6">
-              <Input label="Years in Business *" name="yearsInBusiness" type="number" value={formData.yearsInBusiness} onChange={handleInputChange} required />
-              <Input label="Employee Count *" name="employeeCount" type="number" value={formData.employeeCount} onChange={handleInputChange} required />
-              <Input label="Annual Turnover (₹) *" name="annualTurnover" value={formData.annualTurnover} onChange={handleInputChange} required />
+            <div className="bg-accent-orange/10 border border-accent-orange/20 p-4 rounded-lg mb-6">
+              <h4 className="text-accent-orange font-semibold mb-2">📋 Required KYC Documents</h4>
+              <p className="text-sm text-secondary">
+                Upload the following documents for verification. All documents must be clear, readable, and in PDF or image format (max 5MB each).
+              </p>
+            </div>
+            
+            <div className="grid md:grid-cols-2 gap-6">
+              <FileUpload label="PAN Card" docType="panCard" required helpText="Company/Individual PAN card" />
+              <FileUpload label="GST Certificate" docType="gstCertificate" required helpText="GST registration certificate" />
             </div>
             <div className="grid md:grid-cols-2 gap-6">
-              <div>
-                <label className="block text-sm font-medium text-primary mb-2">Business Category *</label>
-                <select name="businessCategory" value={formData.businessCategory} onChange={handleInputChange} className="w-full px-4 py-3 rounded-lg border bg-neutral-dark text-primary focus:outline-none focus:ring-2 focus:ring-accent-orange border-neutral-medium" required>
-                  <option value="">Select category</option>
-                  <option value="construction">Construction</option>
-                  <option value="infrastructure">Infrastructure</option>
-                  <option value="manufacturing">Manufacturing</option>
-                  <option value="engineering">Engineering Services</option>
-                  <option value="it-services">IT Services</option>
-                  <option value="logistics">Logistics</option>
-                  <option value="other">Other</option>
-                </select>
-              </div>
-              <Input label="Alternate Phone" name="alternatePhone" type="tel" value={formData.alternatePhone} onChange={handleInputChange} />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-primary mb-2">Specializations & Core Competencies *</label>
-              <textarea name="specializations" value={formData.specializations} onChange={handleInputChange} className="w-full px-4 py-3 rounded-lg border bg-neutral-dark text-primary placeholder-text-secondary focus:outline-none focus:ring-2 focus:ring-accent-orange border-neutral-medium" rows={4} placeholder="Describe your key areas of expertise, certifications, and competitive advantages" required />
-            </div>
-            <div className="grid md:grid-cols-2 gap-6">
-              <Input label="Total Projects Completed *" name="totalProjectsCompleted" type="number" value={formData.totalProjectsCompleted} onChange={handleInputChange} required />
-              <Input label="Largest Project Value (₹) *" name="largestProjectValue" value={formData.largestProjectValue} onChange={handleInputChange} required />
-            </div>
-          </div>
-        );
-
-      case 3:
-        return (
-          <div className="space-y-6">
-            <div className="grid md:grid-cols-2 gap-6">
-              <Input label="Bank Name *" name="bankName" value={formData.bankName} onChange={handleInputChange} required />
-              <Input label="Account Number *" name="accountNumber" value={formData.accountNumber} onChange={handleInputChange} required />
-            </div>
-            <div className="grid md:grid-cols-2 gap-6">
-              <Input label="IFSC Code *" name="ifscCode" value={formData.ifscCode} onChange={handleInputChange} required />
-              <Input label="Current Working Capital (₹) *" name="currentWorkingCapital" value={formData.currentWorkingCapital} onChange={handleInputChange} required />
-            </div>
-            <div className="grid md:grid-cols-2 gap-6">
-              <Input label="Existing Loans (₹)" name="existingLoans" value={formData.existingLoans} onChange={handleInputChange} />
-              <Input label="Credit Score" name="creditScore" type="number" value={formData.creditScore} onChange={handleInputChange} helperText="If known (optional)" />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-primary mb-2">Client References</label>
-              <textarea name="clientReferences" value={formData.clientReferences} onChange={handleInputChange} className="w-full px-4 py-3 rounded-lg border bg-neutral-dark text-primary placeholder-text-secondary focus:outline-none focus:ring-2 focus:ring-accent-orange border-neutral-medium" rows={4} placeholder="Provide 2-3 client references with contact details" />
-            </div>
-          </div>
-        );
-
-      case 4:
-        return (
-          <div className="space-y-6">
-            <div className="grid md:grid-cols-2 gap-6">
-              <FileUpload label="PAN Card" docType="panCard" required />
-              <FileUpload label="GST Certificate" docType="gstCertificate" required />
-            </div>
-            <div className="grid md:grid-cols-2 gap-6">
-              <FileUpload label="Incorporation Certificate" docType="incorporationCertificate" required />
-              <FileUpload label="Bank Statements (6 months)" docType="bankStatements" required />
-            </div>
-            <div className="grid md:grid-cols-2 gap-6">
-              <FileUpload label="Financial Statements" docType="financialStatements" />
-              <div></div>
+              <FileUpload label="Company Registration" docType="companyRegistration" required helpText="CIN/LLP/Partnership certificate" />
+              <FileUpload label="Cancelled Cheque" docType="cancelledCheque" required helpText="Bank account verification" />
             </div>
             
             <div className="bg-neutral-medium p-6 rounded-lg mt-8">
@@ -299,8 +222,8 @@ export default function ContractorApplyPage(): React.ReactElement {
               <div className="grid md:grid-cols-2 gap-4 text-sm">
                 <div><span className="text-secondary">Company:</span> <span className="text-primary">{formData.companyName}</span></div>
                 <div><span className="text-secondary">GST Number:</span> <span className="text-primary">{formData.gstin}</span></div>
-                <div><span className="text-secondary">Annual Revenue:</span> <span className="text-primary">₹{formData.annualTurnover}</span></div>
-                <div><span className="text-secondary">Years in Business:</span> <span className="text-primary">{formData.yearsInBusiness}</span></div>
+                <div><span className="text-secondary">Contact Person:</span> <span className="text-primary">{formData.contactPerson}</span></div>
+                <div><span className="text-secondary">Email:</span> <span className="text-primary">{formData.email}</span></div>
               </div>
             </div>
             
@@ -323,6 +246,15 @@ export default function ContractorApplyPage(): React.ReactElement {
                     {submitStatus.applicationId && (
                       <div className="text-sm mt-2 font-mono bg-black/20 px-2 py-1 rounded">
                         Application ID: {submitStatus.applicationId}
+                      </div>
+                    )}
+                    {submitStatus.type === 'success' && (
+                      <div className="mt-4">
+                        <Link href="/contractors/status">
+                          <Button variant="outline" size="sm">
+                            Track Application Status
+                          </Button>
+                        </Link>
                       </div>
                     )}
                   </div>
@@ -407,7 +339,7 @@ export default function ContractorApplyPage(): React.ReactElement {
                   Previous
                 </Button>
                 
-                {currentStep < 4 ? (
+                {currentStep < 2 ? (
                   <Button variant="primary" onClick={nextStep}>
                     Next Step
                   </Button>

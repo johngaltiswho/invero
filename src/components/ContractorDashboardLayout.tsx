@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { Button } from './Button';
 import { UserButton, useUser } from '@clerk/nextjs';
-import { useContractor } from '@/contexts/ContractorContext';
+import { useContractorV2 } from '@/contexts/ContractorContextV2';
 
 interface ContractorDashboardLayoutProps {
   children: React.ReactNode;
@@ -17,7 +17,7 @@ export function ContractorDashboardLayout({ children, activeTab }: ContractorDas
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const pathname = usePathname();
   const { user } = useUser();
-  const { contractor } = useContractor();
+  const { contractor } = useContractorV2();
 
   const navigationItems = [
     {

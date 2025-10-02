@@ -7,7 +7,7 @@ import { ContractorDashboardLayout } from '@/components/ContractorDashboardLayou
 import { Button, LoadingSpinner } from '@/components';
 import { useUser } from '@clerk/nextjs';
 import { useRouter } from 'next/navigation';
-import { useContractor } from '@/contexts/ContractorContext';
+import { useContractorV2 } from '@/contexts/ContractorContextV2';
 import EditableBOQTable from '@/components/EditableBOQTable';
 import EditableScheduleTable from '@/components/EditableScheduleTable';
 import BOQDisplay from '@/components/BOQDisplay';
@@ -16,7 +16,7 @@ import ScheduleDisplay from '@/components/ScheduleDisplay';
 export default function ContractorProjects(): React.ReactElement {
   const { user, isLoaded } = useUser();
   const router = useRouter();
-  const { contractor, loading: contractorLoading } = useContractor();
+  const { contractor, loading: contractorLoading } = useContractorV2();
   const [selectedProject, setSelectedProject] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'overview' | 'boq' | 'schedule'>('overview');
   const [refreshKey, setRefreshKey] = useState(0);

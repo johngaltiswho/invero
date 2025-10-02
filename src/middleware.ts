@@ -4,6 +4,11 @@ import { NextResponse } from 'next/server';
 const isProtectedRoute = createRouteMatcher([
   '/dashboard(.*)',
   '/onboarding(.*)',
+  '/admin(.*)',
+]);
+
+const isContractorRoute = createRouteMatcher([
+  '/dashboard/contractor(.*)',
 ]);
 
 export default clerkMiddleware(async (auth, req) => {
@@ -15,6 +20,12 @@ export default clerkMiddleware(async (auth, req) => {
     // Preserve the original URL so we can redirect back after login
     signInUrl.searchParams.set('redirect_url', req.url);
     return NextResponse.redirect(signInUrl);
+  }
+
+  // For contractor routes, let component-level access control handle verification
+  // This is because contractor verification requires database checks
+  if (isContractorRoute(req) && userId) {
+    return NextResponse.next();
   }
 
   return NextResponse.next();

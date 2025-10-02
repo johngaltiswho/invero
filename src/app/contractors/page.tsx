@@ -273,9 +273,9 @@ export default function ContractorsPage() {
                 Submit Application
               </Button>
             </Link>
-            <Link href="/contractors/compare">
+            <Link href="/contractors/status">
               <Button variant="secondary" className="bg-transparent border-2 border-accent-orange hover:bg-accent-orange/10 text-accent-orange px-8 py-3">
-                Compare Financing Options
+                Check Application Status
               </Button>
             </Link>
             <Button variant="secondary" className="bg-transparent border-2 border-neutral-medium hover:bg-neutral-light text-primary px-8 py-3">

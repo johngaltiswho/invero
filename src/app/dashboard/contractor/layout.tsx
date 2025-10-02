@@ -1,6 +1,6 @@
 'use client';
 
-import { ContractorProvider } from '@/contexts/ContractorContext';
+import { ContractorProvider } from '@/contexts/ContractorContextV2';
 
 export default function ContractorLayout({
   children,
