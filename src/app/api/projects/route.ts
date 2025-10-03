@@ -16,35 +16,22 @@ export async function POST(request: NextRequest) {
 
     const formData = await request.formData();
     
-    // Extract project data
+    // Extract project data - only fields that exist in the projects table
     const projectData = {
       contractor_id: formData.get('contractor_id') as string,
       project_name: formData.get('project_name') as string,
       client_name: formData.get('client_name') as string,
-      project_value: parseFloat(formData.get('project_value') as string),
-      start_date: formData.get('start_date') as string,
-      expected_end_date: formData.get('expected_end_date') as string,
-      project_id_external: formData.get('project_id_external') as string || null,
-      priority: formData.get('priority') as 'High' | 'Medium' | 'Low',
-      team_size: formData.get('team_size') ? parseInt(formData.get('team_size') as string) : null,
-      project_tenure: formData.get('project_tenure') ? parseInt(formData.get('project_tenure') as string) : null,
-      funding_status: formData.get('funding_status') as string,
-      risk_level: formData.get('risk_level') as string,
-      current_progress: 0,
-      status: 'Planning' as const,
-      funding_required: null,
-      expected_irr: null,
-      esg_compliance: null,
-      next_milestone: null,
-      next_milestone_date: null,
-      monthly_burn_rate: null
+      estimated_value: parseFloat(formData.get('project_value') as string),
+      po_number: formData.get('po_wo_number') as string || null,
+      funding_status: formData.get('funding_status') as string || 'pending',
+      funding_required: formData.get('funding_required') ? parseFloat(formData.get('funding_required') as string) : null
     };
 
     // Validate required fields
-    if (!projectData.contractor_id || !projectData.project_name || !projectData.client_name || !projectData.project_value) {
+    if (!projectData.contractor_id || !projectData.project_name || !projectData.client_name || !projectData.estimated_value) {
       return NextResponse.json({
         success: false,
-        error: 'Missing required fields: contractor_id, project_name, client_name, project_value'
+        error: 'Missing required fields: contractor_id, project_name, client_name, estimated_value'
       }, { status: 400 });
     }
 
@@ -138,7 +125,7 @@ export async function POST(request: NextRequest) {
           title: 'New Project Created',
           description: `Created project: ${projectData.project_name} for client: ${projectData.client_name}`,
           metadata: { 
-            project_value: projectData.project_value,
+            po_value: projectData.estimated_value,
             has_po_file: !!poFileUrl 
           }
         });

@@ -92,11 +92,10 @@ export function ContractorDashboardLayout({ children, activeTab }: ContractorDas
               <div className="flex items-center space-x-3">
                 <div className="text-right">
                   <div className="text-sm font-medium text-primary">
-                    {contractor?.contactPerson || user?.firstName + ' ' + user?.lastName || 'User'}
+                    {contractor?.contact_person || user?.firstName + ' ' + user?.lastName || 'User'}
                   </div>
                   <div className="text-xs text-secondary">
-                    {contractor?.id && `ID: ${contractor.id}`}
-                    {contractor?.companyName && ` • ${contractor.companyName}`}
+                    {contractor?.company_name}
                   </div>
                 </div>
                 <UserButton 

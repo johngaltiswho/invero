@@ -308,3 +308,39 @@ SELECT
 FROM project_schedules ps
 
 ORDER BY activity_date DESC;
+
+-- Create contacts table
+CREATE TABLE contacts (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    first_name TEXT NOT NULL,
+    last_name TEXT NOT NULL,
+    email TEXT NOT NULL,
+    company TEXT,
+    subject TEXT NOT NULL,
+    message TEXT NOT NULL,
+    consent BOOLEAN DEFAULT TRUE,
+    status TEXT DEFAULT 'new' CHECK (status IN ('new', 'in_progress', 'resolved', 'closed')),
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- Create index on contacts for admin queries
+CREATE INDEX idx_contacts_status_created ON contacts(status, created_at DESC);
+CREATE INDEX idx_contacts_email ON contacts(email);
+
+-- Enable RLS for contacts (allow public insert for contact form)
+ALTER TABLE contacts ENABLE ROW LEVEL SECURITY;
+
+-- Policy: Allow anyone to insert contact form submissions
+CREATE POLICY "Allow public contact form submissions" ON contacts
+    FOR INSERT WITH CHECK (true);
+
+-- Policy: Only authenticated admins can view/update contacts
+CREATE POLICY "Admin can manage contacts" ON contacts
+    FOR ALL USING (
+        EXISTS (
+            SELECT 1 FROM auth.users 
+            WHERE auth.users.id = auth.uid() 
+            AND auth.users.raw_user_meta_data->>'role' = 'admin'
+        )
+    );

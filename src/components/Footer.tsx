@@ -50,10 +50,10 @@ export const Footer: React.FC = () => {
             </a>
             <span className="hidden md:inline">|</span>
             <a
-              href="tel:+1-555-0123"
+              href="tel:+919972508604"
               className="hover:text-primary transition-colors duration-200"
             >
-              +1 (555) 012-3456
+              +91 99725 08604
             </a>
           </div>
         </div>

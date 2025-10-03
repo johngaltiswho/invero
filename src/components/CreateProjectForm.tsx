@@ -18,14 +18,8 @@ export default function CreateProjectForm({ onSuccess, onCancel }: CreateProject
     project_name: '',
     client_name: '',
     project_value: '',
-    start_date: '',
-    expected_end_date: '',
-    project_id_external: '',
-    priority: 'Medium' as 'High' | 'Medium' | 'Low',
-    team_size: '',
-    project_tenure: '',
-    funding_status: 'pending',
-    risk_level: 'Medium'
+    po_wo_number: '',
+    funding_status: 'pending'
   });
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
@@ -56,14 +50,8 @@ export default function CreateProjectForm({ onSuccess, onCancel }: CreateProject
       formDataToSend.append('project_name', formData.project_name);
       formDataToSend.append('client_name', formData.client_name);
       formDataToSend.append('project_value', formData.project_value);
-      formDataToSend.append('start_date', formData.start_date);
-      formDataToSend.append('expected_end_date', formData.expected_end_date);
-      formDataToSend.append('project_id_external', formData.project_id_external);
-      formDataToSend.append('priority', formData.priority);
-      formDataToSend.append('team_size', formData.team_size);
-      formDataToSend.append('project_tenure', formData.project_tenure);
+      formDataToSend.append('po_wo_number', formData.po_wo_number);
       formDataToSend.append('funding_status', formData.funding_status);
-      formDataToSend.append('risk_level', formData.risk_level);
       
       // Add PO file if uploaded
       if (poFile) {
@@ -157,96 +145,19 @@ export default function CreateProjectForm({ onSuccess, onCancel }: CreateProject
 
           <div>
             <label className="block text-sm font-medium text-primary mb-2">
-              External Project ID
+              PO/WO Number
             </label>
             <input
               type="text"
-              name="project_id_external"
-              value={formData.project_id_external}
+              name="po_wo_number"
+              value={formData.po_wo_number}
               onChange={handleInputChange}
               className="w-full bg-neutral-darker border border-neutral-medium rounded-lg px-4 py-3 text-primary focus:border-accent-amber focus:outline-none"
-              placeholder="Client's project ID"
+              placeholder="Purchase/Work Order Number"
             />
           </div>
         </div>
 
-        {/* Timeline */}
-        <div className="grid md:grid-cols-2 gap-6">
-          <div>
-            <label className="block text-sm font-medium text-primary mb-2">
-              Start Date *
-            </label>
-            <input
-              type="date"
-              name="start_date"
-              value={formData.start_date}
-              onChange={handleInputChange}
-              required
-              className="w-full bg-neutral-darker border border-neutral-medium rounded-lg px-4 py-3 text-primary focus:border-accent-amber focus:outline-none"
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-primary mb-2">
-              Expected End Date *
-            </label>
-            <input
-              type="date"
-              name="expected_end_date"
-              value={formData.expected_end_date}
-              onChange={handleInputChange}
-              required
-              className="w-full bg-neutral-darker border border-neutral-medium rounded-lg px-4 py-3 text-primary focus:border-accent-amber focus:outline-none"
-            />
-          </div>
-        </div>
-
-        {/* Project Details */}
-        <div className="grid md:grid-cols-3 gap-6">
-          <div>
-            <label className="block text-sm font-medium text-primary mb-2">
-              Priority
-            </label>
-            <select
-              name="priority"
-              value={formData.priority}
-              onChange={handleInputChange}
-              className="w-full bg-neutral-darker border border-neutral-medium rounded-lg px-4 py-3 text-primary focus:border-accent-amber focus:outline-none"
-            >
-              <option value="Low">Low</option>
-              <option value="Medium">Medium</option>
-              <option value="High">High</option>
-            </select>
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-primary mb-2">
-              Team Size
-            </label>
-            <input
-              type="number"
-              name="team_size"
-              value={formData.team_size}
-              onChange={handleInputChange}
-              className="w-full bg-neutral-darker border border-neutral-medium rounded-lg px-4 py-3 text-primary focus:border-accent-amber focus:outline-none"
-              placeholder="Number of team members"
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-primary mb-2">
-              Project Tenure (months)
-            </label>
-            <input
-              type="number"
-              name="project_tenure"
-              value={formData.project_tenure}
-              onChange={handleInputChange}
-              className="w-full bg-neutral-darker border border-neutral-medium rounded-lg px-4 py-3 text-primary focus:border-accent-amber focus:outline-none"
-              placeholder="Duration in months"
-            />
-          </div>
-        </div>
 
         {/* Purchase Order Upload */}
         <div>

@@ -516,6 +516,44 @@ export interface Database {
           dependencies?: string | null
         }
       }
+      contacts: {
+        Row: {
+          id: string
+          first_name: string
+          last_name: string
+          email: string
+          company: string | null
+          subject: string
+          message: string
+          consent: boolean
+          status: 'new' | 'in_progress' | 'resolved' | 'closed'
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          first_name: string
+          last_name: string
+          email: string
+          company?: string | null
+          subject: string
+          message: string
+          consent?: boolean
+          status?: 'new' | 'in_progress' | 'resolved' | 'closed'
+        }
+        Update: {
+          id?: string
+          first_name?: string
+          last_name?: string
+          email?: string
+          company?: string | null
+          subject?: string
+          message?: string
+          consent?: boolean
+          status?: 'new' | 'in_progress' | 'resolved' | 'closed'
+          updated_at?: string
+        }
+      }
     }
   }
 }

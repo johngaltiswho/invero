@@ -7,52 +7,54 @@ import { ContractorDashboardLayout } from '@/components/ContractorDashboardLayou
 import { Button, LoadingSpinner } from '@/components';
 import { useUser } from '@clerk/nextjs';
 import { useRouter } from 'next/navigation';
+import { useContractorV2 } from '@/contexts/ContractorContextV2';
 import CreateProjectForm from '@/components/CreateProjectForm';
 
 export default function ContractorDashboard(): React.ReactElement {
   const { user, isLoaded } = useUser();
   const router = useRouter();
+  const { contractor, loading: contractorLoading } = useContractorV2();
   const [contractorStatus, setContractorStatus] = useState<any>(null);
-  const [loading, setLoading] = useState(true);
+  const [projects, setProjects] = useState<any[]>([]);
+  const [projectsLoading, setProjectsLoading] = useState(true);
   const [showCreateProject, setShowCreateProject] = useState(false);
 
-  // Check contractor status
+  // Fetch projects from database
   useEffect(() => {
-    const checkStatus = async () => {
-      if (!user?.primaryEmailAddress?.emailAddress) return;
+    const fetchProjects = async () => {
+      if (!contractor?.id) return;
       
+      setProjectsLoading(true);
       try {
-        const response = await fetch(`/api/contractor-application-v2?email=${user.primaryEmailAddress.emailAddress}`);
-        const data = await response.json();
+        const response = await fetch(`/api/projects?contractor_id=${contractor.id}`);
+        const result = await response.json();
         
-        if (data.success) {
-          const status = data.data;
-          
-          // Check if verified and approved
-          if (status.verificationStatus === 'verified' && status.status === 'approved') {
-            setContractorStatus(status);
-            setLoading(false);
-          } else {
-            // Redirect to status page
-            router.push('/contractors/status');
-          }
+        if (result.success) {
+          setProjects(result.data.projects);
         } else {
-          // No application found, redirect to apply
-          router.push('/contractors/apply');
+          console.error('Failed to fetch projects:', result.error);
+          setProjects([]);
         }
       } catch (error) {
-        console.error('Error checking contractor status:', error);
-        router.push('/contractors/status');
+        console.error('Error fetching projects:', error);
+        setProjects([]);
+      } finally {
+        setProjectsLoading(false);
       }
     };
-    
-    if (isLoaded && user) {
-      checkStatus();
+
+    fetchProjects();
+  }, [contractor?.id]);
+
+  // Set contractor status from context
+  useEffect(() => {
+    if (contractor) {
+      setContractorStatus(contractor);
     }
-  }, [user, isLoaded, router]);
+  }, [contractor]);
 
   // Simple loading state
-  if (!isLoaded || loading) {
+  if (!isLoaded || contractorLoading) {
     return (
       <div className="min-h-screen bg-neutral-darker flex items-center justify-center">
         <div className="text-center">
@@ -70,7 +72,7 @@ export default function ContractorDashboard(): React.ReactElement {
         <div className="mb-8">
           <h1 className="text-3xl font-bold text-primary mb-2">Dashboard Overview</h1>
           <p className="text-secondary">
-            Welcome back to your contractor portal, {contractorStatus?.companyName}
+            Welcome back to your contractor portal, {contractorStatus?.company_name || contractorStatus?.companyName}
           </p>
         </div>
 
@@ -81,8 +83,12 @@ export default function ContractorDashboard(): React.ReactElement {
               <div className="text-accent-amber text-sm font-mono">ACTIVE PROJECTS</div>
               <div className="text-2xl">🏗️</div>
             </div>
-            <div className="text-2xl font-bold text-primary mb-1">-</div>
-            <div className="text-xs text-secondary">Loading...</div>
+            <div className="text-2xl font-bold text-primary mb-1">
+              {projectsLoading ? '-' : projects.length}
+            </div>
+            <div className="text-xs text-secondary">
+              {projectsLoading ? 'Loading...' : 'Currently active'}
+            </div>
           </div>
           
           <div className="bg-neutral-dark p-6 rounded-lg border border-neutral-medium">
@@ -90,7 +96,14 @@ export default function ContractorDashboard(): React.ReactElement {
               <div className="text-accent-amber text-sm font-mono">TOTAL VALUE</div>
               <div className="text-2xl">💰</div>
             </div>
-            <div className="text-2xl font-bold text-primary mb-1">-</div>
+            <div className="text-2xl font-bold text-primary mb-1">
+              {projectsLoading ? '-' : new Intl.NumberFormat('en-IN', {
+                style: 'currency',
+                currency: 'INR',
+                minimumFractionDigits: 0,
+                maximumFractionDigits: 0,
+              }).format(projects.reduce((sum, p) => sum + (p.estimated_value || 0), 0))}
+            </div>
             <div className="text-xs text-secondary">Contract value</div>
           </div>
           
@@ -99,7 +112,9 @@ export default function ContractorDashboard(): React.ReactElement {
               <div className="text-accent-amber text-sm font-mono">COMPLETION RATE</div>
               <div className="text-2xl">📈</div>
             </div>
-            <div className="text-2xl font-bold text-accent-amber mb-1">-</div>
+            <div className="text-2xl font-bold text-accent-amber mb-1">
+              {projectsLoading ? '-' : '0%'}
+            </div>
             <div className="text-xs text-secondary">Average progress</div>
           </div>
           
@@ -108,7 +123,9 @@ export default function ContractorDashboard(): React.ReactElement {
               <div className="text-accent-amber text-sm font-mono">NEXT MILESTONE</div>
               <div className="text-2xl">🎯</div>
             </div>
-            <div className="text-2xl font-bold text-primary mb-1">-</div>
+            <div className="text-2xl font-bold text-primary mb-1">
+              {projectsLoading ? '-' : 'TBD'}
+            </div>
             <div className="text-xs text-secondary">Upcoming deadline</div>
           </div>
         </div>
@@ -185,7 +202,17 @@ export default function ContractorDashboard(): React.ReactElement {
               <CreateProjectForm
                 onSuccess={() => {
                   setShowCreateProject(false);
-                  // Optionally refresh dashboard data
+                  // Refresh projects data
+                  if (contractor?.id) {
+                    fetch(`/api/projects?contractor_id=${contractor.id}`)
+                      .then(res => res.json())
+                      .then(result => {
+                        if (result.success) {
+                          setProjects(result.data.projects);
+                        }
+                      })
+                      .catch(console.error);
+                  }
                 }}
                 onCancel={() => setShowCreateProject(false)}
               />

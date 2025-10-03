@@ -24,12 +24,14 @@ export default function ContractorProjects(): React.ReactElement {
   const [metricsLoading, setMetricsLoading] = useState(false);
   const [showBOQEntry, setShowBOQEntry] = useState(false);
   const [showScheduleEntry, setShowScheduleEntry] = useState(false);
+  const [contractorProjects, setContractorProjects] = useState<any[]>([]);
+  const [projectsLoading, setProjectsLoading] = useState(true);
+  const [hasBOQData, setHasBOQData] = useState(false);
+  const [hasScheduleData, setHasScheduleData] = useState(false);
+  const [documentStatusLoading, setDocumentStatusLoading] = useState(false);
   
   // Get contractor ID from authenticated user
   const currentContractorId = user?.publicMetadata?.contractorId as string || 'CONTRACTOR_001';
-
-  // Use Google Sheets projects from context
-  const contractorProjects = contractor?.currentProjects || [];
 
   // Redirect if not authenticated
   useEffect(() => {
@@ -40,6 +42,43 @@ export default function ContractorProjects(): React.ReactElement {
       return;
     }
   }, [user, isLoaded, router]);
+
+  // Fetch projects from database API
+  useEffect(() => {
+    const fetchProjects = async () => {
+      if (!contractor?.id) return;
+      
+      setProjectsLoading(true);
+      try {
+        const response = await fetch(`/api/projects?contractor_id=${contractor.id}`);
+        const result = await response.json();
+        
+        if (result.success) {
+          // Transform database projects to match expected format
+          const transformedProjects = result.data.projects.map((project: any) => ({
+            id: project.id,
+            projectName: project.project_name,
+            clientName: project.client_name,
+            projectValue: project.estimated_value,
+            status: 'Planning', // Default status since it's not in DB yet
+            expectedEndDate: new Date(Date.now() + 90 * 24 * 60 * 60 * 1000).toISOString(), // 90 days from now
+            currentProgress: 0 // Default progress
+          }));
+          setContractorProjects(transformedProjects);
+        } else {
+          console.error('Failed to fetch projects:', result.error);
+          setContractorProjects([]);
+        }
+      } catch (error) {
+        console.error('Error fetching projects:', error);
+        setContractorProjects([]);
+      } finally {
+        setProjectsLoading(false);
+      }
+    };
+
+    fetchProjects();
+  }, [contractor?.id, refreshKey]);
 
   // Calculate enhanced metrics when project is selected
   useEffect(() => {
@@ -59,10 +98,10 @@ export default function ContractorProjects(): React.ReactElement {
         const { calculateProjectMetrics } = await import('@/lib/contractor-metrics');
         const calculatedMetrics = await calculateProjectMetrics(selectedProject);
         
-        // Merge Google Sheets data with calculated metrics
+        // Merge project data with calculated metrics
         const enhanced = {
           ...projectData,
-          // Use calculated values if available, otherwise fallback to Google Sheets
+          // Use calculated values if available, otherwise fallback to defaults
           projectValue: calculatedMetrics.projectValue ?? projectData.projectValue,
           currentProgress: calculatedMetrics.currentProgress ?? (projectData as any).currentProgress,
           expectedEndDate: calculatedMetrics.endDate ?? projectData.expectedEndDate,
@@ -87,14 +126,51 @@ export default function ContractorProjects(): React.ReactElement {
     calculateProjectMetrics();
   }, [selectedProject, contractorProjects, refreshKey]);
 
-  // Show loading state while Clerk loads OR contractor data loads
-  if (!isLoaded || contractorLoading) {
+  // Check for existing BOQ and schedule data when project is selected
+  useEffect(() => {
+    const checkDocumentStatus = async () => {
+      if (!selectedProject) {
+        setHasBOQData(false);
+        setHasScheduleData(false);
+        return;
+      }
+
+      try {
+        setDocumentStatusLoading(true);
+        
+        // Import the functions needed to check for existing data
+        const { getBOQByProjectId, getScheduleByProjectId } = await import('@/lib/supabase-boq');
+        
+        // Check for BOQ data
+        const boqData = await getBOQByProjectId(selectedProject);
+        setHasBOQData(boqData && boqData.length > 0);
+        
+        // Check for schedule data
+        const scheduleData = await getScheduleByProjectId(selectedProject);
+        setHasScheduleData(scheduleData && scheduleData.length > 0);
+        
+      } catch (error) {
+        console.error('Failed to check document status:', error);
+        setHasBOQData(false);
+        setHasScheduleData(false);
+      } finally {
+        setDocumentStatusLoading(false);
+      }
+    };
+
+    checkDocumentStatus();
+  }, [selectedProject, refreshKey]);
+
+  // Show loading state while Clerk loads OR contractor data loads OR projects load
+  if (!isLoaded || contractorLoading || projectsLoading) {
     return (
       <div className="min-h-screen bg-neutral-darker">
         <LoadingSpinner 
-          title={!isLoaded ? "Authenticating Access" : "Loading Project Portfolio"}
+          title={!isLoaded ? "Authenticating Access" : projectsLoading ? "Loading Projects" : "Loading Project Portfolio"}
           description={!isLoaded ? 
             "Verifying your contractor credentials and setting up secure access" : 
+            projectsLoading ?
+            "Fetching your projects from the database..." :
             "Retrieving your active projects, milestones, and progress tracking data"
           }
           icon="📋"
@@ -221,7 +297,7 @@ export default function ContractorProjects(): React.ReactElement {
             <div className="text-2xl font-bold text-accent-amber mb-1">
               {contractorProjects.length > 0 ? 
                 Math.round(contractorProjects.reduce((sum, p) => {
-                  // Handle both Google Sheets (currentProgress) and mock data (progress)
+                  // Handle both currentProgress and progress fields
                   const progress = 'currentProgress' in p ? (p as any).currentProgress : (p as any).progress || 0;
                   return sum + progress;
                 }, 0) / contractorProjects.length) : 0}%
@@ -321,9 +397,6 @@ export default function ContractorProjects(): React.ReactElement {
                           {selectedProjectData?._dataSource?.value === 'database' && (
                             <div className="text-xs text-success mt-1">📊 From BOQ</div>
                           )}
-                          {selectedProjectData?._dataSource?.value === 'sheets' && (
-                            <div className="text-xs text-secondary mt-1">📋 From Google Sheets</div>
-                          )}
                         </div>
                         <div>
                           <div className="text-xs text-secondary mb-1">Current Progress</div>
@@ -333,9 +406,6 @@ export default function ContractorProjects(): React.ReactElement {
                           {selectedProjectData?._dataSource?.progress === 'database' && (
                             <div className="text-xs text-success mt-1">📈 From Schedule</div>
                           )}
-                          {selectedProjectData?._dataSource?.progress === 'sheets' && (
-                            <div className="text-xs text-secondary mt-1">📋 From Google Sheets</div>
-                          )}
                         </div>
                         <div>
                           <div className="text-xs text-secondary mb-1">End Date</div>
@@ -344,9 +414,6 @@ export default function ContractorProjects(): React.ReactElement {
                           </div>
                           {selectedProjectData?._dataSource?.endDate === 'database' && (
                             <div className="text-xs text-success mt-1">📅 From Schedule</div>
-                          )}
-                          {selectedProjectData?._dataSource?.endDate === 'sheets' && (
-                            <div className="text-xs text-secondary mt-1">📋 From Google Sheets</div>
                           )}
                         </div>
                         <div>
@@ -374,38 +441,72 @@ export default function ContractorProjects(): React.ReactElement {
                         </div>
                       )}
 
-                      {/* Google Sheets Project Info */}
-                      {isSelectedGoogleSheetsProject && (
-                        <div className="mb-6">
-                          <h3 className="text-lg font-bold text-primary mb-4">Project Information</h3>
-                          <div className="grid grid-cols-2 gap-6">
-                            <div>
-                              <div className="text-sm font-semibold text-primary mb-2">Next Milestone</div>
-                              <div className="text-sm text-secondary">
-                                {(selectedProjectData as any).nextMilestone} - {formatDate((selectedProjectData as any).nextMilestoneDate)}
+                      {/* Project Documents Status */}
+                      <div className="mb-6">
+                        <h3 className="text-lg font-bold text-primary mb-4">Project Documents</h3>
+                        <div className="grid grid-cols-2 gap-4">
+                          {/* BOQ Status Card */}
+                          <div className="bg-neutral-darker p-4 rounded-lg border border-neutral-medium">
+                            <div className="flex items-center justify-between mb-2">
+                              <div className="flex items-center space-x-2">
+                                <span className="text-lg">📊</span>
+                                <h4 className="font-semibold text-primary">Bill of Quantities</h4>
+                              </div>
+                              <div className="flex items-center space-x-2">
+                                {documentStatusLoading ? (
+                                  <div className="w-2 h-2 rounded-full bg-accent-amber animate-pulse"></div>
+                                ) : (
+                                  <div className={`w-2 h-2 rounded-full ${hasBOQData ? 'bg-success' : 'bg-neutral-medium'}`}></div>
+                                )}
+                                <span className="text-xs text-secondary">
+                                  {documentStatusLoading ? 'Checking...' : hasBOQData ? 'Uploaded' : 'Not uploaded'}
+                                </span>
                               </div>
                             </div>
-                            <div>
-                              <div className="text-sm font-semibold text-primary mb-2">Team Size</div>
-                              <div className="text-sm text-secondary">
-                                {(selectedProjectData as any).teamSize} team members
+                            <p className="text-sm text-secondary mb-3">
+                              {hasBOQData ? 'View and manage project costs' : 'Upload project costs and quantities'}
+                            </p>
+                            <button
+                              onClick={() => setActiveTab('boq')}
+                              className="text-xs font-medium text-accent-amber hover:text-accent-amber/80 flex items-center space-x-1"
+                            >
+                              <span>{hasBOQData ? 'View BOQ' : '+ Add BOQ'}</span>
+                              <span>→</span>
+                            </button>
+                          </div>
+
+                          {/* Schedule Status Card */}
+                          <div className="bg-neutral-darker p-4 rounded-lg border border-neutral-medium">
+                            <div className="flex items-center justify-between mb-2">
+                              <div className="flex items-center space-x-2">
+                                <span className="text-lg">📅</span>
+                                <h4 className="font-semibold text-primary">Project Schedule</h4>
+                              </div>
+                              <div className="flex items-center space-x-2">
+                                {documentStatusLoading ? (
+                                  <div className="w-2 h-2 rounded-full bg-accent-amber animate-pulse"></div>
+                                ) : (
+                                  <div className={`w-2 h-2 rounded-full ${hasScheduleData ? 'bg-success' : 'bg-neutral-medium'}`}></div>
+                                )}
+                                <span className="text-xs text-secondary">
+                                  {documentStatusLoading ? 'Checking...' : hasScheduleData ? 'Uploaded' : 'Not uploaded'}
+                                </span>
                               </div>
                             </div>
-                            <div>
-                              <div className="text-sm font-semibold text-primary mb-2">Monthly Burn Rate</div>
-                              <div className="text-sm text-secondary">
-                                {formatCurrency((selectedProjectData as any).monthlyBurnRate)}/month
-                              </div>
-                            </div>
-                            <div>
-                              <div className="text-sm font-semibold text-primary mb-2">Priority</div>
-                              <div className="text-sm text-secondary">
-                                {(selectedProjectData as any).priority}
-                              </div>
-                            </div>
+                            <p className="text-sm text-secondary mb-3">
+                              {hasScheduleData ? 'View and manage project timeline' : 'Create timeline with tasks and milestones'}
+                            </p>
+                            <button
+                              onClick={() => setActiveTab('schedule')}
+                              className="text-xs font-medium text-accent-amber hover:text-accent-amber/80 flex items-center space-x-1"
+                            >
+                              <span>{hasScheduleData ? 'View Schedule' : '+ Add Schedule'}</span>
+                              <span>→</span>
+                            </button>
                           </div>
                         </div>
-                      )}
+                      </div>
+
 
                       {/* Mock Data Milestones */}
                       {!isSelectedGoogleSheetsProject && (selectedProjectData as any)?.milestones && (

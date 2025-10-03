@@ -1,9 +1,63 @@
-import React from 'react';
+'use client';
+
+import React, { useState } from 'react';
 import { Layout } from '@/components/Layout';
 import { Button } from '@/components/Button';
 import { Input } from '@/components/Input';
 
 export default function ContactUs() {
+  const [formData, setFormData] = useState({
+    firstName: '',
+    lastName: '',
+    email: '',
+    company: '',
+    subject: '',
+    message: '',
+    consent: false
+  });
+  
+  const [loading, setLoading] = useState(false);
+  const [submitted, setSubmitted] = useState(false);
+  const [error, setError] = useState('');
+
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
+    const { name, value, type } = e.target;
+    setFormData(prev => ({
+      ...prev,
+      [name]: type === 'checkbox' ? (e.target as HTMLInputElement).checked : value
+    }));
+    
+    // Clear error when user starts typing
+    if (error) setError('');
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoading(true);
+    setError('');
+
+    try {
+      const response = await fetch('/api/contact', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(formData),
+      });
+
+      const result = await response.json();
+
+      if (result.success) {
+        setSubmitted(true);
+      } else {
+        setError(result.error || 'Failed to submit contact form. Please try again.');
+      }
+    } catch (err) {
+      setError('Network error. Please check your connection and try again.');
+    } finally {
+      setLoading(false);
+    }
+  };
   return (
     <Layout>
       <div className="container mx-auto px-4 py-12 max-w-6xl">
@@ -16,9 +70,43 @@ export default function ContactUs() {
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-12">
           {/* Contact Form */}
-          <div className="bg-neutral-light rounded-lg p-8">
-            <h2 className="text-2xl font-semibold text-primary mb-6">Send us a Message</h2>
-            <form className="space-y-6">
+          <div className="bg-neutral-dark rounded-lg p-8 border border-neutral-medium">
+            {submitted ? (
+              <div className="text-center py-8">
+                <div className="text-6xl mb-4">✅</div>
+                <h2 className="text-2xl font-semibold text-primary mb-4">Thank You!</h2>
+                <p className="text-secondary mb-6">
+                  Your message has been sent successfully. We'll get back to you within 24 hours.
+                </p>
+                <Button 
+                  onClick={() => {
+                    setSubmitted(false);
+                    setFormData({
+                      firstName: '',
+                      lastName: '',
+                      email: '',
+                      company: '',
+                      subject: '',
+                      message: '',
+                      consent: false
+                    });
+                  }}
+                  variant="outline"
+                >
+                  Send Another Message
+                </Button>
+              </div>
+            ) : (
+              <>
+                <h2 className="text-2xl font-semibold text-primary mb-6">Send us a Message</h2>
+                
+                {error && (
+                  <div className="mb-6 p-4 bg-error/10 border border-error/20 rounded-lg">
+                    <p className="text-error text-sm">{error}</p>
+                  </div>
+                )}
+                
+                <form onSubmit={handleSubmit} className="space-y-6">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                   <label htmlFor="firstName" className="block text-sm font-medium text-primary mb-2">
@@ -30,6 +118,8 @@ export default function ContactUs() {
                     type="text"
                     required
                     placeholder="John"
+                    value={formData.firstName}
+                    onChange={handleInputChange}
                   />
                 </div>
                 <div>
@@ -42,6 +132,8 @@ export default function ContactUs() {
                     type="text"
                     required
                     placeholder="Doe"
+                    value={formData.lastName}
+                    onChange={handleInputChange}
                   />
                 </div>
               </div>
@@ -56,6 +148,8 @@ export default function ContactUs() {
                   type="email"
                   required
                   placeholder="john.doe@example.com"
+                  value={formData.email}
+                  onChange={handleInputChange}
                 />
               </div>
 
@@ -68,6 +162,8 @@ export default function ContactUs() {
                   name="company"
                   type="text"
                   placeholder="Your Company Name"
+                  value={formData.company}
+                  onChange={handleInputChange}
                 />
               </div>
 
@@ -79,7 +175,9 @@ export default function ContactUs() {
                   id="subject"
                   name="subject"
                   required
-                  className="w-full px-4 py-3 border border-neutral-medium rounded-lg focus:ring-2 focus:ring-accent-orange focus:border-transparent transition-colors duration-200 bg-white text-primary"
+                  value={formData.subject}
+                  onChange={handleInputChange}
+                  className="w-full px-4 py-3 border border-neutral-medium rounded-lg focus:ring-2 focus:ring-accent-orange focus:border-transparent transition-colors duration-200 bg-neutral-dark text-primary"
                 >
                   <option value="">Select a subject</option>
                   <option value="general">General Inquiry</option>
@@ -102,7 +200,9 @@ export default function ContactUs() {
                   rows={5}
                   required
                   placeholder="Tell us how we can help you..."
-                  className="w-full px-4 py-3 border border-neutral-medium rounded-lg focus:ring-2 focus:ring-accent-orange focus:border-transparent transition-colors duration-200 bg-white text-primary resize-vertical"
+                  value={formData.message}
+                  onChange={handleInputChange}
+                  className="w-full px-4 py-3 border border-neutral-medium rounded-lg focus:ring-2 focus:ring-accent-orange focus:border-transparent transition-colors duration-200 bg-neutral-dark text-primary placeholder-text-secondary resize-vertical"
                 />
               </div>
 
@@ -112,6 +212,8 @@ export default function ContactUs() {
                   name="consent"
                   type="checkbox"
                   required
+                  checked={formData.consent}
+                  onChange={handleInputChange}
                   className="mt-1 h-4 w-4 text-accent-orange focus:ring-accent-orange border-neutral-medium rounded"
                 />
                 <label htmlFor="consent" className="ml-3 text-sm text-secondary">
@@ -120,10 +222,17 @@ export default function ContactUs() {
                 </label>
               </div>
 
-              <Button type="submit" variant="primary" className="w-full">
-                Send Message
+              <Button 
+                type="submit" 
+                variant="primary" 
+                className="w-full"
+                disabled={loading}
+              >
+                {loading ? 'Sending...' : 'Send Message'}
               </Button>
-            </form>
+                </form>
+              </>
+            )}
           </div>
 
           {/* Contact Information */}
@@ -187,7 +296,7 @@ export default function ContactUs() {
             </div>
 
             {/* Support Hours */}
-            <div className="bg-neutral-light rounded-lg p-6">
+            <div className="bg-neutral-dark rounded-lg p-6 border border-neutral-medium">
               <h3 className="text-lg font-semibold text-primary mb-4">Support Hours</h3>
               <div className="space-y-2 text-sm">
                 <div className="flex justify-between">
@@ -206,15 +315,15 @@ export default function ContactUs() {
             </div>
 
             {/* Emergency Contact */}
-            <div className="bg-red-50 border border-red-200 rounded-lg p-6">
-              <h3 className="text-lg font-semibold text-red-800 mb-2">Emergency Support</h3>
-              <p className="text-red-700 text-sm mb-2">
+            <div className="bg-error/10 border border-error/20 rounded-lg p-6">
+              <h3 className="text-lg font-semibold text-error mb-2">Emergency Support</h3>
+              <p className="text-error/90 text-sm mb-2">
                 For critical system issues affecting active investments:
               </p>
-              <a href="tel:+1-555-0199" className="text-red-800 font-medium hover:underline">
+              <a href="tel:+1-555-0199" className="text-error font-medium hover:underline">
                 +1 (555) 012-3499
               </a>
-              <p className="text-red-600 text-xs mt-1">Available 24/7 for emergency situations only</p>
+              <p className="text-error/80 text-xs mt-1">Available 24/7 for emergency situations only</p>
             </div>
           </div>
         </div>
