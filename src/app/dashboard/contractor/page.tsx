@@ -13,7 +13,7 @@ import CreateProjectForm from '@/components/CreateProjectForm';
 export default function ContractorDashboard(): React.ReactElement {
   const { user, isLoaded } = useUser();
   const router = useRouter();
-  const { contractor, loading: contractorLoading } = useContractorV2();
+  const { contractor, loading: contractorLoading, accessInfo } = useContractorV2();
   const [contractorStatus, setContractorStatus] = useState<any>(null);
   const [projects, setProjects] = useState<any[]>([]);
   const [projectsLoading, setProjectsLoading] = useState(true);
@@ -53,7 +53,17 @@ export default function ContractorDashboard(): React.ReactElement {
     }
   }, [contractor]);
 
-  // Simple loading state
+  // Simple auth check - middleware handles contractor access control
+  useEffect(() => {
+    if (!isLoaded) return;
+    
+    if (!user) {
+      router.push('/sign-in');
+      return;
+    }
+  }, [user, isLoaded, router]);
+
+  // Show loading while data is being fetched
   if (!isLoaded || contractorLoading) {
     return (
       <div className="min-h-screen bg-neutral-darker flex items-center justify-center">
