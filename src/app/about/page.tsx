@@ -1,4 +1,5 @@
 import React from 'react';
+import Link from 'next/link';
 import { Layout } from '@/components/Layout';
 import { Button } from '@/components/Button';
 
@@ -15,13 +16,12 @@ export default function AboutUs() {
             Bridging the supply gap for those building the infrastructure of tomorrow's India. 
             We empower SME contractors with contract-backed project supplies while delivering superior returns to institutional partners.
           </p>
-          <div className="flex flex-col sm:flex-row gap-4 justify-center">
-            <Button variant="primary" className="px-8 py-3">
-              Explore Opportunities
-            </Button>
-            <Button variant="secondary" className="px-8 py-3">
-              Learn More
-            </Button>
+          <div className="flex justify-center">
+            <Link href="/investors">
+              <Button variant="primary" className="px-8 py-3">
+                Explore Opportunities
+              </Button>
+            </Link>
           </div>
         </div>
 
@@ -276,12 +276,16 @@ export default function AboutUs() {
             or a contractor needing flexible capital, Finverno is your partner in growth.
           </p>
           <div className="flex flex-col sm:flex-row gap-4 justify-center">
-            <Button variant="primary" className="px-8 py-3">
-              Become an Investor
-            </Button>
-            <Button variant="secondary" className="px-8 py-3">
-              Apply as Contractor
-            </Button>
+            <Link href="/investors">
+              <Button variant="primary" className="px-8 py-3">
+                Become an Investor
+              </Button>
+            </Link>
+            <Link href="/contractors/apply">
+              <Button variant="secondary" className="px-8 py-3">
+                Apply as Contractor
+              </Button>
+            </Link>
           </div>
         </div>
       </div>

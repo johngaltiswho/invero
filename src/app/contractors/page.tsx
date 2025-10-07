@@ -278,9 +278,11 @@ export default function ContractorsPage() {
                 Check Application Status
               </Button>
             </Link>
-            <Button variant="secondary" className="bg-transparent border-2 border-neutral-medium hover:bg-neutral-light text-primary px-8 py-3">
-              Schedule Consultation
-            </Button>
+            <Link href="/contact">
+              <Button variant="secondary" className="bg-transparent border-2 border-neutral-medium hover:bg-neutral-light text-primary px-8 py-3">
+                Schedule Consultation
+              </Button>
+            </Link>
           </div>
           <p className="text-sm text-secondary mt-6">
             Transparent terms. Streamlined process. Professional partnership.

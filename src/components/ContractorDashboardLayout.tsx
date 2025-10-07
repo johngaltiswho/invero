@@ -33,6 +33,13 @@ export function ContractorDashboardLayout({ children, activeTab }: ContractorDas
       href: '/dashboard/contractor/projects',
       icon: '📋',
       description: 'Project management'
+    },
+    {
+      id: 'materials',
+      name: 'Material Master',
+      href: '/dashboard/contractor/materials',
+      icon: '🏗️',
+      description: 'Materials & requests'
     }
     // Hidden: Progress Reports, Funding Requests, Documents, Payments
   ];

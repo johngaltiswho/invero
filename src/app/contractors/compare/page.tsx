@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
+import Link from 'next/link';
 import { Layout } from '@/components/Layout';
 import { Button } from '@/components/Button';
 
@@ -47,7 +48,7 @@ export default function ContractorComparePage() {
             <p className="text-2xl font-bold text-green-400">
               Save up to ₹{Math.round(savings/100000)} Lakhs per project
             </p>
-            <p className="text-green-300 text-sm mt-2">Based on typical infrastructure project financing</p>
+            <p className="text-green-300 text-sm mt-2">Based on typical infrastructure material procurement costs</p>
           </div>
         </div>
 
@@ -334,9 +335,11 @@ export default function ContractorComparePage() {
             <Button variant="primary" size="lg" className="min-w-[200px] bg-accent-orange hover:bg-orange-600">
               Apply for Material Supply
             </Button>
-            <Button variant="outline" size="lg" className="min-w-[200px] border-accent-orange text-accent-orange hover:bg-accent-orange/10">
-              Schedule Consultation
-            </Button>
+            <Link href="/contact">
+              <Button variant="outline" size="lg" className="min-w-[200px] border-accent-orange text-accent-orange hover:bg-accent-orange/10">
+                Schedule Consultation
+              </Button>
+            </Link>
           </div>
           <div className="text-sm text-secondary">
             <p>✓ No collateral required • ✓ 2-3 day approval • ✓ Direct material delivery</p>

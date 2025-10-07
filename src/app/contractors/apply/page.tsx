@@ -275,13 +275,13 @@ export default function ContractorApplyPage(): React.ReactElement {
       <section className="container mx-auto px-4 py-16 md:py-20">
         <div className="text-center max-w-4xl mx-auto">
           <div className="text-accent-orange text-sm font-semibold uppercase tracking-wide mb-4">
-            FUNDING APPLICATION
+            MATERIAL SUPPLY APPLICATION
           </div>
           <h1 className="text-4xl md:text-5xl font-bold text-primary mb-8 leading-tight">
-            Apply for <span className="accent-orange">Project Financing</span>
+            Apply for <span className="accent-orange">Contract-Backed Material Supply</span>
           </h1>
           <p className="text-lg text-secondary mb-8 leading-relaxed">
-            Complete our comprehensive application to access working capital for your project. 
+            Complete our comprehensive application to access direct-to-site material supply for your verified MNC contracts. 
             Our proprietary vetting process ensures fast approval for qualified contractors.
           </p>
         </div>
@@ -371,13 +371,13 @@ export default function ContractorApplyPage(): React.ReactElement {
               </div>
               <div>
                 <div className="text-3xl accent-orange mb-4">🤝</div>
-                <h3 className="text-lg font-bold text-primary mb-2">Due Diligence</h3>
-                <p className="text-secondary">We conduct comprehensive due diligence including client verification and project assessment.</p>
+                <h3 className="text-lg font-bold text-primary mb-2">Contract Verification</h3>
+                <p className="text-secondary">We conduct comprehensive verification of MNC client contracts and project execution capabilities.</p>
               </div>
               <div>
-                <div className="text-3xl accent-orange mb-4">💰</div>
-                <h3 className="text-lg font-bold text-primary mb-2">Funding Disbursement</h3>
-                <p className="text-secondary">Upon approval, funds are disbursed according to project milestones within 5-7 business days.</p>
+                <div className="text-3xl accent-orange mb-4">🚚</div>
+                <h3 className="text-lg font-bold text-primary mb-2">Material Supply Enablement</h3>
+                <p className="text-secondary">Upon approval, direct-to-site material supply begins according to work order milestones within 5-7 business days.</p>
               </div>
             </div>
           </div>

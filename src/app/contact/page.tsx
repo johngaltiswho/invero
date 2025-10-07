@@ -269,9 +269,9 @@ export default function ContactUs() {
                 </div>
                 <div>
                   <h3 className="text-lg font-medium text-primary">Phone</h3>
-                  <p className="text-secondary">Monday - Friday, 9AM - 6PM EST</p>
-                  <a href="tel:+1-555-0123" className="text-accent-orange hover:underline">
-                    +1 (555) 012-3456
+                  <p className="text-secondary">Monday - Friday, 9AM - 6PM IST</p>
+                  <a href="tel:+91-9972508604" className="text-accent-orange hover:underline">
+                    +91 9972508604
                   </a>
                 </div>
               </div>
@@ -287,9 +287,9 @@ export default function ContactUs() {
                   <h3 className="text-lg font-medium text-primary">Office</h3>
                   <p className="text-secondary">Visit us at our headquarters</p>
                   <address className="text-secondary not-italic">
-                    Finverno Financial Intelligence<br />
-                    123 Business Ave, Suite 100<br />
-                    City, State 12345
+                    Invero<br />
+                    403, 22nd Cross, 2nd Sector<br />
+                    HSR Layout, Bangalore, 560102
                   </address>
                 </div>
               </div>

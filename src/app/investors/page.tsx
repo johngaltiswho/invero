@@ -1,4 +1,5 @@
 import React from 'react';
+import Link from 'next/link';
 import { Layout } from '@/components/Layout';
 import { Button } from '@/components/Button';
 
@@ -334,13 +335,12 @@ export default function InvestorsPage() {
           <p className="text-xl mb-8 max-w-3xl mx-auto opacity-90">
             Join sophisticated investors in accessing India's infrastructure opportunity through our regulated, transparent platform.
           </p>
-          <div className="flex flex-col sm:flex-row gap-4 justify-center">
-            <Button variant="secondary" className="bg-white text-primary hover:bg-neutral-light px-8 py-3">
-              Download Investment Memorandum
-            </Button>
-            <Button variant="primary" className="bg-accent-orange hover:bg-orange-600 px-8 py-3">
-              Schedule Private Discussion
-            </Button>
+          <div className="flex justify-center">
+            <Link href="/contact">
+              <Button variant="primary" className="bg-accent-orange hover:bg-orange-600 px-8 py-3">
+                Schedule Private Discussion
+              </Button>
+            </Link>
           </div>
           <p className="text-sm mt-6 opacity-75">
             For accredited investors only. Past performance does not guarantee future results.
