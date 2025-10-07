@@ -4,7 +4,6 @@ import React, { useState, useEffect } from 'react';
 import { Button } from '@/components';
 import { DocumentService, type DocumentType } from '@/lib/document-service';
 import type { Contractor } from '@/types/supabase';
-import { toast } from 'react-hot-toast';
 
 interface ContractorWithDocuments extends Contractor {
   uploadProgress: number;
@@ -77,11 +76,11 @@ export default function AdminVerificationDashboard(): React.ReactElement {
         setMaterialRequests(result.data);
       } else {
         console.error('Failed to load material requests:', result.error);
-        toast.error('Failed to load material requests');
+        alert('Failed to load material requests');
       }
     } catch (error) {
       console.error('Error loading material requests:', error);
-      toast.error('Error loading material requests');
+      alert('Error loading material requests');
     } finally {
       setLoading(false);
     }
@@ -112,7 +111,7 @@ export default function AdminVerificationDashboard(): React.ReactElement {
       const result = await response.json();
 
       if (result.success) {
-        toast.success(result.message);
+        alert(result.message);
         
         // Update the selected request optimistically
         if (selectedMaterialRequest?.id === requestId) {
@@ -127,11 +126,11 @@ export default function AdminVerificationDashboard(): React.ReactElement {
         // Reload data
         await loadMaterialRequests();
       } else {
-        toast.error(result.error || 'Failed to review request');
+        alert(result.error || 'Failed to review request');
       }
     } catch (error) {
       console.error('Error reviewing material request:', error);
-      toast.error('Error reviewing material request');
+      alert('Error reviewing material request');
     } finally {
       setReviewingMaterial(null);
     }
@@ -325,7 +324,7 @@ export default function AdminVerificationDashboard(): React.ReactElement {
         <div className="grid lg:grid-cols-3 gap-8">
           {/* Contractors List */}
           <div className="lg:col-span-1">
-            <div className="bg-neutral-dark rounded-lg border border-neutral-medium">
+            <div className="bg-neutral-dark rounded-lg border border-neutral-medium"></div>
             <div className="p-4 border-b border-neutral-medium">
               <h2 className="text-lg font-semibold text-primary">Pending Verification</h2>
               <p className="text-sm text-secondary">Contractors awaiting document review</p>
@@ -375,8 +374,8 @@ export default function AdminVerificationDashboard(): React.ReactElement {
             </div>
           </div>
 
-        {/* Document Verification Panel */}
-        <div className="lg:col-span-2">
+          {/* Document Verification Panel */}
+          <div className="lg:col-span-2">
           {selectedContractor ? (
             <div className="bg-neutral-dark rounded-lg border border-neutral-medium">
               <div className="p-6 border-b border-neutral-medium">
@@ -542,6 +541,7 @@ export default function AdminVerificationDashboard(): React.ReactElement {
               <p className="text-secondary">Choose a contractor from the list to review their documents</p>
             </div>
           )}
+          </div>
         </div>
       ) : (
         /* Material Requests Tab */
@@ -742,7 +742,6 @@ export default function AdminVerificationDashboard(): React.ReactElement {
           </div>
         </div>
       )}
-      </div>
     </div>
   );
 }
