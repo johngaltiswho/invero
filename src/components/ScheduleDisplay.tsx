@@ -114,6 +114,60 @@ export default function ScheduleDisplay({ projectId, contractorId }: ScheduleDis
     setEditingTasks(updatedTasks);
   };
 
+  // Add new task below current index
+  const addTaskBelow = (index: number) => {
+    const newTask: EditableTask = {
+      task: '',
+      start_date: new Date().toISOString().split('T')[0],
+      end_date: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+      duration: 7,
+      progress: 0
+    };
+    
+    const updatedTasks = [...editingTasks];
+    updatedTasks.splice(index + 1, 0, newTask);
+    setEditingTasks(updatedTasks);
+  };
+
+  // Remove task
+  const removeTask = (index: number) => {
+    if (editingTasks.length <= 1) {
+      alert('Schedule must have at least one task');
+      return;
+    }
+    
+    const updatedTasks = editingTasks.filter((_, i) => i !== index);
+    setEditingTasks(updatedTasks);
+  };
+
+  // Move task up
+  const moveTaskUp = (index: number) => {
+    if (index === 0) return;
+    
+    const updatedTasks = [...editingTasks];
+    const temp = updatedTasks[index];
+    const prevTemp = updatedTasks[index - 1];
+    if (temp && prevTemp) {
+      updatedTasks[index] = prevTemp;
+      updatedTasks[index - 1] = temp;
+      setEditingTasks(updatedTasks);
+    }
+  };
+
+  // Move task down
+  const moveTaskDown = (index: number) => {
+    if (index === editingTasks.length - 1) return;
+    
+    const updatedTasks = [...editingTasks];
+    const temp = updatedTasks[index];
+    const nextTemp = updatedTasks[index + 1];
+    if (temp && nextTemp) {
+      updatedTasks[index] = nextTemp;
+      updatedTasks[index + 1] = temp;
+      setEditingTasks(updatedTasks);
+    }
+  };
+
   const handleSaveChanges = async () => {
     try {
       setSaving(true);
@@ -290,6 +344,9 @@ export default function ScheduleDisplay({ projectId, contractorId }: ScheduleDis
                     <th className="border border-neutral-medium px-3 py-2 text-center text-sm font-medium text-secondary">Duration</th>
                     <th className="border border-neutral-medium px-3 py-2 text-center text-sm font-medium text-secondary">Progress</th>
                     <th className="border border-neutral-medium px-3 py-2 text-center text-sm font-medium text-secondary">Status</th>
+                    {isEditing && (
+                      <th className="border border-neutral-medium px-3 py-2 text-center text-sm font-medium text-secondary">Actions</th>
+                    )}
                   </tr>
                 </thead>
                 <tbody>
@@ -375,6 +432,50 @@ export default function ScheduleDisplay({ projectId, contractorId }: ScheduleDis
                             {status.text}
                           </span>
                         </td>
+                        {isEditing && (
+                          <td className="border border-neutral-medium px-2 py-2">
+                            <div className="flex items-center justify-center space-x-1">
+                              {/* Move Up */}
+                              <button
+                                onClick={() => moveTaskUp(index)}
+                                disabled={index === 0}
+                                className="p-1 text-secondary hover:text-primary disabled:opacity-30 disabled:cursor-not-allowed"
+                                title="Move up"
+                              >
+                                ↑
+                              </button>
+                              
+                              {/* Move Down */}
+                              <button
+                                onClick={() => moveTaskDown(index)}
+                                disabled={index === tasksToDisplay.length - 1}
+                                className="p-1 text-secondary hover:text-primary disabled:opacity-30 disabled:cursor-not-allowed"
+                                title="Move down"
+                              >
+                                ↓
+                              </button>
+                              
+                              {/* Add Below */}
+                              <button
+                                onClick={() => addTaskBelow(index)}
+                                className="p-1 text-success hover:text-success/80"
+                                title="Add task below"
+                              >
+                                +
+                              </button>
+                              
+                              {/* Remove */}
+                              <button
+                                onClick={() => removeTask(index)}
+                                disabled={tasksToDisplay.length <= 1}
+                                className="p-1 text-error hover:text-error/80 disabled:opacity-30 disabled:cursor-not-allowed"
+                                title="Remove task"
+                              >
+                                ×
+                              </button>
+                            </div>
+                          </td>
+                        )}
                       </tr>
                     );
                   })}

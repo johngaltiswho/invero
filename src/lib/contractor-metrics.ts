@@ -1,10 +1,4 @@
-import { createClient } from '@supabase/supabase-js';
 import { getBOQByProjectId, getScheduleByProjectId } from './supabase-boq';
-
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-);
 
 interface ProjectMetrics {
   projectValue?: number;
@@ -110,6 +104,8 @@ export async function calculateProjectMetrics(projectId: string): Promise<Projec
 
 /**
  * Update project record with calculated metrics
+ * Note: project_value, current_progress, and expected_end_date are computed fields in project_details view
+ * Only update the projects table if we have fields that actually exist in the schema
  */
 export async function updateProjectMetrics(projectId: string): Promise<void> {
   try {
@@ -120,25 +116,19 @@ export async function updateProjectMetrics(projectId: string): Promise<void> {
       return;
     }
 
-    // Update project record with calculated values
-    const { error } = await supabase
-      .from('projects')
-      .update({
-        ...(metrics.projectValue !== undefined && { project_value: metrics.projectValue }),
-        ...(metrics.currentProgress !== undefined && { current_progress: metrics.currentProgress }),
-        ...(metrics.endDate && { expected_end_date: metrics.endDate }),
-        updated_at: new Date().toISOString()
-      })
-      .eq('id', projectId);
-
-    if (error) {
-      console.error('Error updating project metrics:', error);
-      throw error;
-    }
-
-    console.log(`✅ Project metrics updated for ${projectId}:`, metrics);
+    // Log calculated metrics for visibility (these are used by the project_details view)
+    console.log(`✅ Project metrics calculated for ${projectId}:`, metrics);
+    
+    // Note: We don't update the projects table because:
+    // - project_value, current_progress, expected_end_date are computed fields in project_details view
+    // - These values are dynamically calculated from BOQ and Schedule data
+    // - The project_details view provides real-time calculated values
+    
+    // If we need to store any actual project table fields, we can do so here:
+    // For example, if we wanted to update estimated_value or funding_status
+    
   } catch (error) {
-    console.error('Failed to update project metrics:', error);
+    console.error('Failed to calculate project metrics:', error);
     throw error;
   }
 }

@@ -40,6 +40,13 @@ export function ContractorDashboardLayout({ children, activeTab }: ContractorDas
       href: '/dashboard/contractor/materials',
       icon: '🏗️',
       description: 'Materials & requests'
+    },
+    {
+      id: 'network',
+      name: 'Network',
+      href: '/dashboard/contractor/network',
+      icon: '🌐',
+      description: 'Vendors & suppliers'
     }
     // Hidden: Progress Reports, Funding Requests, Documents, Payments
   ];

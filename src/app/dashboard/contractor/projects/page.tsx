@@ -12,13 +12,16 @@ import EditableBOQTable from '@/components/EditableBOQTable';
 import EditableScheduleTable from '@/components/EditableScheduleTable';
 import BOQDisplay from '@/components/BOQDisplay';
 import ScheduleDisplay from '@/components/ScheduleDisplay';
+import SimplePDFViewer from '@/components/SimplePDFViewer';
+import BOQTakeoffViewer from '@/components/BOQTakeoffViewer';
+import { getBOQByProjectId, getScheduleByProjectId } from '@/lib/supabase-boq';
 
 export default function ContractorProjects(): React.ReactElement {
   const { user, isLoaded } = useUser();
   const router = useRouter();
   const { contractor, loading: contractorLoading } = useContractorV2();
   const [selectedProject, setSelectedProject] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<'overview' | 'boq' | 'schedule' | 'materials'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'boq' | 'schedule' | 'materials' | 'requested-materials' | 'files'>('overview');
   const [refreshKey, setRefreshKey] = useState(0);
   const [enhancedProjectData, setEnhancedProjectData] = useState<any>(null);
   const [metricsLoading, setMetricsLoading] = useState(false);
@@ -32,9 +35,117 @@ export default function ContractorProjects(): React.ReactElement {
   const [materialsAnalyzing, setMaterialsAnalyzing] = useState(false);
   const [materialsAnalyzed, setMaterialsAnalyzed] = useState(false);
   const [materialMappings, setMaterialMappings] = useState<any[]>([]);
+  const [projectMaterials, setProjectMaterials] = useState<any[]>([]);
+  const [requestedMaterials, setRequestedMaterials] = useState<any[]>([]);
+  const [materialForm, setMaterialForm] = useState({
+    material: '',
+    materialName: '',
+    quantity: '',
+    unit: 'bags',
+    notes: ''
+  });
+  
+  // Purchase request state
+  const [showPurchaseDialog, setShowPurchaseDialog] = useState(false);
+  const [selectedMaterialForPurchase, setSelectedMaterialForPurchase] = useState<any>(null);
+  const [purchaseForm, setPurchaseForm] = useState({
+    vendorId: '',
+    requestedQuantity: ''
+  });
+  
+  // Vendor state for purchase requests
+  const [vendors, setVendors] = useState<any[]>([]);
+  const [materialSearchOpen, setMaterialSearchOpen] = useState(false);
+  const [materialSearchTerm, setMaterialSearchTerm] = useState('');
+  
+  // File management state
+  const [projectFiles, setProjectFiles] = useState<any[]>([]);
+  const [uploadingFile, setUploadingFile] = useState(false);
+  const [showUploadDialog, setShowUploadDialog] = useState(false);
+  const [uploadForm, setUploadForm] = useState({
+    file: null as File | null,
+    category: '',
+    description: '',
+    version: '1.0'
+  });
+  
+  // PDF Viewer state
+  const [showPDFViewer, setShowPDFViewer] = useState(false);
+  const [currentPDFUrl, setCurrentPDFUrl] = useState('');
+  const [currentPDFName, setCurrentPDFName] = useState('');
+  const [useAnalysisMode, setUseAnalysisMode] = useState(false);
   
   // Get contractor ID from authenticated user
   const currentContractorId = user?.publicMetadata?.contractorId as string || 'CONTRACTOR_001';
+
+  // Update project statuses based on actual BOQ/Schedule data
+  const updateProjectStatuses = async (projects: any[]) => {
+    const updatedProjects = await Promise.all(
+      projects.map(async (project) => {
+        let currentProgress = 0;
+        let status = 'Planning';
+        
+        try {
+          // Check if project has BOQ data
+          const boqData = await getBOQByProjectId(project.id);
+          const hasBOQ = boqData && boqData.length > 0;
+          
+          // Check if project has Schedule data  
+          const scheduleData = await getScheduleByProjectId(project.id);
+          const hasSchedule = scheduleData && scheduleData.length > 0;
+          
+          if (hasSchedule && scheduleData[0]?.schedule_tasks) {
+            // Calculate progress from schedule tasks
+            const tasks = scheduleData[0].schedule_tasks;
+            if (tasks.length > 0) {
+              const totalProgress = tasks.reduce((sum: number, task: any) => sum + (task.progress || 0), 0);
+              currentProgress = Math.round(totalProgress / tasks.length);
+            }
+          } else if (hasBOQ) {
+            // If has BOQ but no schedule, set basic progress
+            currentProgress = 15;
+          }
+          
+          // Determine status based on progress
+          if (currentProgress >= 100) {
+            status = 'Completed';
+          } else if (currentProgress > 0) {
+            status = 'Active';
+          } else {
+            status = 'Planning';
+          }
+          
+        } catch (error) {
+          console.log('Could not fetch project data for:', project.id);
+        }
+        
+        return {
+          ...project,
+          currentProgress,
+          status
+        };
+      })
+    );
+    
+    setContractorProjects(updatedProjects);
+  };
+
+  // Handle URL parameters for direct navigation
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const urlParams = new URLSearchParams(window.location.search);
+      const projectParam = urlParams.get('project');
+      const tabParam = urlParams.get('tab');
+      
+      if (projectParam) {
+        setSelectedProject(projectParam);
+      }
+      
+      if (tabParam && ['overview', 'boq', 'schedule', 'materials', 'requested-materials', 'files'].includes(tabParam)) {
+        setActiveTab(tabParam as 'overview' | 'boq' | 'schedule' | 'materials' | 'requested-materials' | 'files');
+      }
+    }
+  }, []);
 
   // Redirect if not authenticated
   useEffect(() => {
@@ -63,11 +174,14 @@ export default function ContractorProjects(): React.ReactElement {
             projectName: project.project_name,
             clientName: project.client_name,
             projectValue: project.estimated_value,
-            status: 'Planning', // Default status since it's not in DB yet
-            expectedEndDate: new Date(Date.now() + 90 * 24 * 60 * 60 * 1000).toISOString(), // 90 days from now
-            currentProgress: 0 // Default progress
+            status: 'Planning', // Will be updated based on actual progress
+            expectedEndDate: new Date(Date.now() + 90 * 24 * 60 * 60 * 1000).toISOString(),
+            currentProgress: 0 // Will be updated based on actual data
           }));
           setContractorProjects(transformedProjects);
+          
+          // Update project statuses based on actual data
+          updateProjectStatuses(transformedProjects);
         } else {
           console.error('Failed to fetch projects:', result.error);
           setContractorProjects([]);
@@ -135,6 +249,7 @@ export default function ContractorProjects(): React.ReactElement {
       if (!selectedProject) {
         setHasBOQData(false);
         setHasScheduleData(false);
+        setProjectMaterials([]);
         return;
       }
 
@@ -152,6 +267,59 @@ export default function ContractorProjects(): React.ReactElement {
         const scheduleData = await getScheduleByProjectId(selectedProject);
         setHasScheduleData(scheduleData && scheduleData.length > 0);
         
+        // Load project materials with purchase status
+        try {
+          const materialsResponse = await fetch(`/api/project-materials?project_id=${selectedProject}`);
+          if (materialsResponse.ok) {
+            const materialsResult = await materialsResponse.json();
+            if (materialsResult.success) {
+              // Get all main materials to check purchase status
+              const allMaterialsResponse = await fetch('/api/materials');
+              const allMaterialsResult = await allMaterialsResponse.json();
+              const allMaterials = allMaterialsResult.success ? allMaterialsResult.data : [];
+              
+              // Transform API data to match component format and include purchase status
+              const transformedMaterials = materialsResult.data.map((item: any) => {
+                return {
+                  id: item.id,
+                  materialId: item.material_id,
+                  name: item.materials?.name || 'Unknown Material',
+                  category: item.materials?.category || 'Unknown',
+                  quantity: item.quantity,
+                  unit: item.unit,
+                  notes: item.notes || '',
+                  status: item.status,
+                  purchase_status: item.purchase_status || 'none', // Use purchase status from project materials
+                  total_requested_qty: item.total_requested_qty || 0,
+                  remaining_qty: item.remaining_qty || item.quantity,
+                  vendor_id: item.vendor_id,
+                  addedAt: item.created_at,
+                  updatedAt: item.updated_at
+                };
+              });
+              setProjectMaterials(transformedMaterials);
+            }
+          }
+        } catch (error) {
+          console.error('Failed to fetch project materials:', error);
+        }
+
+        // Load requested materials
+        fetchRequestedMaterials();
+
+        // Load project files
+        try {
+          const filesResponse = await fetch(`/api/project-files?project_id=${selectedProject}`);
+          if (filesResponse.ok) {
+            const filesResult = await filesResponse.json();
+            if (filesResult.success) {
+              setProjectFiles(filesResult.data);
+            }
+          }
+        } catch (error) {
+          console.error('Failed to fetch project files:', error);
+        }
+
         // Check for existing material mappings
         try {
           const mappingsResponse = await fetch(`/api/material-mappings?project_id=${selectedProject}`);
@@ -177,6 +345,21 @@ export default function ContractorProjects(): React.ReactElement {
 
     checkDocumentStatus();
   }, [selectedProject, refreshKey]);
+
+  // Close material search dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      const target = event.target as Element;
+      if (!target.closest('.material-search-container')) {
+        setMaterialSearchOpen(false);
+      }
+    };
+
+    if (materialSearchOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+      return () => document.removeEventListener('mousedown', handleClickOutside);
+    }
+  }, [materialSearchOpen]);
 
   // Function to analyze BOQ with AI
   const analyzeBOQForMaterials = async () => {
@@ -213,6 +396,418 @@ export default function ContractorProjects(): React.ReactElement {
       alert('Failed to analyze BOQ. Please try again.');
     } finally {
       setMaterialsAnalyzing(false);
+    }
+  };
+
+  // State for available materials from API
+  const [availableMaterials, setAvailableMaterials] = useState<any[]>([]);
+
+  // Fetch available materials from API
+  useEffect(() => {
+    const fetchMaterials = async () => {
+      try {
+        const response = await fetch('/api/materials');
+        const result = await response.json();
+        
+        if (result.success) {
+          // Transform API materials to match expected format
+          const transformedMaterials = result.data.map((material: any) => ({
+            id: material.id,
+            name: material.name,
+            category: material.category,
+            unit: material.unit
+          }));
+          setAvailableMaterials(transformedMaterials);
+        } else {
+          console.error('Failed to fetch materials:', result.error);
+        }
+      } catch (error) {
+        console.error('Error fetching materials:', error);
+      }
+    };
+
+    fetchMaterials();
+  }, []);
+
+
+  // Filter materials based on search term
+  const filteredMaterials = availableMaterials.filter(material =>
+    material.name.toLowerCase().includes(materialSearchTerm.toLowerCase()) ||
+    material.category.toLowerCase().includes(materialSearchTerm.toLowerCase())
+  );
+
+  // Add material to project
+  const addMaterialToProject = async () => {
+    if (!materialForm.material || !materialForm.quantity || !selectedProject) {
+      alert('Please select a material and enter quantity');
+      return;
+    }
+
+    const selectedMaterial = availableMaterials.find(m => m.id === materialForm.material);
+    if (!selectedMaterial) return;
+
+    try {
+      const response = await fetch('/api/project-materials', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          project_id: selectedProject,
+          material_id: materialForm.material,
+          quantity: parseFloat(materialForm.quantity),
+          unit: materialForm.unit,
+          notes: materialForm.notes
+        })
+      });
+
+      const result = await response.json();
+
+      if (result.success) {
+        // Transform and add to local state
+        const newMaterial = {
+          id: result.data.id,
+          materialId: result.data.material_id,
+          name: result.data.materials?.name || selectedMaterial.name,
+          category: result.data.materials?.category || selectedMaterial.category,
+          quantity: result.data.quantity,
+          unit: result.data.unit,
+          notes: result.data.notes || '',
+          status: result.data.status,
+          addedAt: result.data.created_at,
+          updatedAt: result.data.updated_at
+        };
+
+        setProjectMaterials(prev => [...prev, newMaterial]);
+        
+        // Reset form
+        setMaterialForm({
+          material: '',
+          materialName: '',
+          quantity: '',
+          unit: 'bags',
+          notes: ''
+        });
+        setMaterialSearchTerm('');
+        setMaterialSearchOpen(false);
+        
+        alert('Material added successfully!');
+      } else {
+        alert(result.error || 'Failed to add material');
+      }
+    } catch (error) {
+      console.error('Error adding material:', error);
+      alert('Error adding material to project');
+    }
+  };
+
+  // Fetch vendors for purchase requests
+  useEffect(() => {
+    if (contractor?.id) {
+      fetchVendors();
+    }
+  }, [contractor?.id]);
+
+  const fetchVendors = async () => {
+    try {
+      const response = await fetch(`/api/vendors?contractor_id=${contractor?.id}`);
+      if (response.ok) {
+        const data = await response.json();
+        setVendors(data.vendors || []);
+      }
+    } catch (error) {
+      console.error('Error fetching vendors:', error);
+    }
+  };
+
+  // Fetch purchase orders for the project
+  const fetchRequestedMaterials = async () => {
+    if (!selectedProject) return;
+    
+    try {
+      console.log('🔥 Fetching requested materials for project:', selectedProject);
+      // Fetch project materials with purchase_status = 'requested'
+      const response = await fetch(`/api/project-materials?project_id=${selectedProject}&purchase_status=requested`);
+      console.log('🔥 Requested materials response status:', response.status);
+      
+      if (response.ok) {
+        const result = await response.json();
+        console.log('🔥 Requested materials result:', result);
+        if (result.success) {
+          setRequestedMaterials(result.data || []);
+        } else {
+          console.error('🔥 Requested materials API error:', result.error);
+        }
+      } else {
+        console.error('🔥 Requested materials response not ok:', response.status);
+      }
+    } catch (error) {
+      console.error('Error fetching requested materials:', error);
+      setRequestedMaterials([]);
+    }
+  };
+
+  // Generate PDF for vendor
+  const generatePurchasePDF = async (material: any) => {
+    try {
+      // TODO: Implement PDF generation API
+      alert('PDF generation feature coming soon!');
+    } catch (error) {
+      console.error('Error generating PDF:', error);
+      alert('Error generating PDF');
+    }
+  };
+
+  // Upload Proforma Invoice
+  const uploadPI = async (material: any) => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.pdf,.jpg,.jpeg,.png';
+    input.onchange = async (e) => {
+      const file = (e.target as HTMLInputElement).files?.[0];
+      if (!file) return;
+
+      try {
+        const formData = new FormData();
+        formData.append('file', file);
+        formData.append('material_id', material.id);
+        formData.append('type', 'proforma_invoice');
+
+        // TODO: Implement file upload API for PI
+        alert('PI upload feature coming soon!');
+      } catch (error) {
+        console.error('Error uploading PI:', error);
+        alert('Error uploading proforma invoice');
+      }
+    };
+    input.click();
+  };
+
+  // Submit for admin review
+  const submitForReview = async (material: any) => {
+    try {
+      const response = await fetch('/api/materials/submit-for-review', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          material_id: material.id
+        })
+      });
+
+      const result = await response.json();
+
+      if (result.success) {
+        alert('Material submitted for admin review successfully!');
+        fetchRequestedMaterials(); // Refresh the list
+      } else {
+        alert(result.error || 'Failed to submit for review');
+      }
+    } catch (error) {
+      console.error('Error submitting for review:', error);
+      alert('Error submitting for admin review');
+    }
+  };
+
+  // Handle purchase request
+  const handleRequestPurchase = (material: any) => {
+    setSelectedMaterialForPurchase(material);
+    setPurchaseForm({
+      vendorId: '',
+      requestedQuantity: material.quantity.toString() // Pre-fill with available quantity
+    });
+    setShowPurchaseDialog(true);
+  };
+
+  // Remove material from project
+  const removeMaterialFromProject = async (materialId: string) => {
+    try {
+      const response = await fetch(`/api/project-materials?id=${materialId}`, {
+        method: 'DELETE'
+      });
+
+      const result = await response.json();
+
+      if (result.success) {
+        setProjectMaterials(prev => prev.filter(m => m.id !== materialId));
+        alert('Material removed successfully!');
+      } else {
+        alert(result.error || 'Failed to remove material');
+      }
+    } catch (error) {
+      console.error('Error removing material:', error);
+      alert('Error removing material from project');
+    }
+  };
+
+  // Update material status
+  const updateMaterialStatus = async (materialId: string, newStatus: 'pending' | 'platform_order' | 'external_purchase' | 'delivered' | 'used') => {
+    try {
+      const response = await fetch('/api/project-materials', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: materialId,
+          status: newStatus
+        })
+      });
+
+      const result = await response.json();
+
+      if (result.success) {
+        setProjectMaterials(prev => 
+          prev.map(material => 
+            material.id === materialId 
+              ? { 
+                  ...material, 
+                  status: newStatus, 
+                  updatedAt: result.data.updated_at || new Date().toISOString() 
+                }
+              : material
+          )
+        );
+      } else {
+        alert(result.error || 'Failed to update material status');
+      }
+    } catch (error) {
+      console.error('Error updating material status:', error);
+      alert('Error updating material status');
+    }
+  };
+
+  // Upload file to project
+  const uploadFile = async () => {
+    if (!uploadForm.file || !uploadForm.category || !selectedProject) {
+      alert('Please select a file and category');
+      return;
+    }
+
+    setUploadingFile(true);
+    try {
+      const formData = new FormData();
+      formData.append('file', uploadForm.file);
+      formData.append('project_id', selectedProject);
+      formData.append('category', uploadForm.category);
+      formData.append('description', uploadForm.description);
+      formData.append('version', uploadForm.version);
+
+      const response = await fetch('/api/project-files', {
+        method: 'POST',
+        body: formData
+      });
+
+      const result = await response.json();
+
+      if (result.success) {
+        // Add to local state
+        setProjectFiles(prev => [result.data, ...prev]);
+        
+        // Reset form and close dialog
+        setUploadForm({ file: null, category: '', description: '', version: '1.0' });
+        setShowUploadDialog(false);
+        
+        alert('File uploaded successfully!');
+      } else {
+        alert(result.error || 'Failed to upload file');
+      }
+    } catch (error) {
+      console.error('Error uploading file:', error);
+      alert('Error uploading file');
+    } finally {
+      setUploadingFile(false);
+    }
+  };
+
+  // Delete file from project
+  const deleteFile = async (fileId: string) => {
+    if (!confirm('Are you sure you want to delete this file?')) return;
+
+    try {
+      const response = await fetch(`/api/project-files?id=${fileId}`, {
+        method: 'DELETE'
+      });
+
+      const result = await response.json();
+
+      if (result.success) {
+        setProjectFiles(prev => prev.filter(f => f.id !== fileId));
+        alert('File deleted successfully!');
+      } else {
+        alert(result.error || 'Failed to delete file');
+      }
+    } catch (error) {
+      console.error('Error deleting file:', error);
+      alert('Error deleting file');
+    }
+  };
+
+  // View/Download file
+  const viewFile = async (fileId: string) => {
+    try {
+      const response = await fetch(`/api/project-files/download?id=${fileId}`);
+      const result = await response.json();
+
+      if (result.success) {
+        const { downloadUrl, fileName, mimeType } = result.data;
+        
+        // If it's a PDF, show in our viewer
+        if (mimeType === 'application/pdf') {
+          setCurrentPDFUrl(downloadUrl);
+          setCurrentPDFName(fileName);
+          setUseAnalysisMode(false);
+          setShowPDFViewer(true);
+        } else {
+          // For other file types, download or open in new tab
+          window.open(downloadUrl, '_blank');
+        }
+      } else {
+        alert(result.error || 'Failed to generate download link');
+      }
+    } catch (error) {
+      console.error('Error downloading file:', error);
+      alert('Error downloading file');
+    }
+  };
+
+  // Quantity takeoff for drawing file
+  const takeoffFile = async (fileId: string) => {
+    try {
+      const response = await fetch(`/api/project-files/download?id=${fileId}`);
+      const result = await response.json();
+
+      if (result.success) {
+        const { downloadUrl, fileName, mimeType } = result.data;
+        
+        // Only for PDFs (drawings)
+        if (mimeType === 'application/pdf') {
+          setCurrentPDFUrl(downloadUrl);
+          setCurrentPDFName(fileName);
+          setUseAnalysisMode(true);
+          setShowPDFViewer(true);
+        } else {
+          alert('Quantity takeoff is only available for PDF drawings');
+        }
+      } else {
+        alert(result.error || 'Failed to generate download link');
+      }
+    } catch (error) {
+      console.error('Error opening takeoff:', error);
+      alert('Error opening takeoff');
+    }
+  };
+
+  // Get status display info
+  const getStatusInfo = (status: string) => {
+    switch (status) {
+      case 'pending':
+        return { label: 'Pending', color: 'bg-gray-500/20 text-gray-400', icon: '' };
+      case 'platform_order':
+        return { label: 'Platform Order', color: 'bg-blue-500/20 text-blue-400', icon: '' };
+      case 'external_purchase':
+        return { label: 'External Purchase', color: 'bg-purple-500/20 text-purple-400', icon: '' };
+      case 'delivered':
+        return { label: 'Delivered', color: 'bg-green-500/20 text-green-400', icon: '' };
+      case 'used':
+        return { label: 'Used', color: 'bg-accent-orange/20 text-accent-orange', icon: '' };
+      default:
+        return { label: 'Unknown', color: 'bg-gray-500/20 text-gray-400', icon: '' };
     }
   };
 
@@ -442,6 +1037,26 @@ export default function ContractorProjects(): React.ReactElement {
                     >
                       Materials
                     </button>
+                    <button
+                      onClick={() => setActiveTab('requested-materials')}
+                      className={`px-4 py-2 text-sm font-medium rounded-lg transition-all ${
+                        activeTab === 'requested-materials'
+                          ? 'bg-accent-amber text-neutral-dark'
+                          : 'text-secondary hover:text-primary hover:bg-neutral-medium'
+                      }`}
+                    >
+                      Requested Materials
+                    </button>
+                    <button
+                      onClick={() => setActiveTab('files')}
+                      className={`px-4 py-2 text-sm font-medium rounded-lg transition-all ${
+                        activeTab === 'files'
+                          ? 'bg-accent-amber text-neutral-dark'
+                          : 'text-secondary hover:text-primary hover:bg-neutral-medium'
+                      }`}
+                    >
+                      Files
+                    </button>
                   </div>
 
                   {/* Project Metrics - only show on overview tab */}
@@ -459,27 +1074,18 @@ export default function ContractorProjects(): React.ReactElement {
                           <div className="text-lg font-bold text-primary">
                             {metricsLoading ? '...' : formatCurrency(selectedProjectData.projectValue)}
                           </div>
-                          {selectedProjectData?._dataSource?.value === 'database' && (
-                            <div className="text-xs text-success mt-1">📊 From BOQ</div>
-                          )}
                         </div>
                         <div>
                           <div className="text-xs text-secondary mb-1">Current Progress</div>
                           <div className="text-lg font-bold text-accent-amber">
                             {metricsLoading ? '...' : `${selectedProjectProgress}%`}
                           </div>
-                          {selectedProjectData?._dataSource?.progress === 'database' && (
-                            <div className="text-xs text-success mt-1">📈 From Schedule</div>
-                          )}
                         </div>
                         <div>
                           <div className="text-xs text-secondary mb-1">End Date</div>
                           <div className="text-lg font-bold text-primary">
                             {metricsLoading ? '...' : formatDate(selectedProjectData.expectedEndDate)}
                           </div>
-                          {selectedProjectData?._dataSource?.endDate === 'database' && (
-                            <div className="text-xs text-success mt-1">📅 From Schedule</div>
-                          )}
                         </div>
                         <div>
                           <div className="text-xs text-secondary mb-1">Status</div>
@@ -544,7 +1150,6 @@ export default function ContractorProjects(): React.ReactElement {
                           <div className="bg-neutral-darker p-4 rounded-lg border border-neutral-medium">
                             <div className="flex items-center justify-between mb-2">
                               <div className="flex items-center space-x-2">
-                                <span className="text-lg">📅</span>
                                 <h4 className="font-semibold text-primary">Project Schedule</h4>
                               </div>
                               <div className="flex items-center space-x-2">
@@ -592,9 +1197,9 @@ export default function ContractorProjects(): React.ReactElement {
                             </p>
                             <button
                               onClick={() => setActiveTab('materials')}
-                              className="text-xs font-medium text-accent-amber hover:text-accent-amber/80 flex items-center space-x-1"
+                              className="text-xs font-medium text-secondary hover:text-primary flex items-center space-x-1"
                             >
-                              <span>🤖 Analyze Materials</span>
+                              <span>📋 View Materials</span>
                               <span>→</span>
                             </button>
                           </div>
@@ -713,7 +1318,6 @@ export default function ContractorProjects(): React.ReactElement {
                         <div className="bg-neutral-dark rounded-lg border border-neutral-medium p-6">
                           <div className="flex items-center justify-between">
                             <div className="flex items-center space-x-3">
-                              <div className="text-2xl">📅</div>
                               <div>
                                 <h3 className="text-lg font-semibold text-primary">Project Schedule</h3>
                                 <p className="text-sm text-secondary">Create timeline with tasks and milestones</p>
@@ -764,141 +1368,646 @@ export default function ContractorProjects(): React.ReactElement {
                       <div className="bg-neutral-dark rounded-lg border border-neutral-medium p-6">
                         <div className="flex items-center justify-between">
                           <div className="flex items-center space-x-3">
-                            <div className="text-2xl">🏗️</div>
                             <div>
                               <h3 className="text-lg font-semibold text-primary">Project Materials</h3>
-                              <p className="text-sm text-secondary">AI-powered material extraction from BOQ and procurement management</p>
+                              <p className="text-sm text-secondary">Add and manage materials required for this project</p>
                             </div>
                           </div>
-                          <button
-                            onClick={analyzeBOQForMaterials}
-                            className="bg-accent-amber text-neutral-dark px-4 py-2 rounded-lg font-medium hover:bg-accent-amber/90 transition-colors text-sm disabled:opacity-50 disabled:cursor-not-allowed"
-                            disabled={!hasBOQData || materialsAnalyzing}
+                          <div className="relative">
+                            <button
+                              className="bg-neutral-medium text-secondary px-4 py-2 rounded-lg font-medium text-sm cursor-not-allowed opacity-60"
+                              disabled={true}
+                              title="AI-powered BOQ analysis coming soon. For now, please request materials manually."
+                            >
+                              Analyze BOQ (Coming Soon)
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Notice about materials from drawings */}
+                      <div className="bg-blue-500/10 border border-blue-500/20 rounded-lg p-4">
+                        <div className="flex items-start space-x-3">
+                          <div className="text-blue-400 mt-0.5">
+                            <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+                              <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
+                            </svg>
+                          </div>
+                          <div>
+                            <h4 className="font-medium text-blue-400 mb-1">Materials from Drawings</h4>
+                            <p className="text-sm text-secondary">
+                              Project materials should be extracted from uploaded drawings using the quantity takeoff tools in the <strong>Files</strong> tab. 
+                              This ensures accurate quantities and specifications for financing requests.
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Add Materials Manually - Hidden for now */}
+                      <div className="bg-neutral-dark rounded-lg border border-neutral-medium p-6" style={{ display: 'none' }}>
+                        <h3 className="text-lg font-bold text-primary mb-4">Add Project Materials</h3>
+                        <p className="text-secondary text-sm mb-6">
+                          Select materials from our catalog and specify quantities needed for this project.
+                        </p>
+                        
+                        <div className="grid md:grid-cols-2 gap-6">
+                          {/* Material Selection with Search */}
+                          <div className="relative material-search-container">
+                            <label className="block text-sm font-medium text-primary mb-2">
+                              Select Material *
+                            </label>
+                            <div className="relative">
+                              <input
+                                type="text"
+                                placeholder={materialForm.materialName || "Search materials..."}
+                                value={materialSearchTerm}
+                                onChange={(e) => setMaterialSearchTerm(e.target.value)}
+                                onFocus={() => setMaterialSearchOpen(true)}
+                                className="w-full px-4 py-3 border border-neutral-medium rounded-lg focus:ring-2 focus:ring-accent-orange focus:border-transparent transition-colors duration-200 bg-neutral-dark text-primary placeholder-text-secondary"
+                              />
+                              <div className="absolute inset-y-0 right-0 flex items-center pr-3">
+                                <svg className="h-5 w-5 text-secondary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                                </svg>
+                              </div>
+                            </div>
+                            
+                            {/* Dropdown Results */}
+                            {materialSearchOpen && (
+                              <div className="absolute z-50 w-full mt-1 bg-neutral-dark border border-neutral-medium rounded-lg shadow-lg max-h-60 overflow-y-auto">
+                                {filteredMaterials.length > 0 ? (
+                                  filteredMaterials.map((material) => (
+                                    <div
+                                      key={material.id}
+                                      onClick={() => {
+                                        setMaterialForm(prev => ({
+                                          ...prev,
+                                          material: material.id,
+                                          materialName: material.name
+                                        }));
+                                        setMaterialSearchTerm(material.name);
+                                        setMaterialSearchOpen(false);
+                                      }}
+                                      className="px-4 py-3 hover:bg-neutral-medium cursor-pointer border-b border-neutral-medium/50 last:border-b-0"
+                                    >
+                                      <div>
+                                        <div className="font-medium text-primary">{material.name}</div>
+                                        <div className="text-xs text-secondary">{material.category}</div>
+                                      </div>
+                                    </div>
+                                  ))
+                                ) : (
+                                  <div className="px-4 py-3 text-secondary text-center">
+                                    No materials found for "{materialSearchTerm}"
+                                  </div>
+                                )}
+                              </div>
+                            )}
+                          </div>
+
+                          {/* Quantity Input */}
+                          <div>
+                            <label className="block text-sm font-medium text-primary mb-2">
+                              Quantity *
+                            </label>
+                            <div className="flex space-x-2">
+                              <input
+                                type="number"
+                                placeholder="Enter quantity"
+                                value={materialForm.quantity}
+                                onChange={(e) => setMaterialForm(prev => ({ ...prev, quantity: e.target.value }))}
+                                className="flex-1 px-4 py-3 border border-neutral-medium rounded-lg focus:ring-2 focus:ring-accent-orange focus:border-transparent transition-colors duration-200 bg-neutral-dark text-primary placeholder-text-secondary"
+                              />
+                              <select 
+                                value={materialForm.unit}
+                                onChange={(e) => setMaterialForm(prev => ({ ...prev, unit: e.target.value }))}
+                                className="px-4 py-3 border border-neutral-medium rounded-lg focus:ring-2 focus:ring-accent-orange focus:border-transparent transition-colors duration-200 bg-neutral-dark text-primary"
+                              >
+                                <option value="bags">Bags</option>
+                                <option value="tons">Tons</option>
+                                <option value="cubic_meters">m³</option>
+                                <option value="square_meters">m²</option>
+                                <option value="pieces">Pieces</option>
+                                <option value="meters">Meters</option>
+                                <option value="kg">Kg</option>
+                              </select>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Additional Details */}
+                        <div className="mt-6">
+                          <label className="block text-sm font-medium text-primary mb-2">
+                            Usage Notes (Optional)
+                          </label>
+                          <textarea
+                            placeholder="Specify where this material will be used in the project..."
+                            rows={3}
+                            value={materialForm.notes}
+                            onChange={(e) => setMaterialForm(prev => ({ ...prev, notes: e.target.value }))}
+                            className="w-full px-4 py-3 border border-neutral-medium rounded-lg focus:ring-2 focus:ring-accent-orange focus:border-transparent transition-colors duration-200 bg-neutral-dark text-primary placeholder-text-secondary resize-vertical"
+                          />
+                        </div>
+
+                        {/* Action Buttons */}
+                        <div className="flex justify-end space-x-4 mt-6">
+                          <button 
+                            onClick={() => {
+                              setMaterialForm({
+                                material: '',
+                                materialName: '',
+                                quantity: '',
+                                unit: 'bags',
+                                notes: ''
+                              });
+                              setMaterialSearchTerm('');
+                              setMaterialSearchOpen(false);
+                            }}
+                            className="px-4 py-2 text-secondary hover:text-primary transition-colors"
                           >
-                            {materialsAnalyzing ? '🔄 Analyzing...' : 
-                             hasBOQData ? '🤖 Analyze BOQ' : 'Upload BOQ First'}
+                            Clear
+                          </button>
+                          <button 
+                            onClick={addMaterialToProject}
+                            className="bg-accent-orange text-white px-6 py-2 rounded-lg hover:bg-accent-orange/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                            disabled={!materialForm.material || !materialForm.quantity}
+                          >
+                            Add Material
                           </button>
                         </div>
                       </div>
 
-                      {/* Material Categories Overview */}
-                      <div className="grid md:grid-cols-3 gap-4">
-                        <div className="bg-neutral-darker p-4 rounded-lg border border-neutral-medium">
-                          <div className="flex items-center space-x-3 mb-3">
-                            <span className="text-2xl">🧱</span>
-                            <div>
-                              <h4 className="font-semibold text-primary">Structural Materials</h4>
-                              <p className="text-xs text-secondary">Cement, Steel, Aggregates</p>
-                            </div>
-                          </div>
-                          <div className="text-xs text-accent-amber">Coming from BOQ analysis</div>
+                      {/* Material Status Overview */}
+                      {projectMaterials.length > 0 && (
+                        <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-6">
+                          {['pending', 'platform_order', 'external_purchase', 'delivered', 'used'].map(status => {
+                            const count = projectMaterials.filter(m => m.status === status).length;
+                            const statusInfo = getStatusInfo(status);
+                            return (
+                              <div key={status} className="bg-neutral-dark rounded-lg border border-neutral-medium p-4 text-center">
+                                <div className="text-2xl mb-2"></div>
+                                <div className="text-2xl font-bold text-primary mb-1">{count}</div>
+                                <div className="text-xs text-secondary">{statusInfo.label}</div>
+                              </div>
+                            );
+                          })}
                         </div>
+                      )}
 
-                        <div className="bg-neutral-darker p-4 rounded-lg border border-neutral-medium">
-                          <div className="flex items-center space-x-3 mb-3">
-                            <span className="text-2xl">🔌</span>
-                            <div>
-                              <h4 className="font-semibold text-primary">MEP Materials</h4>
-                              <p className="text-xs text-secondary">Electrical, Plumbing</p>
-                            </div>
-                          </div>
-                          <div className="text-xs text-accent-amber">Coming from BOQ analysis</div>
-                        </div>
-
-                        <div className="bg-neutral-darker p-4 rounded-lg border border-neutral-medium">
-                          <div className="flex items-center space-x-3 mb-3">
-                            <span className="text-2xl">✨</span>
-                            <div>
-                              <h4 className="font-semibold text-primary">Finishing Materials</h4>
-                              <p className="text-xs text-secondary">Tiles, Paint, Fixtures</p>
-                            </div>
-                          </div>
-                          <div className="text-xs text-accent-amber">Coming from BOQ analysis</div>
-                        </div>
-                      </div>
-
-                      {/* Materials List */}
-                      {materialsAnalyzing ? (
-                        <div className="bg-neutral-dark rounded-lg border border-neutral-medium p-8 text-center">
-                          <div className="text-4xl mb-4">⚙️</div>
-                          <h3 className="text-lg font-bold text-primary mb-2">Analyzing BOQ...</h3>
-                          <p className="text-secondary mb-4">
-                            AI is extracting materials from your BOQ. This may take a moment.
+                      {/* Project Materials List */}
+                      <div className="bg-neutral-dark rounded-lg border border-neutral-medium">
+                        <div className="p-6 border-b border-neutral-medium">
+                          <h3 className="text-lg font-bold text-primary mb-2">Project Materials ({projectMaterials.length})</h3>
+                          <p className="text-secondary text-sm">
+                            Materials added to this project. Change status to track procurement progress.
                           </p>
-                          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-accent-amber mx-auto"></div>
                         </div>
-                      ) : materialsAnalyzed && materialMappings.length > 0 ? (
-                        <div className="bg-neutral-dark rounded-lg border border-neutral-medium">
-                          <div className="p-6 border-b border-neutral-medium">
-                            <h3 className="text-lg font-bold text-primary mb-2">AI-Extracted Materials ({materialMappings.length})</h3>
-                            <p className="text-secondary text-sm">
-                              Materials identified from your BOQ using AI analysis. Review and request financing.
+                        
+                        {projectMaterials.length === 0 ? (
+                          /* Empty State */
+                          <div className="p-8 text-center">
+                            <div className="text-4xl mb-4"></div>
+                            <h4 className="text-lg font-semibold text-primary mb-2">No Materials Added Yet</h4>
+                            <p className="text-secondary mb-4">
+                              Add materials using the form above to start building your project material list.
                             </p>
+                            <div className="text-xs text-secondary bg-neutral-medium p-3 rounded-lg max-w-md mx-auto">
+                              <strong>Note:</strong> Materials added here will be linked to this specific project and can be used for material supply requests.
+                            </div>
                           </div>
+                        ) : (
+                          /* Materials Table */
                           <div className="overflow-x-auto">
                             <table className="w-full">
                               <thead>
                                 <tr className="border-b border-neutral-medium">
-                                  <th className="text-left p-4 text-primary font-semibold">Item</th>
+                                  <th className="text-left p-4 text-primary font-semibold">Material</th>
                                   <th className="text-left p-4 text-primary font-semibold">Quantity</th>
-                                  <th className="text-left p-4 text-primary font-semibold">Unit</th>
                                   <th className="text-left p-4 text-primary font-semibold">Status</th>
-                                  <th className="text-center p-4 text-primary font-semibold">Action</th>
+                                  <th className="text-left p-4 text-primary font-semibold">Notes</th>
+                                  <th className="text-center p-4 text-primary font-semibold">Actions</th>
                                 </tr>
                               </thead>
                               <tbody>
-                                {materialMappings.map((mapping, index) => (
-                                  <tr key={index} className="border-b border-neutral-medium/50 hover:bg-neutral-darker/30">
+                                {projectMaterials.map((material) => (
+                                  <tr key={material.id} className="border-b border-neutral-medium/50 hover:bg-neutral-darker/30">
                                     <td className="p-4">
                                       <div>
-                                        <div className="font-medium text-primary">{mapping.material_name}</div>
-                                        <div className="text-xs text-secondary mt-1">{mapping.boq_item_description}</div>
+                                        <div className="font-medium text-primary">{material.name}</div>
+                                        <div className="text-xs text-secondary">{material.category}</div>
                                       </div>
                                     </td>
-                                    <td className="p-4 text-accent-amber font-medium">
-                                      {mapping.suggested_quantity}
-                                    </td>
-                                    <td className="p-4 text-secondary">
-                                      {mapping.material_unit || 'Unit'}
-                                    </td>
                                     <td className="p-4">
-                                      <span className={`px-2 py-1 rounded text-xs font-medium ${
-                                        mapping.status === 'pending' ? 'bg-yellow-500/20 text-yellow-400' :
-                                        mapping.status === 'approved' ? 'bg-green-500/20 text-green-400' :
-                                        'bg-gray-500/20 text-gray-400'
-                                      }`}>
-                                        {mapping.status}
+                                      <span className="font-medium text-accent-orange">
+                                        {material.quantity} {material.unit}
                                       </span>
                                     </td>
+                                    <td className="p-4">
+                                      <div className="flex items-center space-x-2">
+                                        <span className={`px-2 py-1 rounded text-xs font-medium ${getStatusInfo(material.status).color}`}>
+                                          {getStatusInfo(material.status).icon} {getStatusInfo(material.status).label}
+                                        </span>
+                                        <select
+                                          value={material.status}
+                                          onChange={(e) => updateMaterialStatus(material.id, e.target.value as any)}
+                                          className="text-xs bg-neutral-medium border border-neutral-medium rounded px-2 py-1 text-primary"
+                                        >
+                                          <option value="pending">Pending</option>
+                                          <option value="platform_order">Platform Order</option>
+                                          <option value="external_purchase">External Purchase</option>
+                                          <option value="delivered">Delivered</option>
+                                          <option value="used">Used</option>
+                                        </select>
+                                      </div>
+                                    </td>
+                                    <td className="p-4 text-secondary text-sm">
+                                      {material.notes || '-'}
+                                    </td>
                                     <td className="p-4 text-center">
-                                      <button className="bg-accent-amber text-neutral-dark px-4 py-2 rounded text-sm font-medium hover:bg-accent-amber/90 transition-colors">
-                                        Request Financing
-                                      </button>
+                                      <div className="flex items-center justify-center space-x-2">
+                                        {/* Purchase Status Button */}
+                                        {material.purchase_status === 'none' || !material.purchase_status ? (
+                                          <button
+                                            onClick={() => handleRequestPurchase(material)}
+                                            className="text-green-600 hover:text-green-700 text-sm font-medium px-3 py-1 rounded hover:bg-green-50 transition-colors border border-green-200"
+                                          >
+                                            Request Purchase
+                                          </button>
+                                        ) : (
+                                          <div className="flex flex-col items-center space-y-1">
+                                            <span className={`text-xs px-2 py-1 rounded font-medium ${
+                                              material.purchase_status === 'requested' ? 'bg-yellow-100 text-yellow-800 border border-yellow-300' :
+                                              material.purchase_status === 'approved' ? 'bg-green-100 text-green-800 border border-green-300' :
+                                              material.purchase_status === 'completed' ? 'bg-emerald-100 text-emerald-800 border border-emerald-300' :
+                                              material.purchase_status === 'cancelled' ? 'bg-red-100 text-red-800 border border-red-300' :
+                                              'bg-gray-100 text-gray-800 border border-gray-300'
+                                            }`}>
+                                              {material.purchase_status.replace('_', ' ').toUpperCase()}
+                                            </span>
+                                            {material.purchase_status === 'requested' && (
+                                              <span className="text-xs text-secondary">
+                                                Qty: {material.total_requested_qty}/{material.quantity} • Check Requested tab
+                                              </span>
+                                            )}
+                                          </div>
+                                        )}
+                                        <button
+                                          onClick={() => removeMaterialFromProject(material.id)}
+                                          className="text-red-400 hover:text-red-300 text-sm font-medium px-3 py-1 rounded hover:bg-red-400/10 transition-colors"
+                                        >
+                                          Remove
+                                        </button>
+                                      </div>
                                     </td>
                                   </tr>
                                 ))}
                               </tbody>
                             </table>
                           </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Requested Materials Tab Content */}
+                  {activeTab === 'requested-materials' && (
+                    <div className="space-y-6">
+                      {/* Header */}
+                      <div className="bg-neutral-dark rounded-lg border border-neutral-medium p-6">
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <h3 className="text-lg font-semibold text-primary">Requested Materials</h3>
+                            <p className="text-sm text-secondary">Materials requested for purchase from vendors</p>
+                          </div>
+                          <div className="text-sm text-secondary">
+                            {requestedMaterials.length} request{requestedMaterials.length !== 1 ? 's' : ''}
+                          </div>
                         </div>
-                      ) : (
-                        <div className="bg-neutral-dark rounded-lg border border-neutral-medium p-8 text-center">
-                          <div className="text-4xl mb-4">🤖</div>
-                          <h3 className="text-lg font-bold text-primary mb-2">AI Material Analysis</h3>
-                          <p className="text-secondary mb-4">
-                            {hasBOQData 
-                              ? 'Click "Analyze BOQ" above to extract materials using AI and start procurement planning.'
-                              : 'Upload your BOQ first, then we\'ll use AI to extract all required materials automatically.'
-                            }
+                      </div>
+
+                      {/* Requested Materials List */}
+                      <div className="bg-neutral-dark rounded-lg border border-neutral-medium">
+                        <div className="p-6 border-b border-neutral-medium">
+                          <h3 className="text-lg font-bold text-primary mb-2">Purchase Requests ({requestedMaterials.length})</h3>
+                          <p className="text-secondary text-sm">
+                            Track the status of your material purchase requests and upload vendor quotes.
                           </p>
-                          {!hasBOQData && (
+                        </div>
+                        
+                        {requestedMaterials.length === 0 ? (
+                          /* Empty State */
+                          <div className="p-8 text-center">
+                            <div className="text-4xl mb-4">📦</div>
+                            <h4 className="text-lg font-semibold text-primary mb-2">No Materials Requested Yet</h4>
+                            <p className="text-secondary mb-4">
+                              Request materials for purchase from the Materials tab to see them here.
+                            </p>
                             <button
-                              onClick={() => setActiveTab('boq')}
-                              className="text-accent-amber hover:text-accent-amber/80 font-medium"
+                              onClick={() => setActiveTab('materials')}
+                              className="bg-accent-amber text-neutral-dark px-6 py-2 rounded-lg font-medium hover:bg-accent-amber/90 transition-colors"
                             >
-                              Go to BOQ Tab →
+                              Go to Materials
                             </button>
-                          )}
+                          </div>
+                        ) : (
+                          /* Requested Materials */
+                          <div className="space-y-6">
+                            {requestedMaterials.map((material) => (
+                              <div key={material.id} className="bg-neutral-darker rounded-lg border border-neutral-medium overflow-hidden">
+                                {/* Material Header */}
+                                <div className="bg-neutral-medium p-4 border-b border-neutral-medium">
+                                  <div className="flex items-center justify-between">
+                                    <div className="flex items-center space-x-4">
+                                      <div>
+                                        <h3 className="text-lg font-semibold text-primary">
+                                          📦 {material.materials?.name || 'Unknown Material'}
+                                        </h3>
+                                        <p className="text-sm text-secondary">
+                                          Requested: {material.total_requested_qty || 0} {material.materials?.unit} • Vendor: {material.vendor_id ? 'Selected' : 'Not Selected'}
+                                        </p>
+                                      </div>
+                                    </div>
+                                    <div className="text-right">
+                                      <span className={`px-3 py-1 rounded-full text-sm font-medium ${
+                                        material.purchase_status === 'requested' ? 'bg-yellow-100 text-yellow-800' :
+                                        material.purchase_status === 'approved' ? 'bg-green-100 text-green-800' :
+                                        material.purchase_status === 'completed' ? 'bg-emerald-100 text-emerald-800' :
+                                        material.purchase_status === 'cancelled' ? 'bg-red-100 text-red-800' :
+                                        'bg-gray-100 text-gray-800'
+                                      }`}>
+                                        {(material.purchase_status || 'none').replace('_', ' ').toUpperCase()}
+                                      </span>
+                                    </div>
+                                  </div>
+                                </div>
+
+                                {/* Material Details */}
+                                <div className="p-4">
+                                  <div className="grid grid-cols-2 gap-4 text-sm mb-4">
+                                    <div>
+                                      <span className="text-secondary">Category:</span>
+                                      <span className="text-primary ml-2">{material.materials?.category || 'Unknown'}</span>
+                                    </div>
+                                    <div>
+                                      <span className="text-secondary">Unit:</span>
+                                      <span className="text-primary ml-2">{material.materials?.unit || 'Unknown'}</span>
+                                    </div>
+                                    <div>
+                                      <span className="text-secondary">Total Quantity:</span>
+                                      <span className="text-primary ml-2">{material.quantity}</span>
+                                    </div>
+                                    <div>
+                                      <span className="text-secondary">Requested Quantity:</span>
+                                      <span className="text-accent-orange font-medium ml-2">{material.total_requested_qty || 0}</span>
+                                    </div>
+                                    {material.delivery_date && (
+                                      <div>
+                                        <span className="text-secondary">Delivery Date:</span>
+                                        <span className="text-primary ml-2">
+                                          {new Date(material.delivery_date).toLocaleDateString()}
+                                        </span>
+                                      </div>
+                                    )}
+                                    {material.contractor_notes && (
+                                      <div className="col-span-2">
+                                        <span className="text-secondary">Notes:</span>
+                                        <span className="text-primary ml-2">{material.contractor_notes}</span>
+                                      </div>
+                                    )}
+                                  </div>
+
+                                  {/* Material Actions */}
+                                  <div className="flex items-center justify-end space-x-3 pt-3 border-t border-neutral-medium">
+                                    <button
+                                      onClick={() => {
+                                        // TODO: Create purchase order functionality
+                                        alert('Purchase order creation will be implemented next');
+                                      }}
+                                      className="bg-accent-amber text-neutral-dark px-4 py-2 rounded-lg font-medium hover:bg-accent-amber/90 transition-colors"
+                                    >
+                                      Create Purchase Order
+                                    </button>
+                                  </div>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Files Tab Content */}
+                  {activeTab === 'files' && (
+                    <div className="space-y-6">
+                      {/* Files Header */}
+                      <div className="bg-neutral-dark rounded-lg border border-neutral-medium p-6">
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <h3 className="text-lg font-semibold text-primary">Project Files</h3>
+                            <p className="text-sm text-secondary">Upload and manage project documents, drawings, BOQs, and POs</p>
+                          </div>
+                          <Button
+                            variant="primary"
+                            onClick={() => setShowUploadDialog(true)}
+                          >
+                            + Upload File
+                          </Button>
+                        </div>
+                      </div>
+
+                      {/* File Categories */}
+                      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                        {[
+                          { category: 'drawings', label: 'Drawings', color: 'bg-blue-500/20 text-blue-400' },
+                          { category: 'boq', label: 'BOQ', color: 'bg-green-500/20 text-green-400' },
+                          { category: 'po', label: 'Purchase Orders', color: 'bg-purple-500/20 text-purple-400' },
+                          { category: 'other', label: 'Other Documents', color: 'bg-gray-500/20 text-gray-400' }
+                        ].map(({ category, label, color }) => {
+                          const count = projectFiles.filter(f => f.category === category).length;
+                          return (
+                            <div key={category} className="bg-neutral-dark rounded-lg border border-neutral-medium p-4 text-center">
+                              <div className="text-2xl font-bold text-primary mb-1">{count}</div>
+                              <div className={`text-xs px-2 py-1 rounded ${color}`}>{label}</div>
+                            </div>
+                          );
+                        })}
+                      </div>
+
+                      {/* Files List */}
+                      <div className="bg-neutral-dark rounded-lg border border-neutral-medium">
+                        <div className="p-6 border-b border-neutral-medium">
+                          <h3 className="text-lg font-bold text-primary mb-2">All Files ({projectFiles.length})</h3>
+                          <p className="text-secondary text-sm">
+                            Manage all project-related documents and files
+                          </p>
+                        </div>
+                        
+                        {projectFiles.length === 0 ? (
+                          /* Empty State */
+                          <div className="p-8 text-center">
+                            <div className="text-4xl mb-4"></div>
+                            <h4 className="text-lg font-semibold text-primary mb-2">No Files Uploaded Yet</h4>
+                            <p className="text-secondary mb-4">
+                              Upload your first project document to get started.
+                            </p>
+                            <Button onClick={() => setShowUploadDialog(true)}>
+                              Upload File
+                            </Button>
+                          </div>
+                        ) : (
+                          /* Files Table */
+                          <div className="overflow-x-auto">
+                            <table className="w-full">
+                              <thead>
+                                <tr className="border-b border-neutral-medium">
+                                  <th className="text-left p-4 text-primary font-semibold">File Name</th>
+                                  <th className="text-left p-4 text-primary font-semibold">Category</th>
+                                  <th className="text-left p-4 text-primary font-semibold">Size</th>
+                                  <th className="text-left p-4 text-primary font-semibold">Version</th>
+                                  <th className="text-left p-4 text-primary font-semibold">Uploaded</th>
+                                  <th className="text-center p-4 text-primary font-semibold">Actions</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {projectFiles.map((file) => (
+                                  <tr key={file.id} className="border-b border-neutral-medium/50 hover:bg-neutral-darker/30">
+                                    <td className="p-4">
+                                      <div>
+                                        <div className="font-medium text-primary">{file.original_name}</div>
+                                        {file.description && (
+                                          <div className="text-xs text-secondary">{file.description}</div>
+                                        )}
+                                      </div>
+                                    </td>
+                                    <td className="p-4">
+                                      <span className={`text-xs px-2 py-1 rounded ${
+                                        file.category === 'drawings' ? 'bg-blue-500/20 text-blue-400' :
+                                        file.category === 'boq' ? 'bg-green-500/20 text-green-400' :
+                                        file.category === 'po' ? 'bg-purple-500/20 text-purple-400' :
+                                        'bg-gray-500/20 text-gray-400'
+                                      }`}>
+                                        {file.category.toUpperCase()}
+                                      </span>
+                                    </td>
+                                    <td className="p-4 text-secondary text-sm">
+                                      {(file.file_size / 1024 / 1024).toFixed(2)} MB
+                                    </td>
+                                    <td className="p-4 text-secondary text-sm">
+                                      v{file.version}
+                                    </td>
+                                    <td className="p-4 text-secondary text-sm">
+                                      {new Date(file.created_at).toLocaleDateString()}
+                                    </td>
+                                    <td className="p-4 text-center">
+                                      <div className="flex items-center justify-center space-x-2">
+                                        <button
+                                          onClick={() => viewFile(file.id)}
+                                          className="text-accent-orange hover:text-accent-orange/80 text-sm font-medium px-3 py-1 rounded hover:bg-accent-orange/10 transition-colors"
+                                        >
+                                          View
+                                        </button>
+                                        {file.mime_type === 'application/pdf' && (
+                                          <button
+                                            onClick={() => takeoffFile(file.id)}
+                                            className="text-accent-amber hover:text-accent-amber/80 text-sm font-medium px-3 py-1 rounded hover:bg-accent-amber/10 transition-colors"
+                                          >
+                                            Takeoff
+                                          </button>
+                                        )}
+                                        <button
+                                          onClick={() => deleteFile(file.id)}
+                                          className="text-red-400 hover:text-red-300 text-sm font-medium px-3 py-1 rounded hover:bg-red-400/10 transition-colors"
+                                        >
+                                          Delete
+                                        </button>
+                                      </div>
+                                    </td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Upload Dialog */}
+                      {showUploadDialog && (
+                        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+                          <div className="bg-neutral-dark rounded-lg p-6 w-full max-w-md border border-neutral-medium">
+                            <h2 className="text-xl font-bold mb-4 text-primary">Upload File</h2>
+                            
+                            <div className="space-y-4">
+                              <div>
+                                <label className="block text-sm font-medium text-primary mb-2">
+                                  Select File *
+                                </label>
+                                <input
+                                  type="file"
+                                  onChange={(e) => setUploadForm(prev => ({ ...prev, file: e.target.files?.[0] || null }))}
+                                  className="w-full px-3 py-2 bg-neutral-dark border border-neutral-medium rounded-md text-primary"
+                                  accept=".pdf,.doc,.docx,.xls,.xlsx,.dwg,.jpg,.jpeg,.png"
+                                />
+                              </div>
+
+                              <div>
+                                <label className="block text-sm font-medium text-primary mb-2">
+                                  Category *
+                                </label>
+                                <select
+                                  value={uploadForm.category}
+                                  onChange={(e) => setUploadForm(prev => ({ ...prev, category: e.target.value }))}
+                                  className="w-full px-3 py-2 bg-neutral-dark border border-neutral-medium rounded-md text-primary"
+                                >
+                                  <option value="">Select category</option>
+                                  <option value="drawings">Drawings</option>
+                                  <option value="boq">BOQ</option>
+                                  <option value="po">Purchase Orders</option>
+                                  <option value="other">Other Documents</option>
+                                </select>
+                              </div>
+
+                              <div>
+                                <label className="block text-sm font-medium text-primary mb-2">
+                                  Description
+                                </label>
+                                <textarea
+                                  value={uploadForm.description}
+                                  onChange={(e) => setUploadForm(prev => ({ ...prev, description: e.target.value }))}
+                                  placeholder="Brief description of the file..."
+                                  className="w-full px-3 py-2 bg-neutral-dark border border-neutral-medium rounded-md h-20 text-primary"
+                                />
+                              </div>
+
+                              <div>
+                                <label className="block text-sm font-medium text-primary mb-2">
+                                  Version
+                                </label>
+                                <input
+                                  type="text"
+                                  value={uploadForm.version}
+                                  onChange={(e) => setUploadForm(prev => ({ ...prev, version: e.target.value }))}
+                                  placeholder="1.0"
+                                  className="w-full px-3 py-2 bg-neutral-dark border border-neutral-medium rounded-md text-primary"
+                                />
+                              </div>
+
+                              <div className="flex justify-end space-x-2 pt-4">
+                                <Button variant="outline" onClick={() => {
+                                  setShowUploadDialog(false);
+                                  setUploadForm({ file: null, category: '', description: '', version: '1.0' });
+                                }}>
+                                  Cancel
+                                </Button>
+                                <Button 
+                                  onClick={uploadFile}
+                                  disabled={!uploadForm.file || !uploadForm.category || uploadingFile}
+                                >
+                                  {uploadingFile ? 'Uploading...' : 'Upload'}
+                                </Button>
+                              </div>
+                            </div>
+                          </div>
                         </div>
                       )}
                     </div>
@@ -907,7 +2016,7 @@ export default function ContractorProjects(): React.ReactElement {
               </div>
             ) : (
               <div className="bg-neutral-dark rounded-lg border border-neutral-medium p-12 text-center">
-                <div className="text-6xl mb-4">📋</div>
+                <div className="text-6xl mb-4"></div>
                 <h3 className="text-xl font-bold text-primary mb-2">Select a Project</h3>
                 <p className="text-secondary">
                   Choose a project from the dropdown above to view detailed information, 
@@ -917,6 +2026,233 @@ export default function ContractorProjects(): React.ReactElement {
             )}
         </div>
       </div>
+
+      {/* PDF Viewer Modal */}
+      {showPDFViewer && (
+        <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
+          <div className="w-full h-full max-w-7xl max-h-[90vh] bg-neutral-dark rounded-lg border border-neutral-medium overflow-hidden">
+            <div className="flex items-center justify-between p-4 border-b border-neutral-medium">
+              <h3 className="text-lg font-semibold text-primary">PDF Viewer</h3>
+              <button
+                onClick={() => setShowPDFViewer(false)}
+                className="text-secondary hover:text-primary text-2xl font-bold px-2"
+              >
+                ×
+              </button>
+            </div>
+            <div className="h-full pb-16 overflow-auto">
+              {useAnalysisMode ? (
+                <BOQTakeoffViewer
+                  fileUrl={currentPDFUrl}
+                  fileName={currentPDFName}
+                  projectId={selectedProject || undefined}
+                  onError={(error) => {
+                    console.error('Quantity takeoff error:', error);
+                    alert('Failed to load drawing for takeoff. The file might be corrupted or not accessible.');
+                    setShowPDFViewer(false);
+                  }}
+                />
+              ) : (
+                <SimplePDFViewer
+                  fileUrl={currentPDFUrl}
+                  fileName={currentPDFName}
+                  onError={(error) => {
+                    console.error('PDF viewer error:', error);
+                    alert('Failed to load PDF. The file might be corrupted or not accessible.');
+                    setShowPDFViewer(false);
+                  }}
+                />
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Purchase Request Modal */}
+      {showPurchaseDialog && selectedMaterialForPurchase && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-neutral-dark rounded-lg border border-neutral-medium w-full max-w-md">
+            {/* Modal Header */}
+            <div className="border-b border-neutral-medium p-6">
+              <h2 className="text-xl font-bold text-primary">Request Purchase</h2>
+              <p className="text-sm text-secondary mt-1">
+                Request purchase for {selectedMaterialForPurchase?.name}
+              </p>
+            </div>
+
+            {/* Modal Content */}
+            <div className="p-6 space-y-4">
+              {/* Material Summary */}
+              <div className="bg-neutral-medium/30 rounded-lg p-4">
+                <div className="flex justify-between items-center">
+                  <div>
+                    <h3 className="font-medium text-primary">{selectedMaterialForPurchase?.name}</h3>
+                    <p className="text-sm text-secondary">Qty: {selectedMaterialForPurchase?.quantity} {selectedMaterialForPurchase?.unit}</p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Vendor Selection */}
+              <div>
+                <label className="block text-sm font-medium text-primary mb-2">
+                  Select Vendor *
+                </label>
+                <select
+                  value={purchaseForm.vendorId}
+                  onChange={(e) => setPurchaseForm(prev => ({ ...prev, vendorId: e.target.value }))}
+                  className="w-full px-3 py-2 bg-neutral-darker border border-neutral-medium rounded-md text-primary focus:ring-2 focus:ring-accent-blue focus:border-accent-blue"
+                >
+                  <option value="">Choose a vendor...</option>
+                  {vendors.map(vendor => (
+                    <option key={vendor.id} value={vendor.id}>
+                      {vendor.name}
+                    </option>
+                  ))}
+                </select>
+                {vendors.length === 0 && (
+                  <p className="text-xs text-secondary mt-1">
+                    No vendors available. 
+                    <button
+                      type="button"
+                      onClick={() => window.open('/dashboard/contractor/network', '_blank')}
+                      className="text-accent-blue hover:underline ml-1"
+                    >
+                      Add vendors
+                    </button>
+                  </p>
+                )}
+              </div>
+
+              {/* Editable Quantity */}
+              <div>
+                <label className="block text-sm font-medium text-primary mb-2">
+                  Request Quantity ({selectedMaterialForPurchase?.unit}) *
+                </label>
+                <input
+                  type="number"
+                  step="0.01"
+                  min="0.01"
+                  max={selectedMaterialForPurchase?.quantity}
+                  value={purchaseForm.requestedQuantity}
+                  onChange={(e) => setPurchaseForm(prev => ({ ...prev, requestedQuantity: e.target.value }))}
+                  className="w-full px-3 py-2 bg-neutral-darker border border-neutral-medium rounded-md text-primary focus:ring-2 focus:ring-accent-blue focus:border-accent-blue"
+                  placeholder="Enter quantity to request"
+                />
+                <div className="flex justify-between text-xs text-secondary mt-1">
+                  <span>Available: {selectedMaterialForPurchase?.quantity} {selectedMaterialForPurchase?.unit}</span>
+                  <span>
+                    {purchaseForm.requestedQuantity && parseFloat(purchaseForm.requestedQuantity) <= selectedMaterialForPurchase?.quantity ? 
+                      '✓ Valid quantity' : 
+                      '⚠️ Exceeds available quantity'
+                    }
+                  </span>
+                </div>
+              </div>
+
+            </div>
+
+            {/* Modal Footer */}
+            <div className="border-t border-neutral-medium p-6">
+              <div className="flex justify-end space-x-3">
+                <button
+                  onClick={() => setShowPurchaseDialog(false)}
+                  className="px-4 py-2 text-primary border border-neutral-medium rounded-md hover:bg-neutral-medium/20 transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={async () => {
+                    try {
+                      const requestData = {
+                        project_material_id: selectedMaterialForPurchase.id,
+                        vendor_id: purchaseForm.vendorId,
+                        purchase_quantity: parseFloat(purchaseForm.requestedQuantity),
+                        delivery_date: purchaseForm.deliveryDate,
+                        delivery_address: purchaseForm.deliveryAddress,
+                        contractor_notes: purchaseForm.notes,
+                        project_id: selectedProject
+                      };
+                      
+                      console.log('🔥 Submitting to new purchase-orders API:', requestData);
+                      
+                      const response = await fetch('/api/project-materials', {
+                        method: 'PATCH',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                          id: selectedMaterialForPurchase.id,
+                          purchase_status: 'requested',
+                          vendor_id: purchaseForm.vendorId,
+                          requested_quantity: parseFloat(purchaseForm.requestedQuantity)
+                        })
+                      });
+
+                      console.log('🔥 Purchase order response status:', response.status);
+                      const result = await response.json();
+                      console.log('🔥 Purchase order response:', result);
+
+                      if (result.success) {
+                        alert('Material marked for purchase request!');
+                        setShowPurchaseDialog(false);
+                        // Refresh requested materials tab to show the new request
+                        fetchRequestedMaterials();
+                        
+                        // Also refresh project materials to update button status
+                        if (selectedProject) {
+                          const materialsResponse = await fetch(`/api/project-materials?project_id=${selectedProject}`);
+                          if (materialsResponse.ok) {
+                            const materialsResult = await materialsResponse.json();
+                            if (materialsResult.success) {
+                              // Transform and update project materials with purchase status
+                              const allMaterialsResponse = await fetch('/api/materials');
+                              const allMaterialsResult = await allMaterialsResponse.json();
+                              const allMaterials = allMaterialsResult.success ? allMaterialsResult.data : [];
+                              
+                              // Transform API data to match component format and include purchase status
+                              const transformedMaterials = materialsResult.data.map((item: any) => {
+                                return {
+                                  id: item.id,
+                                  materialId: item.material_id,
+                                  name: item.materials?.name || 'Unknown Material',
+                                  category: item.materials?.category || 'Unknown',
+                                  quantity: item.quantity,
+                                  unit: item.unit,
+                                  notes: item.notes || '',
+                                  status: item.status,
+                                  purchase_status: item.purchase_status || 'none', // Use purchase status from project materials
+                                  total_requested_qty: item.total_requested_qty || 0,
+                                  remaining_qty: item.remaining_qty || item.quantity,
+                                  vendor_id: item.vendor_id,
+                                  addedAt: item.created_at,
+                                  updatedAt: item.updated_at
+                                };
+                              });
+                              setProjectMaterials(transformedMaterials);
+                            }
+                          }
+                        }
+                      } else {
+                        alert(result.error || 'Failed to submit purchase request');
+                      }
+                    } catch (error) {
+                      console.error('Error submitting purchase request:', error);
+                      alert('Error submitting purchase request');
+                    }
+                  }}
+                  disabled={
+                    !purchaseForm.vendorId || 
+                    !purchaseForm.requestedQuantity ||
+                    parseFloat(purchaseForm.requestedQuantity) <= 0 ||
+                    parseFloat(purchaseForm.requestedQuantity) > selectedMaterialForPurchase?.quantity
+                  }
+                  className="px-4 py-2 bg-accent-blue text-white rounded-md hover:bg-accent-blue/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  Submit Request
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </ContractorDashboardLayout>
   );
 }

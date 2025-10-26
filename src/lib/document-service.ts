@@ -134,10 +134,10 @@ export class DocumentService {
 
   // Validate file before upload
   static validateFile(file: File, documentType: DocumentType): { valid: boolean; error?: string } {
-    // Check file size (max 5MB)
-    const maxSize = 5 * 1024 * 1024 // 5MB
+    // Check file size (max 20MB)
+    const maxSize = 20 * 1024 * 1024 // 20MB
     if (file.size > maxSize) {
-      return { valid: false, error: 'File size must be less than 5MB' }
+      return { valid: false, error: 'File size must be less than 20MB' }
     }
 
     // Check file type

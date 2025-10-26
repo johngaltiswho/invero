@@ -6,32 +6,46 @@ import { Button, Input } from '@/components';
 
 interface Material {
   id: string;
+  material_code?: string;
   name: string;
   description?: string;
   category: string;
-  unit: string;
-  current_price: number;
-}
-
-interface MaterialRequest {
-  id: string;
-  name: string;
-  description?: string;
-  category: string;
+  subcategory?: string;
+  brand?: string;
+  grade_specification?: string;
   unit: string;
   estimated_price?: number;
-  status: 'pending' | 'under_review' | 'approved' | 'rejected';
-  justification: string;
-  project_context?: string;
-  urgency: 'low' | 'normal' | 'high' | 'urgent';
-  created_at: string;
-  review_notes?: string;
+  approval_status?: 'pending' | 'approved' | 'rejected';
+  requested_by?: string;
+  approved_by?: string;
+  approval_date?: string;
   rejection_reason?: string;
+  justification?: string;
+  project_context?: string;
+  urgency?: 'low' | 'normal' | 'high' | 'urgent';
+  purchase_status?: string;
+  vendor_id?: string;
+  purchase_quantity?: number;
+  estimated_rate?: number;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+
+interface Vendor {
+  id: number | string;
+  name: string;
+  contact_person?: string;
+  email?: string;
+  phone?: string;
 }
 
 export default function MaterialsPage() {
   const [materials, setMaterials] = useState<Material[]>([]);
-  const [materialRequests, setMaterialRequests] = useState<MaterialRequest[]>([]);
+  const [materialRequests, setMaterialRequests] = useState<Material[]>([]);
+  const [vendors, setVendors] = useState<Vendor[]>([]);
+  const [projects, setProjects] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('');
@@ -48,11 +62,16 @@ export default function MaterialsPage() {
     description: '',
     category: '',
     unit: '',
-    estimated_price: '',
-    justification: '',
-    project_context: '',
+    project_id: '',
     urgency: 'normal'
   });
+
+
+  // Common units for construction materials
+  const unitOptions = [
+    'bags', 'tons', 'cubic meters', 'square meters', 'meters', 'pieces', 'kilograms', 
+    'liters', 'boxes', 'rolls', 'sheets', 'numbers', 'cubic feet', 'square feet', 'feet'
+  ];
 
   // Fetch materials and requests
   useEffect(() => {
@@ -69,12 +88,51 @@ export default function MaterialsPage() {
           setCategories(uniqueCategories);
         }
 
+        // Fetch vendors for purchase status display
+        try {
+          const vendorsResponse = await fetch('/api/vendors');
+          const vendorsResult = await vendorsResponse.json();
+          
+          if (vendorsResult.success) {
+            setVendors(vendorsResult.data || []);
+          } else {
+            console.warn('Failed to fetch vendors:', vendorsResult.error);
+          }
+        } catch (vendorError) {
+          console.warn('Error fetching vendors:', vendorError);
+        }
+
         // Fetch material requests
-        const requestsResponse = await fetch('/api/material-requests');
-        const requestsResult = await requestsResponse.json();
-        
-        if (requestsResult.success) {
-          setMaterialRequests(requestsResult.data);
+        try {
+          const requestsResponse = await fetch('/api/material-requests');
+          const requestsResult = await requestsResponse.json();
+          
+          if (requestsResult.success) {
+            setMaterialRequests(requestsResult.data || []);
+          } else {
+            console.warn('Failed to fetch material requests:', requestsResult.error);
+            // Continue without requests - show empty state
+          }
+        } catch (requestError) {
+          console.warn('Error fetching material requests:', requestError);
+          // Continue without requests - show empty state
+        }
+
+        // Fetch contractor's projects
+        // Note: The projects API will get contractor_id from auth context
+        try {
+          const projectsResponse = await fetch('/api/projects');
+          const projectsResult = await projectsResponse.json();
+          
+          if (projectsResult.success) {
+            setProjects(projectsResult.data.projects || []);
+          } else {
+            console.warn('Failed to fetch projects:', projectsResult.error);
+            // Continue without projects - it's optional
+          }
+        } catch (projectError) {
+          console.warn('Error fetching projects:', projectError);
+          // Continue without projects - it's optional
         }
       } catch (error) {
         console.error('Error loading data:', error);
@@ -123,24 +181,31 @@ export default function MaterialsPage() {
 
   // Filter and sort requests
   const sortedRequests = materialRequests.sort((a, b) => {
-    const aValue = a[requestSortField as keyof MaterialRequest] || '';
-    const bValue = b[requestSortField as keyof MaterialRequest] || '';
+    const aValue = a[requestSortField as keyof Material] || '';
+    const bValue = b[requestSortField as keyof Material] || '';
     const comparison = aValue < bValue ? -1 : aValue > bValue ? 1 : 0;
     return requestSortDirection === 'asc' ? comparison : -comparison;
   });
 
+
   // Submit material request
   const submitRequest = async () => {
     try {
-      if (!newRequest.name || !newRequest.category || !newRequest.unit || !newRequest.justification) {
+      if (!newRequest.name || !newRequest.category || !newRequest.unit) {
         alert('Please fill in all required fields');
         return;
       }
 
-      const response = await fetch('/api/material-requests', {
+      // Prepare request data with project context
+      const requestData = {
+        ...newRequest,
+        project_context: newRequest.project_id ? projects.find(p => p.id === newRequest.project_id)?.project_name : ''
+      };
+
+      const response = await fetch('/api/materials', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(newRequest)
+        body: JSON.stringify(requestData)
       });
 
       const result = await response.json();
@@ -153,20 +218,26 @@ export default function MaterialsPage() {
           description: '',
           category: '',
           unit: '',
-          estimated_price: '',
-          justification: '',
-          project_context: '',
+          project_id: '',
           urgency: 'normal'
         });
         
         // Refresh requests
-        const requestsResponse = await fetch('/api/material-requests');
-        const requestsResult = await requestsResponse.json();
-        if (requestsResult.success) {
-          setMaterialRequests(requestsResult.data);
+        try {
+          const requestsResponse = await fetch('/api/material-requests');
+          const requestsResult = await requestsResponse.json();
+          if (requestsResult.success) {
+            setMaterialRequests(requestsResult.data || []);
+          }
+        } catch (error) {
+          console.error('Error refreshing requests:', error);
         }
       } else {
-        alert(result.error || 'Failed to submit request');
+        if (result.details && result.details.includes("Could not find the table 'public.material_requests'")) {
+          alert('Material requests feature is still being set up. Please try again later.');
+        } else {
+          alert(result.error || 'Failed to submit request');
+        }
       }
     } catch (error) {
       console.error('Error submitting request:', error);
@@ -178,7 +249,6 @@ export default function MaterialsPage() {
   const getStatusStyle = (status: string) => {
     switch (status) {
       case 'pending': return 'bg-yellow-100 text-yellow-800 border-yellow-300';
-      case 'under_review': return 'bg-blue-100 text-blue-800 border-blue-300';
       case 'approved': return 'bg-green-100 text-green-800 border-green-300';
       case 'rejected': return 'bg-red-100 text-red-800 border-red-300';
       default: return 'bg-gray-100 text-gray-800 border-gray-300';
@@ -199,17 +269,31 @@ export default function MaterialsPage() {
     <ContractorDashboardLayout>
       <div className="p-6">
         {/* Header */}
-        <div className="flex justify-between items-center mb-6">
-          <div>
-            <h1 className="text-2xl font-bold text-primary">Material Master</h1>
-            <p className="text-secondary">Browse materials and request new additions</p>
+        <div className="mb-8">
+          <div className="flex justify-between items-start mb-4">
+            <div className="flex-1">
+              <h1 className="text-3xl font-bold text-primary mb-2">Project Materials</h1>
+              <p className="text-secondary text-lg mb-3">
+                Request and manage materials for your construction projects
+              </p>
+              <div className="bg-accent-orange/10 border border-accent-orange/20 rounded-lg p-4 max-w-2xl">
+                <div className="flex items-center space-x-2 mb-2">
+                  <h3 className="font-semibold text-primary">Coming Soon: AI-Powered BOQ Analysis</h3>
+                </div>
+                <p className="text-sm text-secondary">
+                  We're developing AI technology to automatically extract material lists from your BOQ documents. 
+                  For now, you can manually request materials needed for your projects.
+                </p>
+              </div>
+            </div>
+            <Button
+              variant="primary"
+              onClick={() => setShowRequestDialog(true)}
+              className="ml-6"
+            >
+              + Request New Material
+            </Button>
           </div>
-          <Button
-            variant="primary"
-            onClick={() => setShowRequestDialog(true)}
-          >
-            + Request New Material
-          </Button>
         </div>
 
         {/* Tab Navigation */}
@@ -223,7 +307,7 @@ export default function MaterialsPage() {
                   : 'text-secondary hover:text-primary'
               }`}
             >
-              Browse Materials
+              Material Catalog
             </button>
             <button
               onClick={() => setActiveTab('requests')}
@@ -233,12 +317,22 @@ export default function MaterialsPage() {
                   : 'text-secondary hover:text-primary'
               }`}
             >
-              My Requests
+              My Material Requests
               {materialRequests.length > 0 && (
                 <span className="ml-2 bg-accent-orange text-white text-xs px-2 py-1 rounded-full">
                   {materialRequests.length}
                 </span>
               )}
+            </button>
+            <button
+              onClick={() => setActiveTab('purchase')}
+              className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+                activeTab === 'purchase'
+                  ? 'bg-neutral-dark text-primary shadow-sm'
+                  : 'text-secondary hover:text-primary'
+              }`}
+            >
+              Purchase Status
             </button>
           </div>
         </div>
@@ -336,7 +430,7 @@ export default function MaterialsPage() {
               )}
             </div>
           </div>
-        ) : (
+        ) : activeTab === 'requests' ? (
           /* Material Requests Tab */
           <div className="bg-neutral-dark border border-neutral-medium rounded-lg overflow-hidden">
             <table className="w-full">
@@ -366,11 +460,11 @@ export default function MaterialsPage() {
                   </th>
                   <th 
                     className="px-4 py-3 text-left text-sm font-medium text-primary cursor-pointer hover:bg-neutral-dark transition-colors"
-                    onClick={() => handleSort('status', true)}
+                    onClick={() => handleSort('approval_status', true)}
                   >
                     <div className="flex items-center space-x-1">
                       <span>Status</span>
-                      {requestSortField === 'status' && (
+                      {requestSortField === 'approval_status' && (
                         <span className="text-accent-orange">{requestSortDirection === 'asc' ? '↑' : '↓'}</span>
                       )}
                     </div>
@@ -407,8 +501,8 @@ export default function MaterialsPage() {
                     <td className="px-4 py-3 text-sm font-medium text-primary">{request.name}</td>
                     <td className="px-4 py-3 text-sm text-secondary">{request.category}</td>
                     <td className="px-4 py-3">
-                      <span className={`text-xs px-2 py-1 rounded border ${getStatusStyle(request.status)}`}>
-                        {request.status.replace('_', ' ').toUpperCase()}
+                      <span className={`text-xs px-2 py-1 rounded border ${getStatusStyle(request.approval_status || 'approved')}`}>
+                        {(request.approval_status || 'approved').toUpperCase()}
                       </span>
                     </td>
                     <td className="px-4 py-3">
@@ -428,13 +522,13 @@ export default function MaterialsPage() {
                       {new Date(request.created_at).toLocaleDateString()}
                     </td>
                     <td className="px-4 py-3 text-sm text-secondary max-w-xs">
-                      {request.review_notes && (
-                        <div className="text-accent-amber text-xs mb-1">Admin: {request.review_notes}</div>
+                      {request.approved_by && request.approval_status === 'approved' && (
+                        <div className="text-green-600 text-xs mb-1">Approved by: {request.approved_by}</div>
                       )}
                       {request.rejection_reason && (
                         <div className="text-red-400 text-xs mb-1">Rejected: {request.rejection_reason}</div>
                       )}
-                      <div className="text-secondary text-xs truncate">{request.justification}</div>
+                      <div className="text-secondary text-xs truncate">{request.description || '-'}</div>
                     </td>
                   </tr>
                 ))}
@@ -453,6 +547,75 @@ export default function MaterialsPage() {
               </div>
             )}
           </div>
+        ) : (
+          /* Purchase Status Tab */
+          <div>
+            <div className="mb-4 bg-blue-50 border border-blue-200 rounded-lg p-4">
+              <h3 className="font-semibold text-blue-900 mb-2">Purchase Status Summary</h3>
+              <p className="text-sm text-blue-700">
+                Overview of your material purchase requests across all projects. To create new purchase requests, go to your individual project pages.
+              </p>
+            </div>
+
+            <div className="bg-neutral-dark border border-neutral-medium rounded-lg overflow-hidden">
+              <table className="w-full">
+                <thead className="bg-neutral-medium border-b border-neutral-medium">
+                  <tr>
+                    <th className="px-4 py-3 text-left text-sm font-medium text-primary">Material Name</th>
+                    <th className="px-4 py-3 text-left text-sm font-medium text-primary">Project</th>
+                    <th className="px-4 py-3 text-left text-sm font-medium text-primary">Purchase Status</th>
+                    <th className="px-4 py-3 text-left text-sm font-medium text-primary">Vendor</th>
+                    <th className="px-4 py-3 text-left text-sm font-medium text-primary">Quantity</th>
+                    <th className="px-4 py-3 text-left text-sm font-medium text-primary">Estimated Total</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-neutral-medium">
+                  {materials
+                    .filter(m => m.purchase_status && m.purchase_status !== 'none')
+                    .map((material) => (
+                    <tr key={material.id} className="hover:bg-neutral-medium transition-colors">
+                      <td className="px-4 py-3 text-sm font-medium text-primary">{material.name}</td>
+                      <td className="px-4 py-3 text-sm text-secondary">{material.project_context || '-'}</td>
+                      <td className="px-4 py-3">
+                        <span className={`text-xs px-2 py-1 rounded border ${
+                          material.purchase_status === 'purchase_requested' ? 'bg-yellow-100 text-yellow-800 border-yellow-300' :
+                          material.purchase_status === 'approved_for_purchase' ? 'bg-green-100 text-green-800 border-green-300' :
+                          material.purchase_status === 'rejected' ? 'bg-red-100 text-red-800 border-red-300' :
+                          'bg-gray-100 text-gray-800 border-gray-300'
+                        }`}>
+                          {material.purchase_status?.replace('_', ' ').toUpperCase()}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3 text-sm text-secondary">
+                        {material.vendor_id ? 
+                          vendors.find(v => v.id.toString() === material.vendor_id?.toString())?.name || 'Unknown Vendor' 
+                          : '-'}
+                      </td>
+                      <td className="px-4 py-3 text-sm text-secondary">
+                        {material.purchase_quantity ? `${material.purchase_quantity} ${material.unit}` : '-'}
+                      </td>
+                      <td className="px-4 py-3 text-sm text-secondary">
+                        {material.purchase_quantity && material.estimated_rate ? 
+                          `₹${(material.purchase_quantity * material.estimated_rate).toLocaleString('en-IN')}` : '-'}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+
+              {materials.filter(m => m.purchase_status && m.purchase_status !== 'none').length === 0 && (
+                <div className="p-8 text-center">
+                  <h3 className="text-lg font-medium text-primary mb-2">No purchase requests yet</h3>
+                  <p className="text-secondary mb-4">
+                    Purchase requests are created at the project level. Navigate to your projects to request materials for purchase.
+                  </p>
+                  <Button onClick={() => window.location.href = '/dashboard/contractor/projects'}>
+                    Go to Projects
+                  </Button>
+                </div>
+              )}
+            </div>
+          </div>
         )}
 
         {/* Request Dialog */}
@@ -470,18 +633,23 @@ export default function MaterialsPage() {
                     <Input
                       value={newRequest.name}
                       onChange={(e) => setNewRequest(prev => ({ ...prev, name: e.target.value }))}
-                      placeholder="e.g., High Strength Concrete"
+                      placeholder="e.g., Ordinary Portland Cement 53 Grade"
                     />
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-primary mb-1">
                       Category *
                     </label>
-                    <Input
+                    <select
                       value={newRequest.category}
                       onChange={(e) => setNewRequest(prev => ({ ...prev, category: e.target.value }))}
-                      placeholder="e.g., Concrete, Steel, Electrical"
-                    />
+                      className="w-full px-3 py-2 bg-neutral-dark border border-neutral-medium rounded-md text-primary"
+                    >
+                      <option value="">Select category</option>
+                      {categories.map(category => (
+                        <option key={category} value={category}>{category}</option>
+                      ))}
+                    </select>
                   </div>
                 </div>
 
@@ -497,27 +665,22 @@ export default function MaterialsPage() {
                   />
                 </div>
 
-                <div className="grid grid-cols-3 gap-4">
+
+                <div className="grid grid-cols-2 gap-4">
                   <div>
                     <label className="block text-sm font-medium text-primary mb-1">
                       Unit *
                     </label>
-                    <Input
+                    <select
                       value={newRequest.unit}
                       onChange={(e) => setNewRequest(prev => ({ ...prev, unit: e.target.value }))}
-                      placeholder="kg, meter, nos, etc."
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-primary mb-1">
-                      Estimated Price (₹)
-                    </label>
-                    <Input
-                      type="number"
-                      value={newRequest.estimated_price}
-                      onChange={(e) => setNewRequest(prev => ({ ...prev, estimated_price: e.target.value }))}
-                      placeholder="Price per unit"
-                    />
+                      className="w-full px-3 py-2 bg-neutral-dark border border-neutral-medium rounded-md text-primary"
+                    >
+                      <option value="">Select unit</option>
+                      {unitOptions.map((unit) => (
+                        <option key={unit} value={unit}>{unit}</option>
+                      ))}
+                    </select>
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-primary mb-1">
@@ -536,27 +699,23 @@ export default function MaterialsPage() {
                   </div>
                 </div>
 
-                <div>
-                  <label className="block text-sm font-medium text-primary mb-1">
-                    Justification *
-                  </label>
-                  <textarea
-                    value={newRequest.justification}
-                    onChange={(e) => setNewRequest(prev => ({ ...prev, justification: e.target.value }))}
-                    placeholder="Why do you need this material? How will it be used?"
-                    className="w-full px-3 py-2 bg-neutral-dark border border-neutral-medium rounded-md h-20 text-primary"
-                  />
-                </div>
 
                 <div>
                   <label className="block text-sm font-medium text-primary mb-1">
-                    Project Context
+                    Project
                   </label>
-                  <Input
-                    value={newRequest.project_context}
-                    onChange={(e) => setNewRequest(prev => ({ ...prev, project_context: e.target.value }))}
-                    placeholder="Which project needs this material?"
-                  />
+                  <select
+                    value={newRequest.project_id}
+                    onChange={(e) => setNewRequest(prev => ({ ...prev, project_id: e.target.value }))}
+                    className="w-full px-3 py-2 bg-neutral-dark border border-neutral-medium rounded-md text-primary"
+                  >
+                    <option value="">Select project (optional)</option>
+                    {projects.map((project) => (
+                      <option key={project.id} value={project.id}>
+                        {project.project_name} - {project.client_name}
+                      </option>
+                    ))}
+                  </select>
                 </div>
 
                 <div className="flex justify-end space-x-2 pt-4">
@@ -571,6 +730,7 @@ export default function MaterialsPage() {
             </div>
           </div>
         )}
+
       </div>
     </ContractorDashboardLayout>
   );

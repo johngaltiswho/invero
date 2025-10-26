@@ -25,19 +25,20 @@ export async function GET(request: NextRequest) {
     );
 
     let query = supabase
-      .from('material_requests_detailed')
+      .from('materials')
       .select(`
         *,
-        material_request_activities (
-          id, activity_type, actor_name, message, created_at
+        contractors!materials_requested_by_fkey (
+          company_name, contact_person, email
         )
       `)
+      .eq('approval_status', 'pending')
       .order('created_at', { ascending: false })
       .limit(limit);
 
     // Apply filters
     if (status) {
-      query = query.eq('status', status);
+      query = query.eq('approval_status', status);
     }
     if (category) {
       query = query.eq('category', category);
@@ -58,13 +59,14 @@ export async function GET(request: NextRequest) {
 
     // Get summary statistics
     const { data: stats } = await supabase
-      .from('material_requests')
-      .select('status')
+      .from('materials')
+      .select('approval_status')
+      .not('requested_by', 'is', null)
       .then(({ data }) => {
         if (!data) return { data: null };
         
         const summary = data.reduce((acc: any, req) => {
-          acc[req.status] = (acc[req.status] || 0) + 1;
+          acc[req.approval_status] = (acc[req.approval_status] || 0) + 1;
           acc.total = (acc.total || 0) + 1;
           return acc;
         }, {});
@@ -127,7 +129,7 @@ export async function PUT(request: NextRequest) {
 
     // Get the material request
     const { data: materialRequest, error: fetchError } = await supabase
-      .from('material_requests_detailed')
+      .from('materials')
       .select('*')
       .eq('id', id)
       .single();
@@ -136,79 +138,43 @@ export async function PUT(request: NextRequest) {
       return NextResponse.json({ error: 'Material request not found' }, { status: 404 });
     }
 
-    if (materialRequest.status !== 'pending' && materialRequest.status !== 'under_review') {
+    if (materialRequest.approval_status !== 'pending') {
       return NextResponse.json({ 
         error: 'Request has already been processed',
-        details: `Current status: ${materialRequest.status}`
+        details: `Current status: ${materialRequest.approval_status}`
       }, { status: 400 });
     }
 
     let updateData: any = {
-      reviewed_by: user.id,
-      reviewed_at: new Date().toISOString(),
-      review_notes
+      approved_by: user.id,
+      approval_date: new Date().toISOString()
     };
 
     let activityMessage = '';
-    let createdMaterialId = null;
 
     switch (action) {
       case 'approve':
-        updateData.status = 'approved';
-        activityMessage = 'Material request approved';
-        
-        // Create material in master data if requested
-        if (create_material) {
-          const materialData = {
-            name: materialRequest.name,
-            description: materialRequest.description,
-            category: materialRequest.category,
-            subcategory: materialRequest.subcategory,
-            unit: materialRequest.unit,
-            current_price: materialRequest.estimated_price || 0,
-            supplier_info: materialRequest.supplier_name ? {
-              name: materialRequest.supplier_name,
-              contact: materialRequest.supplier_contact
-            } : null,
-            specifications: materialRequest.specifications,
-            is_active: true
-          };
-
-          const { data: newMaterial, error: materialError } = await supabase
-            .from('materials')
-            .insert(materialData)
-            .select()
-            .single();
-
-          if (materialError) {
-            console.error('Failed to create material:', materialError);
-            return NextResponse.json({ 
-              error: 'Failed to create material in master data',
-              details: materialError.message 
-            }, { status: 500 });
-          }
-
-          createdMaterialId = newMaterial.id;
-          updateData.created_material_id = createdMaterialId;
-          activityMessage += ` and added to material master data`;
-        }
+        updateData.approval_status = 'approved';
+        activityMessage = 'Material request approved and added to catalog';
         break;
 
       case 'reject':
-        updateData.status = 'rejected';
+        updateData.approval_status = 'rejected';
         updateData.rejection_reason = rejection_reason;
         activityMessage = `Material request rejected: ${rejection_reason}`;
         break;
 
       case 'request_changes':
-        updateData.status = 'pending'; // Keep as pending but add review notes
+        // Keep as pending, don't change approval_status
         activityMessage = `Changes requested: ${review_notes}`;
+        // Don't update approval_status for this case
+        delete updateData.approval_status;
         break;
     }
 
     // Update the material request
     const { data: updatedRequest, error: updateError } = await supabase
-      .from('material_requests')
+      .from('materials')
       .update(updateData)
       .eq('id', id)
       .select()
@@ -221,30 +187,12 @@ export async function PUT(request: NextRequest) {
       }, { status: 500 });
     }
 
-    // Log activity
-    await supabase
-      .from('material_request_activities')
-      .insert({
-        request_id: id,
-        activity_type: action === 'approve' ? 'approved' : action === 'reject' ? 'rejected' : 'reviewed',
-        actor_id: user.id,
-        actor_name: user.firstName + ' ' + user.lastName || 'Admin',
-        message: activityMessage,
-        metadata: { 
-          action, 
-          review_notes, 
-          rejection_reason, 
-          created_material_id: createdMaterialId 
-        }
-      });
-
     console.log(`✅ Material request ${action}ed: ${materialRequest.name} by admin ${user.id}`);
 
     return NextResponse.json({
       success: true,
       data: updatedRequest,
-      created_material_id: createdMaterialId,
-      message: `Material request ${action}ed successfully${createdMaterialId ? ' and added to material master' : ''}`
+      message: `Material request ${action}ed successfully`
     });
 
   } catch (error) {
@@ -259,59 +207,4 @@ export async function PUT(request: NextRequest) {
   }
 }
 
-// POST - Add admin comment to request
-export async function POST(request: NextRequest) {
-  try {
-    const user = await currentUser();
-    if (!user) {
-      return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
-    }
-
-    const body = await request.json();
-    const { request_id, comment } = body;
-
-    if (!request_id || !comment) {
-      return NextResponse.json({ 
-        error: 'Request ID and comment are required' 
-      }, { status: 400 });
-    }
-
-    const supabase = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.SUPABASE_SERVICE_ROLE_KEY!
-    );
-
-    // Add comment as activity
-    const { error: activityError } = await supabase
-      .from('material_request_activities')
-      .insert({
-        request_id,
-        activity_type: 'comment_added',
-        actor_id: user.id,
-        actor_name: user.firstName + ' ' + user.lastName || 'Admin',
-        message: comment
-      });
-
-    if (activityError) {
-      return NextResponse.json({ 
-        error: 'Failed to add comment',
-        details: activityError.message 
-      }, { status: 500 });
-    }
-
-    return NextResponse.json({
-      success: true,
-      message: 'Comment added successfully'
-    });
-
-  } catch (error) {
-    console.error('Error adding comment:', error);
-    return NextResponse.json(
-      { 
-        error: 'Failed to add comment',
-        details: error instanceof Error ? error.message : 'Unknown error'
-      },
-      { status: 500 }
-    );
-  }
-}
+// POST - Not needed in simplified system

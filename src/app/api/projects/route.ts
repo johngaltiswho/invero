@@ -42,11 +42,11 @@ export async function POST(request: NextRequest) {
     if (poFile && poFile.size > 0) {
       try {
         // Validate file
-        const maxSize = 10 * 1024 * 1024; // 10MB
+        const maxSize = 20 * 1024 * 1024; // 20MB
         if (poFile.size > maxSize) {
           return NextResponse.json({
             success: false,
-            error: 'PO file size must be less than 10MB'
+            error: 'PO file size must be less than 20MB'
           }, { status: 400 });
         }
 
@@ -54,20 +54,37 @@ export async function POST(request: NextRequest) {
           'application/pdf',
           'application/msword',
           'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+          'application/vnd.ms-excel',
+          'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
           'image/jpeg',
           'image/jpg',
-          'image/png'
+          'image/png',
+          'image/gif',
+          'application/dwg',
+          'image/vnd.dwg',
+          'application/acad',
+          'application/x-dwg',
+          'application/x-autocad',
+          'image/x-dwg',
+          'application/octet-stream'
         ];
+
+        const fileExtension = poFile.name.toLowerCase().split('.').pop();
+        const allowedExtensions = ['pdf', 'doc', 'docx', 'xls', 'xlsx', 'jpg', 'jpeg', 'png', 'gif', 'dwg'];
+
+        const isValidType = allowedTypes.includes(poFile.type) || 
+                           (poFile.type === 'application/octet-stream' && allowedExtensions.includes(fileExtension || '')) ||
+                           allowedExtensions.includes(fileExtension || '');
         
-        if (!allowedTypes.includes(poFile.type)) {
+        if (!isValidType) {
+          console.log('PO File rejected - Type:', poFile.type, 'Extension:', fileExtension, 'File:', poFile.name);
           return NextResponse.json({
             success: false,
-            error: 'Invalid file type. Only PDF, DOC, DOCX, JPG, PNG files are allowed'
+            error: `Invalid file type. Received: ${poFile.type}. Allowed: PDF, DOC, DOCX, XLS, XLSX, JPG, PNG, GIF, DWG files`
           }, { status: 400 });
         }
 
         // Upload to Supabase Storage
-        const fileExtension = poFile.name.split('.').pop();
         const fileName = `${projectData.contractor_id}/po_${Date.now()}.${fileExtension}`;
         
         const { data: uploadData, error: uploadError } = await supabaseAdmin.storage
@@ -85,7 +102,7 @@ export async function POST(request: NextRequest) {
           }, { status: 500 });
         }
 
-        // Get file path for private bucket access
+        // Store file path for database record
         poFileUrl = fileName;
       } catch (error) {
         console.error('PO file handling error:', error);
@@ -111,8 +128,29 @@ export async function POST(request: NextRequest) {
       }, { status: 500 });
     }
 
-    // If PO was uploaded, store the reference (you could create a separate documents table)
-    // For now, we'll just return success with the project data
+    // If PO was uploaded, save it to project_files table for Files section integration
+    if (poFileUrl && project) {
+      try {
+        await supabaseAdmin
+          .from('project_files')
+          .insert({
+            project_id: project.id,
+            contractor_id: projectData.contractor_id,
+            file_name: poFileUrl.split('/').pop() || 'po_file',
+            original_name: poFile.name,
+            description: 'Purchase Order uploaded during project creation',
+            category: 'po',
+            version: '1.0',
+            file_path: poFileUrl,
+            file_size: poFile.size,
+            mime_type: poFile.type,
+            uploaded_by: userId
+          });
+      } catch (fileRecordError) {
+        console.warn('Failed to save PO file record to project_files:', fileRecordError);
+        // Don't fail the project creation if file record creation fails
+      }
+    }
 
     // Log activity
     try {
@@ -164,13 +202,24 @@ export async function GET(request: NextRequest) {
     }
 
     const { searchParams } = new URL(request.url);
-    const contractorId = searchParams.get('contractor_id');
+    let contractorId = searchParams.get('contractor_id');
 
+    // If no contractor_id provided, get it from the authenticated user
     if (!contractorId) {
-      return NextResponse.json({
-        success: false,
-        error: 'contractor_id parameter is required'
-      }, { status: 400 });
+      const { data: contractor } = await supabaseAdmin
+        .from('contractors')
+        .select('id')
+        .eq('clerk_user_id', userId)
+        .single();
+
+      if (!contractor) {
+        return NextResponse.json({
+          success: false,
+          error: 'Contractor not found for authenticated user'
+        }, { status: 404 });
+      }
+
+      contractorId = contractor.id;
     }
 
     // Fetch projects for the contractor

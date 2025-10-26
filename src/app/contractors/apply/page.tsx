@@ -154,7 +154,7 @@ export default function ContractorApplyPage(): React.ReactElement {
           <div className="text-sm text-secondary">
             {formData.documents[docType] ? formData.documents[docType]!.name : 'Click to upload or drag and drop'}
           </div>
-          <div className="text-xs text-secondary mt-1">PDF, JPG, PNG up to 5MB</div>
+          <div className="text-xs text-secondary mt-1">PDF, JPG, PNG up to 20MB</div>
         </label>
       </div>
     </div>
@@ -204,7 +204,7 @@ export default function ContractorApplyPage(): React.ReactElement {
             <div className="bg-accent-orange/10 border border-accent-orange/20 p-4 rounded-lg mb-6">
               <h4 className="text-accent-orange font-semibold mb-2">📋 Required KYC Documents</h4>
               <p className="text-sm text-secondary">
-                Upload the following documents for verification. All documents must be clear, readable, and in PDF or image format (max 5MB each).
+                Upload the following documents for verification. All documents must be clear, readable, and in PDF or image format (max 20MB each).
               </p>
             </div>
             

@@ -9,6 +9,8 @@ import { useUser } from '@clerk/nextjs';
 import { useRouter } from 'next/navigation';
 import { useContractorV2 } from '@/contexts/ContractorContextV2';
 import CreateProjectForm from '@/components/CreateProjectForm';
+import MasterSchedule from '@/components/MasterSchedule';
+import ProjectHealthOverview from '@/components/ProjectHealthOverview';
 
 export default function ContractorDashboard(): React.ReactElement {
   const { user, isLoaded } = useUser();
@@ -86,8 +88,8 @@ export default function ContractorDashboard(): React.ReactElement {
           </p>
         </div>
 
-        {/* Key Metrics */}
-        <div className="grid lg:grid-cols-4 md:grid-cols-2 gap-6 mb-8">
+        {/* Top Row: Key Metrics + Quick Actions */}
+        <div className="grid lg:grid-cols-3 gap-6 mb-8">
           <div className="bg-neutral-dark p-6 rounded-lg border border-neutral-medium">
             <div className="flex items-center justify-between mb-4">
               <div className="text-accent-amber text-sm font-mono">ACTIVE PROJECTS</div>
@@ -116,32 +118,7 @@ export default function ContractorDashboard(): React.ReactElement {
             </div>
             <div className="text-xs text-secondary">Contract value</div>
           </div>
-          
-          <div className="bg-neutral-dark p-6 rounded-lg border border-neutral-medium">
-            <div className="flex items-center justify-between mb-4">
-              <div className="text-accent-amber text-sm font-mono">COMPLETION RATE</div>
-              <div className="text-2xl">📈</div>
-            </div>
-            <div className="text-2xl font-bold text-accent-amber mb-1">
-              {projectsLoading ? '-' : '0%'}
-            </div>
-            <div className="text-xs text-secondary">Average progress</div>
-          </div>
-          
-          <div className="bg-neutral-dark p-6 rounded-lg border border-neutral-medium">
-            <div className="flex items-center justify-between mb-4">
-              <div className="text-accent-amber text-sm font-mono">NEXT MILESTONE</div>
-              <div className="text-2xl">🎯</div>
-            </div>
-            <div className="text-2xl font-bold text-primary mb-1">
-              {projectsLoading ? '-' : 'TBD'}
-            </div>
-            <div className="text-xs text-secondary">Upcoming deadline</div>
-          </div>
-        </div>
 
-        {/* Quick Actions */}
-        <div className="grid lg:grid-cols-3 gap-6 mb-8">
           <div className="bg-neutral-dark p-6 rounded-lg border border-neutral-medium">
             <h3 className="text-lg font-semibold text-primary mb-4">Quick Actions</h3>
             <div className="space-y-3">
@@ -178,31 +155,26 @@ export default function ContractorDashboard(): React.ReactElement {
               </Button>
             </div>
           </div>
+        </div>
 
+        {/* Project Health Section */}
+        <div className="mb-8">
           <div className="bg-neutral-dark p-6 rounded-lg border border-neutral-medium">
-            <h3 className="text-lg font-semibold text-primary mb-4">Project Status</h3>
-            <div className="text-center py-8 text-secondary">
-              <div className="text-4xl mb-2">📊</div>
-              <p className="text-sm">Project data will appear here</p>
-            </div>
-          </div>
-
-          <div className="bg-neutral-dark p-6 rounded-lg border border-neutral-medium">
-            <h3 className="text-lg font-semibold text-primary mb-4">Recent Activity</h3>
-            <div className="text-center py-8 text-secondary">
-              <div className="text-4xl mb-2">📋</div>
-              <p className="text-sm">Activity feed will appear here</p>
-            </div>
+            <h3 className="text-lg font-semibold text-primary mb-4">Project Health</h3>
+            <ProjectHealthOverview projects={projects} />
           </div>
         </div>
 
-        {/* Upcoming Milestones */}
-        <div className="bg-neutral-dark p-6 rounded-lg border border-neutral-medium">
-          <h3 className="text-lg font-semibold text-primary mb-4">Upcoming Milestones</h3>
-          <div className="text-center py-8 text-secondary">
-            <div className="text-4xl mb-2">🎯</div>
-            <p className="text-sm">Milestone data will appear here</p>
-          </div>
+        {/* Master Schedule */}
+        <div className="mb-8">
+          <MasterSchedule 
+            contractorProjects={projects.map(p => ({
+              id: p.id,
+              projectName: p.project_name,
+              clientName: p.client_name
+            }))}
+            contractorId={contractor?.id || ''}
+          />
         </div>
 
         {/* Create Project Modal */}

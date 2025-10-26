@@ -25,6 +25,7 @@ export async function GET(request: NextRequest) {
       .from('materials')
       .select('*')
       .eq('is_active', true)
+      .or('approval_status.eq.approved,approval_status.is.null')
       .order('category')
       .order('name')
       .limit(limit);
@@ -77,7 +78,7 @@ export async function GET(request: NextRequest) {
   }
 }
 
-// GET material categories for filter dropdown
+// POST - Create new material request
 export async function POST(request: NextRequest) {
   try {
     const user = await currentUser();
@@ -85,38 +86,94 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
     }
 
+    const body = await request.json();
+    const {
+      name,
+      description,
+      category,
+      unit,
+      project_context,
+      urgency = 'normal'
+    } = body;
+
+    // Validate required fields
+    if (!name || !category || !unit) {
+      return NextResponse.json({ 
+        error: 'Missing required fields: name, category, unit' 
+      }, { status: 400 });
+    }
+
     const supabase = createClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
       process.env.SUPABASE_SERVICE_ROLE_KEY!
     );
 
-    const { data: categories, error } = await supabase
-      .from('materials')
-      .select('category')
-      .eq('is_active', true)
-      .not('category', 'is', null);
+    // Get contractor ID
+    const { data: contractor } = await supabase
+      .from('contractors')
+      .select('id, company_name, contact_person')
+      .eq('clerk_user_id', user.id)
+      .single();
 
-    if (error) {
+    if (!contractor) {
+      return NextResponse.json({ error: 'Contractor not found' }, { status: 404 });
+    }
+
+    // Check for potential duplicates
+    const { data: duplicates } = await supabase
+      .from('materials')
+      .select('id, name, approval_status')
+      .eq('name', name)
+      .eq('category', category)
+      .in('approval_status', ['pending', 'approved']);
+
+    if (duplicates && duplicates.length > 0) {
       return NextResponse.json({ 
-        error: 'Failed to fetch categories',
-        details: error.message 
+        error: 'A similar material already exists',
+        details: `Material "${name}" in category "${category}" already exists with status: ${duplicates[0].approval_status}`,
+        duplicate_id: duplicates[0].id
+      }, { status: 409 });
+    }
+
+    // Create the material request
+    const materialData = {
+      name,
+      description,
+      category,
+      unit,
+      project_context,
+      urgency,
+      approval_status: 'pending',
+      requested_by: contractor.id
+    };
+
+    const { data: newMaterial, error: insertError } = await supabase
+      .from('materials')
+      .insert(materialData)
+      .select()
+      .single();
+
+    if (insertError) {
+      console.error('Failed to create material request:', insertError);
+      return NextResponse.json({ 
+        error: 'Failed to create material request',
+        details: insertError.message 
       }, { status: 500 });
     }
 
-    // Get unique categories
-    const uniqueCategories = [...new Set(categories?.map(item => item.category))];
+    console.log(`✅ New material request created: ${name} by ${contractor.company_name}`);
 
     return NextResponse.json({
       success: true,
-      data: uniqueCategories,
-      count: uniqueCategories.length
+      data: newMaterial,
+      message: 'Material request submitted successfully. It will be reviewed by our admin team.'
     });
 
   } catch (error) {
-    console.error('Error fetching material categories:', error);
+    console.error('Error creating material request:', error);
     return NextResponse.json(
       { 
-        error: 'Failed to fetch material categories',
+        error: 'Failed to create material request',
         details: error instanceof Error ? error.message : 'Unknown error'
       },
       { status: 500 }

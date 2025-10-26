@@ -4,6 +4,7 @@ import React, { useState, useEffect } from 'react';
 import { Button } from '@/components';
 import { DocumentService, type DocumentType } from '@/lib/document-service';
 import type { Contractor } from '@/types/supabase';
+import SimplePDFViewer from './SimplePDFViewer';
 
 interface ContractorWithDocuments extends Contractor {
   uploadProgress: number;
@@ -12,39 +13,152 @@ interface ContractorWithDocuments extends Contractor {
 
 interface MaterialRequest {
   id: string;
-  contractor_id: string;
+  requested_by: string;
   name: string;
   description?: string;
   category: string;
   unit: string;
   estimated_price?: number;
-  supplier_name?: string;
-  justification: string;
+  justification?: string;
   project_context?: string;
-  urgency: 'low' | 'normal' | 'high' | 'urgent';
-  status: 'pending' | 'under_review' | 'approved' | 'rejected';
-  review_notes?: string;
+  urgency?: 'low' | 'normal' | 'high' | 'urgent';
+  approval_status?: 'pending' | 'approved' | 'rejected';
+  approved_by?: string;
+  approval_date?: string;
   rejection_reason?: string;
   created_at: string;
-  company_name?: string;
-  contact_person?: string;
+  contractors?: {
+    company_name: string;
+    contact_person: string;
+    email: string;
+  };
+}
+
+interface BOQSubmission {
+  id: number;
+  project_id: string;
+  contractor_id: string;
+  status: 'pending' | 'under_review' | 'revision_required' | 'approved' | 'rejected';
+  submitted_at: string;
+  reviewed_at?: string;
+  review_comments?: string;
+  total_estimated_value?: number;
+  total_materials_count?: number;
+  contractor?: {
+    company_name: string;
+    contact_person: string;
+    email: string;
+  };
+  project?: {
+    name: string;
+    location: string;
+  };
+}
+
+interface QuantityTakeoff {
+  id: number;
+  boq_submission_id: number;
+  material_category: string;
+  material_specification: string;
+  material_unit: string;
+  drawing_reference?: string;
+  drawing_sheet_number?: string;
+  quantity_from_drawings: number;
+  quantity_verified?: number;
+  variance_percentage?: number;
+  verification_status: 'pending' | 'verified' | 'disputed' | 'corrected';
+  verification_notes?: string;
+  estimated_rate?: number;
+  estimated_amount?: number;
+}
+
+interface BOQTakeoff {
+  id: string;
+  project_id: string;
+  contractor_id: string;
+  file_name: string;
+  file_url?: string;
+  takeoff_data: string; // JSON string
+  total_items: number;
+  verification_status: 'none' | 'pending' | 'verified' | 'disputed' | 'revision_required';
+  admin_notes?: string;
+  verified_by?: string;
+  verified_at?: string;
+  is_funding_eligible: boolean;
+  submitted_for_verification_at?: string;
+  created_at: string;
+  updated_at: string;
+  contractors?: {
+    company_name: string;
+    contact_person: string;
+    email: string;
+  };
+}
+
+interface PurchaseRequest {
+  id: string;
+  project_id: string;
+  contractor_id: string;
+  vendor_id: string;
+  status: 'purchase_requested' | 'admin_review' | 'approved_for_purchase' | 'quote_received' | 'approved_for_funding' | 'purchase_completed' | 'rejected';
+  estimated_total: number;
+  quoted_total?: number;
+  approved_amount?: number;
+  delivery_date?: string;
+  contractor_notes?: string;
+  admin_notes?: string;
+  created_at: string;
+  contractors: {
+    company_name: string;
+    contact_person: string;
+    email: string;
+  };
+  vendors: {
+    name: string;
+    contact_person: string;
+    email: string;
+    phone: string;
+  };
+  purchase_request_items: Array<{
+    id: string;
+    item_name: string;
+    item_description: string;
+    unit: string;
+    quantity: number;
+    estimated_rate?: number;
+    quoted_rate?: number;
+    selected_for_order: boolean;
+  }>;
 }
 
 export default function AdminVerificationDashboard(): React.ReactElement {
-  const [activeTab, setActiveTab] = useState<'contractors' | 'materials'>('contractors');
+  const [activeTab, setActiveTab] = useState<'contractors' | 'materials' | 'takeoffs' | 'purchases'>('contractors');
   const [contractors, setContractors] = useState<ContractorWithDocuments[]>([]);
   const [materialRequests, setMaterialRequests] = useState<MaterialRequest[]>([]);
+  const [takeoffItems, setTakeoffItems] = useState<BOQTakeoff[]>([]);
+  const [takeoffSummary, setTakeoffSummary] = useState({ pending: 0, verified: 0, disputed: 0, revision_required: 0 });
+  const [selectedTakeoff, setSelectedTakeoff] = useState<BOQTakeoff | null>(null);
+  const [currentPDFUrl, setCurrentPDFUrl] = useState('');
+  const [currentPDFName, setCurrentPDFName] = useState('');
+  const [purchaseRequests, setPurchaseRequests] = useState<PurchaseRequest[]>([]);
+  const [purchaseSummary, setPurchaseSummary] = useState({ purchase_requested: 0, admin_review: 0, approved_for_purchase: 0, quote_received: 0, approved_for_funding: 0, purchase_completed: 0, rejected: 0 });
+  const [selectedPurchaseRequest, setSelectedPurchaseRequest] = useState<PurchaseRequest | null>(null);
   const [loading, setLoading] = useState(true);
   const [selectedContractor, setSelectedContractor] = useState<ContractorWithDocuments | null>(null);
   const [selectedMaterialRequest, setSelectedMaterialRequest] = useState<MaterialRequest | null>(null);
   const [verifyingDoc, setVerifyingDoc] = useState<string | null>(null);
   const [reviewingMaterial, setReviewingMaterial] = useState<string | null>(null);
+  const [reviewingTakeoff, setReviewingTakeoff] = useState<string | null>(null);
 
   useEffect(() => {
     if (activeTab === 'contractors') {
       loadContractors();
-    } else {
+    } else if (activeTab === 'materials') {
       loadMaterialRequests();
+    } else if (activeTab === 'takeoffs') {
+      loadTakeoffItems();
+    } else if (activeTab === 'purchases') {
+      loadPurchaseRequests();
     }
   }, [activeTab]);
 
@@ -86,6 +200,157 @@ export default function AdminVerificationDashboard(): React.ReactElement {
     }
   };
 
+  const loadTakeoffItems = async () => {
+    try {
+      setLoading(true);
+      const response = await fetch('/api/admin/takeoff-verification?status=pending');
+      const result = await response.json();
+      
+      if (result.success) {
+        setTakeoffItems(result.data.takeoffs);
+        setTakeoffSummary(result.data.summary);
+      } else {
+        console.error('Failed to load takeoff items:', result.error);
+        alert('Failed to load takeoff items');
+      }
+    } catch (error) {
+      console.error('Error loading takeoff items:', error);
+      alert('Error loading takeoff items');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const loadPurchaseRequests = async () => {
+    try {
+      setLoading(true);
+      const response = await fetch('/api/admin/purchase-requests?status=purchase_requested');
+      const result = await response.json();
+      
+      if (result.success) {
+        setPurchaseRequests(result.data.requests);
+        setPurchaseSummary(result.data.summary);
+      } else {
+        console.error('Failed to load purchase requests:', result.error);
+        alert('Failed to load purchase requests');
+      }
+    } catch (error) {
+      console.error('Error loading purchase requests:', error);
+      alert('Error loading purchase requests');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Load PDF for takeoff - same pattern as files section
+  const loadTakeoffPDF = async (takeoffId: string) => {
+    try {
+      const response = await fetch(`/api/boq-takeoffs/download?id=${takeoffId}`);
+      const result = await response.json();
+      if (result.success) {
+        const { downloadUrl, fileName } = result.data;
+        setCurrentPDFUrl(downloadUrl);
+        setCurrentPDFName(fileName);
+      } else {
+        console.error('Failed to load takeoff PDF:', result.error);
+      }
+    } catch (error) {
+      console.error('Error loading takeoff PDF:', error);
+    }
+  };
+
+  const handlePurchaseRequestAction = async (
+    materialId: string,
+    action: 'approve_for_purchase' | 'reject' | 'approve_for_funding',
+    admin_notes?: string,
+    approved_amount?: number
+  ) => {
+    try {
+      const response = await fetch('/api/admin/purchase-requests', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          material_id: materialId,
+          action,
+          admin_notes,
+          approved_amount
+        })
+      });
+
+      const result = await response.json();
+      if (result.success) {
+        alert(`Purchase request ${action.replace(/_/g, ' ')}d successfully`);
+        
+        // Update the selected purchase request optimistically
+        if (selectedPurchaseRequest?.id === materialId) {
+          setSelectedPurchaseRequest({
+            ...selectedPurchaseRequest,
+            status: action === 'approve_for_purchase' ? 'approved_for_purchase' : 
+                   action === 'approve_for_funding' ? 'approved_for_funding' : 'rejected',
+            admin_notes: admin_notes || selectedPurchaseRequest.admin_notes,
+            approved_amount: approved_amount || selectedPurchaseRequest.approved_amount
+          });
+        }
+        
+        // Reload data
+        await loadPurchaseRequests();
+      } else {
+        alert(result.error || 'Failed to process purchase request');
+      }
+    } catch (error) {
+      console.error('Error processing purchase request:', error);
+      alert('Error processing purchase request');
+    }
+  };
+
+  const handleVerifyTakeoff = async (
+    takeoffId: string,
+    verification_status: 'verified' | 'disputed' | 'revision_required',
+    admin_notes?: string
+  ) => {
+    setReviewingTakeoff(takeoffId);
+    
+    try {
+      const response = await fetch('/api/admin/takeoff-verification', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          takeoff_id: takeoffId,
+          verification_status,
+          admin_notes,
+          verified_by: 'admin' // This should be actual admin user
+        })
+      });
+
+      const result = await response.json();
+
+      if (result.success) {
+        alert(`Takeoff item ${verification_status} successfully`);
+        
+        // Update the selected takeoff optimistically
+        if (selectedTakeoff?.id === takeoffId) {
+          setSelectedTakeoff({
+            ...selectedTakeoff,
+            verification_status,
+            admin_notes,
+            verified_by: 'admin',
+            verified_at: new Date().toISOString()
+          });
+        }
+        
+        // Reload data
+        await loadTakeoffItems();
+      } else {
+        alert(result.error || 'Failed to verify takeoff');
+      }
+    } catch (error) {
+      console.error('Error verifying takeoff:', error);
+      alert('Error verifying takeoff');
+    } finally {
+      setReviewingTakeoff(null);
+    }
+  };
+
   const handleReviewMaterialRequest = async (
     requestId: string,
     action: 'approve' | 'reject',
@@ -117,7 +382,7 @@ export default function AdminVerificationDashboard(): React.ReactElement {
         if (selectedMaterialRequest?.id === requestId) {
           setSelectedMaterialRequest({
             ...selectedMaterialRequest,
-            status: action === 'approve' ? 'approved' : 'rejected',
+            approval_status: action === 'approve' ? 'approved' : 'rejected',
             review_notes: reviewNotes,
             rejection_reason: rejectionReason
           });
@@ -309,9 +574,39 @@ export default function AdminVerificationDashboard(): React.ReactElement {
               }`}
             >
               Material Requests
-              {materialRequests.filter(r => r.status === 'pending').length > 0 && (
+              {materialRequests.filter(r => r.approval_status === 'pending').length > 0 && (
                 <span className="ml-2 bg-accent-orange text-white text-xs px-2 py-1 rounded-full">
-                  {materialRequests.filter(r => r.status === 'pending').length}
+                  {materialRequests.filter(r => r.approval_status === 'pending').length}
+                </span>
+              )}
+            </button>
+            <button
+              onClick={() => setActiveTab('takeoffs')}
+              className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+                activeTab === 'takeoffs'
+                  ? 'bg-neutral-dark text-primary'
+                  : 'text-secondary hover:text-primary'
+              }`}
+            >
+              Quantity Takeoffs
+              {takeoffSummary.pending > 0 && (
+                <span className="ml-2 bg-accent-orange text-white text-xs px-2 py-1 rounded-full">
+                  {takeoffSummary.pending}
+                </span>
+              )}
+            </button>
+            <button
+              onClick={() => setActiveTab('purchases')}
+              className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+                activeTab === 'purchases'
+                  ? 'bg-neutral-dark text-primary'
+                  : 'text-secondary hover:text-primary'
+              }`}
+            >
+              Purchase Requests
+              {purchaseSummary.purchase_requested > 0 && (
+                <span className="ml-2 bg-accent-orange text-white text-xs px-2 py-1 rounded-full">
+                  {purchaseSummary.purchase_requested}
                 </span>
               )}
             </button>
@@ -543,7 +838,7 @@ export default function AdminVerificationDashboard(): React.ReactElement {
           )}
           </div>
         </div>
-      ) : (
+      ) : activeTab === 'materials' ? (
         /* Material Requests Tab */
         <div className="grid lg:grid-cols-3 gap-8">
           {/* Material Requests List */}
@@ -572,16 +867,16 @@ export default function AdminVerificationDashboard(): React.ReactElement {
                       <div className="flex justify-between items-start mb-2">
                         <div>
                           <h3 className="font-semibold text-primary text-sm">{request.name}</h3>
-                          <p className="text-xs text-secondary">{request.company_name}</p>
+                          <p className="text-xs text-secondary">{request.contractors?.company_name}</p>
                         </div>
                         <div className="flex flex-col items-end space-y-1">
                           <span className={`text-xs px-2 py-1 rounded border ${
-                            request.status === 'pending' ? 'text-yellow-600 bg-yellow-100 border-yellow-300' :
-                            request.status === 'approved' ? 'text-green-600 bg-green-100 border-green-300' :
-                            request.status === 'rejected' ? 'text-red-600 bg-red-100 border-red-300' :
+                            (request.approval_status || 'approved') === 'pending' ? 'text-yellow-600 bg-yellow-100 border-yellow-300' :
+                            (request.approval_status || 'approved') === 'approved' ? 'text-green-600 bg-green-100 border-green-300' :
+                            (request.approval_status || 'approved') === 'rejected' ? 'text-red-600 bg-red-100 border-red-300' :
                             'text-gray-600 bg-gray-100 border-gray-300'
                           }`}>
-                            {request.status.toUpperCase()}
+                            {(request.approval_status || 'approved').toUpperCase()}
                           </span>
                           {request.urgency !== 'normal' && (
                             <span className={`text-xs px-1 py-0.5 rounded ${
@@ -615,18 +910,18 @@ export default function AdminVerificationDashboard(): React.ReactElement {
                   <div className="flex justify-between items-start">
                     <div>
                       <h2 className="text-xl font-semibold text-primary">{selectedMaterialRequest.name}</h2>
-                      <p className="text-secondary">{selectedMaterialRequest.company_name} ({selectedMaterialRequest.contact_person})</p>
+                      <p className="text-secondary">{selectedMaterialRequest.contractors?.company_name} ({selectedMaterialRequest.contractors?.contact_person})</p>
                       <p className="text-sm text-secondary mt-1">
                         Requested: {new Date(selectedMaterialRequest.created_at).toLocaleDateString()}
                       </p>
                     </div>
                     <span className={`px-3 py-1 rounded border text-sm ${
-                      selectedMaterialRequest.status === 'pending' ? 'text-yellow-600 bg-yellow-100 border-yellow-300' :
-                      selectedMaterialRequest.status === 'approved' ? 'text-green-600 bg-green-100 border-green-300' :
-                      selectedMaterialRequest.status === 'rejected' ? 'text-red-600 bg-red-100 border-red-300' :
+                      selectedMaterialRequest.approval_status === 'pending' ? 'text-yellow-600 bg-yellow-100 border-yellow-300' :
+                      selectedMaterialRequest.approval_status === 'approved' ? 'text-green-600 bg-green-100 border-green-300' :
+                      selectedMaterialRequest.approval_status === 'rejected' ? 'text-red-600 bg-red-100 border-red-300' :
                       'text-gray-600 bg-gray-100 border-gray-300'
                     }`}>
-                      {selectedMaterialRequest.status.toUpperCase()}
+                      {(selectedMaterialRequest.approval_status || 'pending').toUpperCase()}
                     </span>
                   </div>
                 </div>
@@ -654,8 +949,6 @@ export default function AdminVerificationDashboard(): React.ReactElement {
                         {selectedMaterialRequest.project_context && (
                           <div><strong>Project:</strong> {selectedMaterialRequest.project_context}</div>
                         )}
-                        <div><strong>Justification:</strong></div>
-                        <p className="text-gray-600 bg-gray-50 p-2 rounded">{selectedMaterialRequest.justification}</p>
                       </div>
                     </div>
                   </div>
@@ -668,7 +961,7 @@ export default function AdminVerificationDashboard(): React.ReactElement {
                   )}
 
                   {/* Review Section */}
-                  {selectedMaterialRequest.status === 'pending' && (
+                  {selectedMaterialRequest.approval_status === 'pending' && (
                     <div className="bg-accent-amber/5 border border-accent-amber/20 rounded-lg p-6">
                       <h3 className="text-lg font-semibold text-primary mb-4">Review Material Request</h3>
                       <div className="flex space-x-3">
@@ -719,7 +1012,7 @@ export default function AdminVerificationDashboard(): React.ReactElement {
                     </div>
                   )}
 
-                  {selectedMaterialRequest.status === 'approved' && (
+                  {selectedMaterialRequest.approval_status === 'approved' && (
                     <div className="mt-6 p-4 bg-green-50 border border-green-200 rounded-lg">
                       <div className="flex items-center">
                         <span className="text-2xl mr-3">✅</span>
@@ -741,7 +1034,547 @@ export default function AdminVerificationDashboard(): React.ReactElement {
             )}
           </div>
         </div>
-      )}
+      ) : activeTab === 'takeoffs' ? (
+        /* Quantity Takeoffs Tab */
+        <div className="grid lg:grid-cols-3 gap-8">
+          {/* Takeoff Items List */}
+          <div className="lg:col-span-1">
+            <div className="bg-neutral-dark rounded-lg border border-neutral-medium">
+              <div className="p-4 border-b border-neutral-medium">
+                <h2 className="text-lg font-semibold text-primary">Quantity Takeoffs</h2>
+                <p className="text-sm text-secondary">Contractor takeoffs pending verification</p>
+                
+                {/* Summary Stats */}
+                <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
+                  <div className="bg-yellow-100 text-yellow-800 px-2 py-1 rounded">
+                    Pending: {takeoffSummary.pending}
+                  </div>
+                  <div className="bg-green-100 text-green-800 px-2 py-1 rounded">
+                    Verified: {takeoffSummary.verified}
+                  </div>
+                </div>
+              </div>
+              <div className="divide-y divide-neutral-medium max-h-96 overflow-y-auto">
+                {takeoffItems.length === 0 ? (
+                  <div className="p-6 text-center">
+                    <div className="text-4xl mb-4">📏</div>
+                    <h3 className="text-lg font-semibold text-primary mb-2">No Pending Takeoffs</h3>
+                    <p className="text-secondary text-sm">All quantity takeoffs have been verified.</p>
+                  </div>
+                ) : (
+                  takeoffItems.map((takeoff) => (
+                    <div
+                      key={takeoff.id}
+                      className={`p-4 cursor-pointer hover:bg-neutral-medium/50 transition-colors ${
+                        selectedTakeoff?.id === takeoff.id ? 'bg-neutral-medium/50 border-l-4 border-l-accent-orange' : ''
+                      }`}
+                      onClick={() => {
+                        setSelectedTakeoff(takeoff);
+                        // Load PDF just like files section does
+                        loadTakeoffPDF(takeoff.id);
+                      }}
+                    >
+                      <div className="flex justify-between items-start mb-2">
+                        <div>
+                          <h3 className="font-semibold text-primary text-sm">{takeoff.material_name}</h3>
+                          <p className="text-xs text-secondary">{takeoff.contractors?.company_name}</p>
+                        </div>
+                        <span className={`text-xs px-2 py-1 rounded border ${
+                          takeoff.verification_status === 'pending' ? 'text-yellow-600 bg-yellow-100 border-yellow-300' :
+                          takeoff.verification_status === 'verified' ? 'text-green-600 bg-green-100 border-green-300' :
+                          takeoff.verification_status === 'disputed' ? 'text-red-600 bg-red-100 border-red-300' :
+                          'text-gray-600 bg-gray-100 border-gray-300'
+                        }`}>
+                          {takeoff.verification_status.toUpperCase()}
+                        </span>
+                      </div>
+                      <div className="text-xs text-secondary">
+                        {takeoff.file_name} • {takeoff.total_items} items
+                      </div>
+                      <div className="text-xs text-secondary mt-1">
+                        {new Date(takeoff.created_at).toLocaleDateString()}
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* Takeoff Verification Panel */}
+          <div className="lg:col-span-2">
+            {selectedTakeoff ? (
+              <div className="bg-neutral-dark rounded-lg border border-neutral-medium">
+                <div className="p-6 border-b border-neutral-medium">
+                  <div className="flex justify-between items-start">
+                    <div>
+                      <h2 className="text-xl font-semibold text-primary">BOQ Takeoff - {selectedTakeoff.file_name}</h2>
+                      <p className="text-secondary">{selectedTakeoff.contractors?.company_name}</p>
+                      <p className="text-sm text-secondary mt-1">
+                        Total Items: {selectedTakeoff.total_items}
+                      </p>
+                    </div>
+                    <span className={`px-3 py-1 rounded border text-sm ${
+                      selectedTakeoff.verification_status === 'pending' ? 'text-yellow-600 bg-yellow-100 border-yellow-300' :
+                      selectedTakeoff.verification_status === 'verified' ? 'text-green-600 bg-green-100 border-green-300' :
+                      selectedTakeoff.verification_status === 'disputed' ? 'text-red-600 bg-red-100 border-red-300' :
+                      'text-gray-600 bg-gray-100 border-gray-300'
+                    }`}>
+                      {selectedTakeoff.verification_status.toUpperCase()}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="p-6">
+                  <div className="grid md:grid-cols-2 gap-6 mb-6">
+                    <div>
+                      <h3 className="text-lg font-semibold text-primary mb-3">BOQ Takeoff Details</h3>
+                      <div className="space-y-2 text-sm">
+                        <div><strong>File Name:</strong> {selectedTakeoff.file_name}</div>
+                        <div><strong>Total Items:</strong> {selectedTakeoff.total_items}</div>
+                        <div><strong>Submitted:</strong> {selectedTakeoff.submitted_for_verification_at ? new Date(selectedTakeoff.submitted_for_verification_at).toLocaleDateString() : 'N/A'}</div>
+                        <div><strong>Created:</strong> {new Date(selectedTakeoff.created_at).toLocaleDateString()}</div>
+                        <div><strong>Funding Eligible:</strong> {selectedTakeoff.is_funding_eligible ? 'Yes' : 'No'}</div>
+                      </div>
+                    </div>
+
+                    <div>
+                      <h3 className="text-lg font-semibold text-primary mb-3">Material Summary</h3>
+                      <div className="space-y-2 text-sm">
+                        {(() => {
+                          try {
+                            const takeoffData = JSON.parse(selectedTakeoff.takeoff_data);
+                            const materialSummary = new Map();
+                            
+                            takeoffData.forEach((item: any) => {
+                              if (item.materialName && item.quantity > 0) {
+                                const key = item.materialName;
+                                if (materialSummary.has(key)) {
+                                  const existing = materialSummary.get(key);
+                                  materialSummary.set(key, {
+                                    ...existing,
+                                    totalQuantity: existing.totalQuantity + item.quantity,
+                                    count: existing.count + 1
+                                  });
+                                } else {
+                                  materialSummary.set(key, {
+                                    name: item.materialName,
+                                    unit: item.unit,
+                                    totalQuantity: item.quantity,
+                                    count: 1
+                                  });
+                                }
+                              }
+                            });
+                            
+                            return Array.from(materialSummary.values()).slice(0, 5).map((material: any, index: number) => (
+                              <div key={index}>
+                                <strong>{material.name}:</strong> {material.totalQuantity.toFixed(2)} {material.unit}
+                              </div>
+                            ));
+                          } catch (error) {
+                            return <div>Error parsing takeoff data</div>;
+                          }
+                        })()}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Drawing and Detailed Breakup Section */}
+                  <div className="mb-6">
+                    <div className="grid lg:grid-cols-2 gap-6">
+                      {/* Drawing Viewer */}
+                      <div>
+                        <h3 className="text-lg font-semibold text-primary mb-3">Drawing Reference</h3>
+                        {currentPDFUrl ? (
+                          <div className="bg-neutral-dark rounded-lg border border-neutral-medium">
+                            <SimplePDFViewer
+                              fileUrl={currentPDFUrl}
+                              fileName={currentPDFName}
+                              onError={(error) => {
+                                console.error('Failed to load drawing:', error);
+                              }}
+                            />
+                          </div>
+                        ) : (
+                          <div className="border border-neutral-medium rounded-lg p-8 text-center">
+                            <p className="text-secondary">Drawing file not available</p>
+                            <p className="text-xs text-secondary mt-2">File: {selectedTakeoff.file_name}</p>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Detailed Item Breakup */}
+                      <div>
+                        <h3 className="text-lg font-semibold text-primary mb-3">Detailed Item Breakup</h3>
+                        <div className="border border-neutral-medium rounded-lg max-h-96 overflow-y-auto">
+                          <table className="w-full text-xs">
+                            <thead className="bg-neutral-medium sticky top-0">
+                              <tr>
+                                <th className="px-2 py-2 text-left text-primary border-r border-neutral-light">Material</th>
+                                <th className="px-1 py-2 text-center text-primary border-r border-neutral-light">Nos</th>
+                                <th className="px-1 py-2 text-center text-primary border-r border-neutral-light">L</th>
+                                <th className="px-1 py-2 text-center text-primary border-r border-neutral-light">B</th>
+                                <th className="px-1 py-2 text-center text-primary border-r border-neutral-light">H</th>
+                                <th className="px-1 py-2 text-center text-primary border-r border-neutral-light">Unit</th>
+                                <th className="px-2 py-2 text-center text-primary">Qty</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {(() => {
+                                try {
+                                  const takeoffData = JSON.parse(selectedTakeoff.takeoff_data);
+                                  return takeoffData.map((item: any, index: number) => (
+                                    <tr key={index} className="border-b border-neutral-medium hover:bg-neutral-medium/30">
+                                      <td className="px-2 py-1 border-r border-neutral-medium">
+                                        <div className="font-medium text-primary text-xs">{item.materialName}</div>
+                                        {item.description && (
+                                          <div className="text-xs text-secondary">{item.description}</div>
+                                        )}
+                                      </td>
+                                      <td className="px-1 py-1 border-r border-neutral-medium text-center text-primary text-xs">
+                                        {item.nos || 1}
+                                      </td>
+                                      <td className="px-1 py-1 border-r border-neutral-medium text-center text-primary text-xs">
+                                        {item.length || 0}
+                                      </td>
+                                      <td className="px-1 py-1 border-r border-neutral-medium text-center text-primary text-xs">
+                                        {item.breadth || 0}
+                                      </td>
+                                      <td className="px-1 py-1 border-r border-neutral-medium text-center text-primary text-xs">
+                                        {item.height || 0}
+                                      </td>
+                                      <td className="px-1 py-1 border-r border-neutral-medium text-center text-secondary text-xs">
+                                        {item.unit}
+                                      </td>
+                                      <td className="px-2 py-1 text-center font-medium text-accent-orange text-xs">
+                                        {(Number(item.quantity) || 0).toFixed(2)}
+                                      </td>
+                                    </tr>
+                                  ));
+                                } catch (error) {
+                                  return (
+                                    <tr>
+                                      <td colSpan={7} className="p-4 text-center text-secondary">
+                                        Error parsing takeoff data
+                                      </td>
+                                    </tr>
+                                  );
+                                }
+                              })()}
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Verification Section */}
+                  {selectedTakeoff.verification_status === 'pending' && (
+                    <div className="bg-accent-amber/5 border border-accent-amber/20 rounded-lg p-6">
+                      <h3 className="text-lg font-semibold text-primary mb-4">Verify BOQ Takeoff</h3>
+                      <div className="mb-4">
+                        <label className="block text-sm font-medium text-primary mb-2">
+                          Admin Notes
+                        </label>
+                        <textarea
+                          rows={3}
+                          className="w-full px-3 py-2 border border-neutral-medium rounded-md bg-neutral-darker text-primary placeholder-secondary"
+                          placeholder="Verification notes for this BOQ takeoff..."
+                          id={`notes-${selectedTakeoff.id}`}
+                        ></textarea>
+                      </div>
+                      <div className="flex space-x-3">
+                        <Button
+                          variant="primary"
+                          onClick={() => {
+                            const notesInput = document.getElementById(`notes-${selectedTakeoff.id}`) as HTMLTextAreaElement;
+                            
+                            handleVerifyTakeoff(
+                              selectedTakeoff.id,
+                              'verified',
+                              notesInput.value
+                            );
+                          }}
+                          disabled={reviewingTakeoff === selectedTakeoff.id}
+                        >
+                          {reviewingTakeoff === selectedTakeoff.id ? 'Verifying...' : 'Verify & Approve'}
+                        </Button>
+                        <Button
+                          variant="outline"
+                          onClick={() => {
+                            const reason = prompt('Reason for dispute:');
+                            if (reason) {
+                              handleVerifyTakeoff(selectedTakeoff.id, 'disputed', reason);
+                            }
+                          }}
+                          disabled={reviewingTakeoff === selectedTakeoff.id}
+                        >
+                          Dispute
+                        </Button>
+                        <Button
+                          variant="outline"
+                          onClick={() => {
+                            const reason = prompt('Revision notes:');
+                            if (reason) {
+                              handleVerifyTakeoff(selectedTakeoff.id, 'revision_required', reason);
+                            }
+                          }}
+                          disabled={reviewingTakeoff === selectedTakeoff.id}
+                        >
+                          Request Revision
+                        </Button>
+                      </div>
+                    </div>
+                  )}
+
+                  {selectedTakeoff.admin_notes && (
+                    <div className="mt-6 p-4 bg-neutral-darker border border-neutral-medium rounded-lg">
+                      <h4 className="font-semibold text-primary mb-2">Admin Notes</h4>
+                      <p className="text-sm text-primary">{selectedTakeoff.admin_notes}</p>
+                    </div>
+                  )}
+
+                  {selectedTakeoff.verification_status === 'verified' && (
+                    <div className="mt-6 p-4 bg-green-900/10 border border-green-500/20 rounded-lg">
+                      <div className="flex items-center">
+                        <span className="text-2xl mr-3">✅</span>
+                        <div>
+                          <h4 className="text-lg font-semibold text-green-400 mb-1">Takeoff Verified</h4>
+                          <p className="text-sm text-green-300">
+                            Verified by {selectedTakeoff.verified_by} on {selectedTakeoff.verified_at ? new Date(selectedTakeoff.verified_at).toLocaleDateString() : 'N/A'}
+                          </p>
+                          <p className="text-sm text-green-300 mt-1">
+                            BOQ Takeoff approved with {selectedTakeoff.total_items} items
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            ) : (
+              <div className="bg-neutral-dark rounded-lg border border-neutral-medium p-8 text-center">
+                <div className="text-4xl mb-4">👈</div>
+                <h3 className="text-lg font-semibold text-primary mb-2">Select a Takeoff</h3>
+                <p className="text-secondary">Choose a takeoff from the list to verify</p>
+              </div>
+            )}
+          </div>
+        </div>
+      ) : activeTab === 'purchases' ? (
+        /* Purchase Requests Tab */
+        <div className="grid lg:grid-cols-3 gap-8">
+          {/* Purchase Requests List */}
+          <div className="lg:col-span-1">
+            <div className="bg-neutral-dark rounded-lg border border-neutral-medium">
+              <div className="p-4 border-b border-neutral-medium">
+                <h2 className="text-lg font-semibold text-primary">Purchase Requests</h2>
+                <p className="text-sm text-secondary">Contractor purchase requests pending review</p>
+                
+                {/* Summary Stats */}
+                <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
+                  <div className="bg-yellow-100 text-yellow-800 px-2 py-1 rounded">
+                    Requested: {purchaseSummary.purchase_requested}
+                  </div>
+                  <div className="bg-blue-100 text-blue-800 px-2 py-1 rounded">
+                    Quote Received: {purchaseSummary.quote_received}
+                  </div>
+                </div>
+              </div>
+              <div className="divide-y divide-neutral-medium max-h-96 overflow-y-auto">
+                {purchaseRequests.length === 0 ? (
+                  <div className="p-6 text-center">
+                    <div className="text-4xl mb-4">🛒</div>
+                    <h3 className="text-lg font-semibold text-primary mb-2">No Pending Requests</h3>
+                    <p className="text-secondary text-sm">All purchase requests have been processed.</p>
+                  </div>
+                ) : (
+                  purchaseRequests.map((request) => (
+                    <div
+                      key={request.id}
+                      className={`p-4 cursor-pointer hover:bg-neutral-medium/50 transition-colors ${
+                        selectedPurchaseRequest?.id === request.id ? 'bg-neutral-medium/50 border-l-4 border-l-accent-orange' : ''
+                      }`}
+                      onClick={() => setSelectedPurchaseRequest(request)}
+                    >
+                      <div className="flex justify-between items-start mb-2">
+                        <div>
+                          <h3 className="font-semibold text-primary text-sm">{request.vendors.company_name}</h3>
+                          <p className="text-xs text-secondary">{request.contractors.company_name}</p>
+                        </div>
+                        <span className={`text-xs px-2 py-1 rounded border ${
+                          request.status === 'purchase_requested' ? 'text-yellow-600 bg-yellow-100 border-yellow-300' :
+                          request.status === 'approved_for_purchase' ? 'text-green-600 bg-green-100 border-green-300' :
+                          request.status === 'quote_received' ? 'text-blue-600 bg-blue-100 border-blue-300' :
+                          'text-gray-600 bg-gray-100 border-gray-300'
+                        }`}>
+                          {request.status.replace(/_/g, ' ').toUpperCase()}
+                        </span>
+                      </div>
+                      <div className="text-xs text-secondary">
+                        ₹{request.estimated_total?.toLocaleString()} • {request.purchase_request_items.length} items
+                      </div>
+                      <div className="text-xs text-secondary mt-1">
+                        {new Date(request.created_at).toLocaleDateString()}
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* Purchase Request Details */}
+          <div className="lg:col-span-2">
+            {selectedPurchaseRequest ? (
+              <div className="bg-neutral-dark rounded-lg border border-neutral-medium">
+                <div className="p-6 border-b border-neutral-medium">
+                  <div className="flex justify-between items-start">
+                    <div>
+                      <h2 className="text-xl font-semibold text-primary">{selectedPurchaseRequest.vendors.company_name}</h2>
+                      <p className="text-secondary">{selectedPurchaseRequest.contractors.company_name}</p>
+                      <p className="text-sm text-secondary mt-1">
+                        Requested: {new Date(selectedPurchaseRequest.created_at).toLocaleDateString()}
+                      </p>
+                    </div>
+                    <span className={`px-3 py-1 rounded border text-sm ${
+                      selectedPurchaseRequest.status === 'purchase_requested' ? 'text-yellow-600 bg-yellow-100 border-yellow-300' :
+                      selectedPurchaseRequest.status === 'approved_for_purchase' ? 'text-green-600 bg-green-100 border-green-300' :
+                      selectedPurchaseRequest.status === 'quote_received' ? 'text-blue-600 bg-blue-100 border-blue-300' :
+                      'text-gray-600 bg-gray-100 border-gray-300'
+                    }`}>
+                      {selectedPurchaseRequest.status.replace(/_/g, ' ').toUpperCase()}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="p-6">
+                  <div className="grid md:grid-cols-2 gap-6 mb-6">
+                    <div>
+                      <h3 className="text-lg font-semibold text-primary mb-3">Request Details</h3>
+                      <div className="space-y-2 text-sm">
+                        <div><strong>Estimated Total:</strong> ₹{selectedPurchaseRequest.estimated_total?.toLocaleString()}</div>
+                        {selectedPurchaseRequest.quoted_total && (
+                          <div><strong>Quoted Total:</strong> ₹{selectedPurchaseRequest.quoted_total.toLocaleString()}</div>
+                        )}
+                        <div><strong>Items Count:</strong> {selectedPurchaseRequest.purchase_request_items.length}</div>
+                        {selectedPurchaseRequest.delivery_date && (
+                          <div><strong>Delivery Date:</strong> {new Date(selectedPurchaseRequest.delivery_date).toLocaleDateString()}</div>
+                        )}
+                      </div>
+                    </div>
+
+                    <div>
+                      <h3 className="text-lg font-semibold text-primary mb-3">Vendor Details</h3>
+                      <div className="space-y-2 text-sm">
+                        <div><strong>Contact Person:</strong> {selectedPurchaseRequest.vendors.contact_person}</div>
+                        <div><strong>Email:</strong> {selectedPurchaseRequest.vendors.email}</div>
+                        <div><strong>Phone:</strong> {selectedPurchaseRequest.vendors.phone}</div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Items List */}
+                  <div className="mb-6">
+                    <h3 className="text-lg font-semibold text-primary mb-3">Requested Items</h3>
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-xs">
+                        <thead>
+                          <tr className="border-b border-neutral-medium">
+                            <th className="text-left p-2 font-medium text-primary">Item</th>
+                            <th className="text-left p-2 font-medium text-primary">Quantity</th>
+                            <th className="text-left p-2 font-medium text-primary">Unit</th>
+                            <th className="text-left p-2 font-medium text-primary">Est. Rate</th>
+                            <th className="text-left p-2 font-medium text-primary">Amount</th>
+                            <th className="text-left p-2 font-medium text-primary">Selected</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {selectedPurchaseRequest.purchase_request_items.map((item, index) => (
+                            <tr key={index} className="border-b border-neutral-medium hover:bg-neutral-medium/30">
+                              <td className="p-2 border-r border-neutral-medium">
+                                <div className="font-medium text-primary">{item.item_name}</div>
+                                {item.item_description && (
+                                  <div className="text-secondary">{item.item_description}</div>
+                                )}
+                              </td>
+                              <td className="p-2 border-r border-neutral-medium text-primary">{item.quantity}</td>
+                              <td className="p-2 border-r border-neutral-medium text-primary">{item.unit}</td>
+                              <td className="p-2 border-r border-neutral-medium text-primary">
+                                ₹{item.estimated_rate?.toLocaleString() || 'TBD'}
+                              </td>
+                              <td className="p-2 border-r border-neutral-medium text-primary">
+                                ₹{((item.quantity * (item.estimated_rate || 0)).toLocaleString())}
+                              </td>
+                              <td className="p-2 text-primary">
+                                {item.selected_for_order ? '✅' : '❌'}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+
+                  {/* Admin Actions */}
+                  {selectedPurchaseRequest.status === 'purchase_requested' && (
+                    <div className="bg-accent-amber/5 border border-accent-amber/20 rounded-lg p-6">
+                      <h3 className="text-lg font-semibold text-primary mb-4">Review Purchase Request</h3>
+                      <div className="mb-4">
+                        <label className="block text-sm font-medium text-primary mb-2">
+                          Admin Notes
+                        </label>
+                        <textarea
+                          rows={3}
+                          className="w-full px-3 py-2 border border-neutral-medium rounded-md bg-neutral-darker text-primary placeholder-secondary"
+                          placeholder="Review notes for this purchase request..."
+                          id={`purchase-notes-${selectedPurchaseRequest.id}`}
+                        ></textarea>
+                      </div>
+                      <div className="flex space-x-3">
+                        <Button
+                          variant="primary"
+                          onClick={() => {
+                            const notes = (document.getElementById(`purchase-notes-${selectedPurchaseRequest.id}`) as HTMLTextAreaElement)?.value;
+                            handlePurchaseRequestAction(selectedPurchaseRequest.id, 'approve_for_purchase', notes);
+                          }}
+                        >
+                          Approve for Procurement
+                        </Button>
+                        <Button
+                          variant="outline"
+                          onClick={() => {
+                            const reason = prompt('Rejection reason:');
+                            if (reason) {
+                              handlePurchaseRequestAction(selectedPurchaseRequest.id, 'reject', reason);
+                            }
+                          }}
+                        >
+                          Reject Request
+                        </Button>
+                      </div>
+                    </div>
+                  )}
+
+                  {selectedPurchaseRequest.admin_notes && (
+                    <div className="mt-6 p-4 bg-neutral-darker border border-neutral-medium rounded-lg">
+                      <h4 className="font-semibold text-primary mb-2">Admin Notes</h4>
+                      <p className="text-sm text-primary">{selectedPurchaseRequest.admin_notes}</p>
+                    </div>
+                  )}
+                </div>
+              </div>
+            ) : (
+              <div className="bg-neutral-dark rounded-lg border border-neutral-medium p-8 text-center">
+                <div className="text-4xl mb-4">👈</div>
+                <h3 className="text-lg font-semibold text-primary mb-2">Select a Purchase Request</h3>
+                <p className="text-secondary">Choose a request from the list to review details</p>
+              </div>
+            )}
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

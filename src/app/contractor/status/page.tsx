@@ -183,7 +183,7 @@ export default function ContractorStatusPage(): React.ReactElement {
                   <div className="text-sm text-secondary">
                     {docInfo?.uploaded ? 'Replace Document' : 'Upload Document'}
                   </div>
-                  <div className="text-xs text-secondary mt-1">PDF, JPG, PNG up to 5MB</div>
+                  <div className="text-xs text-secondary mt-1">PDF, JPG, PNG up to 20MB</div>
                 </>
               )}
             </div>

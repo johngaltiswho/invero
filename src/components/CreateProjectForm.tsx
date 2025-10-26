@@ -169,7 +169,7 @@ export default function CreateProjectForm({ onSuccess, onCancel }: CreateProject
               type="file"
               id="po_file"
               onChange={handleFileChange}
-              accept=".pdf,.doc,.docx,.jpg,.jpeg,.png"
+              accept=".pdf,.doc,.docx,.xls,.xlsx,.jpg,.jpeg,.png,.gif,.dwg"
               className="hidden"
             />
             <label
@@ -181,7 +181,7 @@ export default function CreateProjectForm({ onSuccess, onCancel }: CreateProject
                 {poFile ? poFile.name : 'Click to upload PO document'}
               </div>
               <div className="text-xs text-secondary">
-                PDF, DOC, DOCX, JPG, PNG (max 10MB)
+                PDF, DOC, DOCX, XLS, XLSX, JPG, PNG, GIF, DWG (max 20MB)
               </div>
             </label>
           </div>
