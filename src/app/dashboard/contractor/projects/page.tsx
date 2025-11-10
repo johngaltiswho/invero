@@ -2,7 +2,7 @@
 
 export const dynamic = 'force-dynamic';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, Suspense } from 'react';
 import { ContractorDashboardLayout } from '@/components/ContractorDashboardLayout';
 import { Button, LoadingSpinner } from '@/components';
 import { useUser } from '@clerk/nextjs';
@@ -16,7 +16,7 @@ import SimplePDFViewer from '@/components/SimplePDFViewer';
 import BOQTakeoffViewer from '@/components/BOQTakeoffViewer';
 import { getBOQByProjectId, getScheduleByProjectId } from '@/lib/supabase-boq';
 
-export default function ContractorProjects(): React.ReactElement {
+function ContractorProjectsContent(): React.ReactElement {
   const { user, isLoaded } = useUser();
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -2910,5 +2910,13 @@ export default function ContractorProjects(): React.ReactElement {
         </div>
       )}
     </ContractorDashboardLayout>
+  );
+}
+
+export default function ContractorProjects(): React.ReactElement {
+  return (
+    <Suspense fallback={<LoadingSpinner />}>
+      <ContractorProjectsContent />
+    </Suspense>
   );
 }

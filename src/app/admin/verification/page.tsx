@@ -2,6 +2,8 @@ import { redirect } from 'next/navigation';
 import { isAdmin } from '@/lib/admin-auth';
 import AdminVerificationDashboard from '@/components/AdminVerificationDashboard';
 
+export const dynamic = 'force-dynamic';
+
 export default async function AdminVerificationPage() {
   const adminCheck = await isAdmin();
   
