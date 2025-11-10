@@ -14,32 +14,63 @@ export async function POST(request: NextRequest) {
       }, { status: 401 });
     }
 
-    const formData = await request.formData();
+    // Check if this is a JSON request (simple project creation) or FormData (complex project creation)
+    const contentType = request.headers.get('content-type');
+    const isJsonRequest = contentType?.includes('application/json');
     
-    // Extract project data - only fields that exist in the projects table
-    const projectData = {
-      contractor_id: formData.get('contractor_id') as string,
-      project_name: formData.get('project_name') as string,
-      client_name: formData.get('client_name') as string,
-      estimated_value: parseFloat(formData.get('project_value') as string),
-      po_number: formData.get('po_wo_number') as string || null,
-      funding_status: formData.get('funding_status') as string || 'pending',
-      funding_required: formData.get('funding_required') ? parseFloat(formData.get('funding_required') as string) : null
-    };
+    let projectData: any;
+    let poFile: File | null = null;
+    
+    if (isJsonRequest) {
+      // Handle simple JSON project creation (from BOQ & Quoting)
+      const body = await request.json();
+      projectData = {
+        contractor_id: body.contractor_id,
+        project_name: body.project_name,
+        client_name: body.client_name,
+        estimated_value: 0, // Default for simple projects
+        funding_status: 'pending',
+        project_status: body.project_status || 'draft',
+        tender_submission_date: body.tender_submission_date || null
+      };
+    } else {
+      // Handle complex FormData project creation (with file uploads)
+      const formData = await request.formData();
+      poFile = formData.get('po_file') as File;
+    
+      // Extract project data - only fields that exist in the projects table
+      projectData = {
+        contractor_id: formData.get('contractor_id') as string,
+        project_name: formData.get('project_name') as string,
+        client_name: formData.get('client_name') as string,
+        estimated_value: parseFloat(formData.get('project_value') as string),
+        po_number: formData.get('po_wo_number') as string || null,
+        funding_status: formData.get('funding_status') as string || 'pending',
+        funding_required: formData.get('funding_required') ? parseFloat(formData.get('funding_required') as string) : null,
+        project_status: formData.get('project_status') as string || 'awarded'
+      };
+    }
 
     // Validate required fields
-    if (!projectData.contractor_id || !projectData.project_name || !projectData.client_name || !projectData.estimated_value) {
+    if (!projectData.contractor_id || !projectData.project_name || !projectData.client_name) {
       return NextResponse.json({
         success: false,
-        error: 'Missing required fields: contractor_id, project_name, client_name, estimated_value'
+        error: 'Missing required fields: contractor_id, project_name, client_name'
+      }, { status: 400 });
+    }
+    
+    // For FormData requests, estimated_value is required
+    if (!isJsonRequest && !projectData.estimated_value) {
+      return NextResponse.json({
+        success: false,
+        error: 'Missing required field: estimated_value for awarded projects'
       }, { status: 400 });
     }
 
-    // Handle PO file upload if provided
-    const poFile = formData.get('po_file') as File;
+    // Handle PO file upload if provided (only for FormData requests)
     let poFileUrl: string | null = null;
 
-    if (poFile && poFile.size > 0) {
+    if (!isJsonRequest && poFile && poFile.size > 0) {
       try {
         // Validate file
         const maxSize = 20 * 1024 * 1024; // 20MB

@@ -1,47 +1,86 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
-import { saveBOQToSupabase } from '@/lib/supabase-boq';
+import { saveBOQToSupabase, getBOQByProjectId } from '@/lib/supabase-boq';
 import type { BOQItem, ProjectBOQ } from '@/types/boq';
 
 interface EditableBOQTableProps {
   projectId: string;
   contractorId: string;
   onSaveSuccess?: () => void;
+  loadExistingData?: boolean;
 }
 
 interface EditableBOQItem extends BOQItem {
   id: string;
 }
 
-export default function EditableBOQTable({ projectId, contractorId, onSaveSuccess }: EditableBOQTableProps) {
+export default function EditableBOQTable({ projectId, contractorId, onSaveSuccess, loadExistingData = false }: EditableBOQTableProps) {
   const [numRows] = useState(5);
   const [items, setItems] = useState<EditableBOQItem[]>([]);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState('');
   const tableRef = useRef<HTMLTableElement>(null);
 
-  // Initialize empty rows only on first load
+  // Load existing data or initialize empty rows
   useEffect(() => {
-    if (items.length === 0) {
-      const newItems: EditableBOQItem[] = Array.from({ length: numRows }, (_, index) => ({
-        id: `item-${index}`,
-        description: '',
-        unit: 'Nos',
-        quantity: 0,
-        rate: 0,
-        amount: 0
-      }));
-      setItems(newItems);
-    }
-  }, [numRows, items.length]);
+    const loadData = async () => {
+      if (loadExistingData && items.length === 0) {
+        try {
+          const existingData = await getBOQByProjectId(projectId);
+          if (existingData && existingData.length > 0) {
+            const loadedItems: EditableBOQItem[] = existingData.map((item, index) => ({
+              id: `item-${index}`,
+              description: item.description || '',
+              unit: item.unit || 'Nos',
+              quantity: item.quantity || 0,
+              rate: item.rate || 0,
+              amount: item.amount || 0
+            }));
+            
+            // Add some empty rows at the end for editing
+            const additionalRows: EditableBOQItem[] = Array.from({ length: 5 }, (_, index) => ({
+              id: `item-${loadedItems.length + index}`,
+              description: '',
+              unit: 'Nos',
+              quantity: 0,
+              rate: 0,
+              amount: 0
+            }));
+            
+            setItems([...loadedItems, ...additionalRows]);
+            setMessage(`Loaded ${loadedItems.length} existing items for editing`);
+            return;
+          }
+        } catch (error) {
+          console.error('Error loading existing BOQ data:', error);
+          setMessage('Error loading existing data. Starting with empty form.');
+        }
+      }
+      
+      // Initialize with empty rows if no existing data or not loading existing data
+      if (items.length === 0) {
+        const newItems: EditableBOQItem[] = Array.from({ length: numRows }, (_, index) => ({
+          id: `item-${index}`,
+          description: '',
+          unit: 'Nos',
+          quantity: 0,
+          rate: 0,
+          amount: 0
+        }));
+        setItems(newItems);
+      }
+    };
+
+    loadData();
+  }, [numRows, items.length, loadExistingData, projectId]);
 
   // Automatically add more rows when needed
   const autoAddRowsIfNeeded = (updatedItems: EditableBOQItem[]) => {
     // Count filled rows (rows with description or non-zero values)
     const filledRows = updatedItems.filter(item => 
-      item.description.trim() !== '' || 
-      (typeof item.quantity === 'number' ? item.quantity > 0 : item.quantity.toString().trim() !== '') || 
+      (item.description && item.description.trim() !== '') || 
+      (typeof item.quantity === 'number' ? item.quantity > 0 : item.quantity && item.quantity.toString().trim() !== '') || 
       item.rate > 0
     ).length;
     
@@ -198,8 +237,8 @@ export default function EditableBOQTable({ projectId, contractorId, onSaveSucces
 
     // Find the first empty row to start pasting
     const firstEmptyRowIndex = items.findIndex(item => 
-      item.description.trim() === '' && 
-      (typeof item.quantity === 'number' ? item.quantity === 0 : item.quantity.toString().trim() === '') && 
+      (!item.description || item.description.trim() === '') && 
+      (typeof item.quantity === 'number' ? item.quantity === 0 : (!item.quantity || item.quantity.toString().trim() === '')) && 
       item.rate === 0
     );
     
@@ -280,8 +319,8 @@ export default function EditableBOQTable({ projectId, contractorId, onSaveSucces
   // Save to Supabase
   const handleSave = async () => {
     const validItems = items.filter(item => {
-      const hasDescription = item.description.trim() !== '';
-      const hasQuantity = typeof item.quantity === 'number' ? item.quantity > 0 : item.quantity.toString().trim() !== '';
+      const hasDescription = item.description && item.description.trim() !== '';
+      const hasQuantity = typeof item.quantity === 'number' ? item.quantity > 0 : item.quantity && item.quantity.toString().trim() !== '';
       const hasRate = item.rate > 0;
       
       // Include if:
@@ -353,8 +392,8 @@ export default function EditableBOQTable({ projectId, contractorId, onSaveSucces
         <div className="flex items-center space-x-4">
           <div className="text-sm text-secondary">
             {items.length} rows • {items.filter(item => 
-              item.description.trim() !== '' || 
-              (typeof item.quantity === 'number' ? item.quantity > 0 : item.quantity.toString().trim() !== '')
+              (item.description && item.description.trim() !== '') || 
+              (typeof item.quantity === 'number' ? item.quantity > 0 : item.quantity && item.quantity.toString().trim() !== '')
             ).length} filled
           </div>
           <button

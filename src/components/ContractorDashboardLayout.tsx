@@ -56,6 +56,7 @@ export function ContractorDashboardLayout({ children, activeTab }: ContractorDas
     return pathname === navigationItems.find(item => item.id === itemId)?.href;
   };
 
+
   return (
     <div className="min-h-screen bg-neutral-darkest">
       {/* Header */}

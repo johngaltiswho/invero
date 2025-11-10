@@ -1,10 +1,12 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { getBOQByProjectId, deleteBOQ } from '@/lib/supabase-boq';
+import { getBOQByProjectId, deleteBOQ, saveBOQToSupabase } from '@/lib/supabase-boq';
 
 interface BOQDisplayProps {
   projectId: string;
+  isEditable?: boolean;
+  onSaveSuccess?: () => void;
 }
 
 interface BOQData {
@@ -24,15 +26,29 @@ interface BOQData {
   }[];
 }
 
-export default function BOQDisplay({ projectId }: BOQDisplayProps) {
+export default function BOQDisplay({ projectId, isEditable = false, onSaveSuccess }: BOQDisplayProps) {
   const [boqData, setBOQData] = useState<BOQData[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [editedData, setEditedData] = useState<BOQData[]>([]);
+  const [editingCell, setEditingCell] = useState<{boqIndex: number, itemIndex: number, field: string} | null>(null);
+  const [tempValue, setTempValue] = useState('');
 
   useEffect(() => {
     loadBOQData();
   }, [projectId]);
+
+  // Sync edited data with loaded data only when entering edit mode
+  useEffect(() => {
+    if (isEditable && boqData.length > 0) {
+      setEditedData([...boqData.map(boq => ({
+        ...boq,
+        boq_items: [...boq.boq_items]
+      }))]); // Shallow copy that preserves order
+    }
+  }, [isEditable, boqData]);
 
   const loadBOQData = async () => {
     try {
@@ -78,6 +94,117 @@ export default function BOQDisplay({ projectId }: BOQDisplayProps) {
     }
   };
 
+  // Update item in edited data
+  const updateItem = (boqIndex: number, itemIndex: number, field: string, value: string | number) => {
+    const newEditedData = [...editedData];
+    const item = newEditedData[boqIndex].boq_items[itemIndex];
+    
+    if (field === 'description') {
+      item.description = value as string;
+    } else if (field === 'unit') {
+      item.unit = value as string;
+    } else if (field === 'quantity') {
+      const numValue = parseFloat(value as string) || 0;
+      item.quantity_numeric = numValue;
+      // Auto-calculate amount
+      item.amount = numValue * item.rate;
+    } else if (field === 'rate') {
+      const numValue = parseFloat(value as string) || 0;
+      item.rate = numValue;
+      // Auto-calculate amount
+      const qty = item.quantity_numeric || item.quantity || 0;
+      item.amount = qty * numValue;
+    } else if (field === 'amount') {
+      item.amount = parseFloat(value as string) || 0;
+    }
+    
+    setEditedData(newEditedData);
+  };
+
+  // Start editing a cell
+  const startEditing = (boqIndex: number, itemIndex: number, field: string) => {
+    if (!isEditable) return;
+    
+    const item = editedData[boqIndex]?.boq_items[itemIndex];
+    if (!item) return;
+    
+    // Don't edit headers or amount (calculated field)
+    const isHeader = item.category === 'HEADER' || (item.quantity_text === 'HEADER');
+    if (isHeader || field === 'amount') return;
+    
+    setEditingCell({ boqIndex, itemIndex, field });
+    
+    // Set initial value
+    if (field === 'description') {
+      setTempValue(item.description || '');
+    } else if (field === 'unit') {
+      setTempValue(item.unit || '');
+    } else if (field === 'quantity') {
+      setTempValue(String(item.quantity_numeric || item.quantity || 0));
+    } else if (field === 'rate') {
+      setTempValue(String(item.rate || 0));
+    }
+  };
+
+  // Save cell edit
+  const saveCellEdit = () => {
+    if (!editingCell) return;
+    
+    updateItem(editingCell.boqIndex, editingCell.itemIndex, editingCell.field, tempValue);
+    setEditingCell(null);
+    setTempValue('');
+  };
+
+  // Cancel cell edit
+  const cancelCellEdit = () => {
+    setEditingCell(null);
+    setTempValue('');
+  };
+
+  // Handle key press in input
+  const handleKeyPress = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter') {
+      saveCellEdit();
+    } else if (e.key === 'Escape') {
+      cancelCellEdit();
+    }
+  };
+
+  // Save changes
+  const handleSave = async () => {
+    if (!editedData.length) return;
+    
+    setSaving(true);
+    try {
+      // Use the latest BOQ data
+      const latestBOQ = editedData[0];
+      const totalAmount = latestBOQ.boq_items.reduce((sum, item) => sum + (item.amount || 0), 0);
+      
+      const boqToSave = {
+        projectId,
+        contractorId: '', // This should be passed as prop or retrieved
+        uploadDate: new Date().toISOString(),
+        items: latestBOQ.boq_items.map(item => ({
+          description: item.description,
+          unit: item.unit,
+          quantity: item.quantity_numeric || item.quantity || 0,
+          rate: item.rate,
+          amount: item.amount
+        })),
+        totalAmount,
+        fileName: latestBOQ.file_name
+      };
+      
+      await saveBOQToSupabase(boqToSave);
+      if (onSaveSuccess) onSaveSuccess();
+    } catch (error) {
+      console.error('Error saving BOQ:', error);
+      alert('Failed to save changes');
+    } finally {
+      setSaving(false);
+    }
+  };
+
   if (loading) {
     return (
       <div className="bg-neutral-dark p-6 rounded-lg border border-neutral-medium">
@@ -109,9 +236,38 @@ export default function BOQDisplay({ projectId }: BOQDisplayProps) {
     );
   }
 
+  const dataToRender = isEditable ? editedData : boqData;
+
   return (
     <div className="space-y-6">
-      {boqData.map((boq, boqIndex) => (
+      {isEditable && (
+        <div className="bg-neutral-dark p-4 rounded-lg border border-accent-blue">
+          <div className="flex justify-between items-center">
+            <div>
+              <span className="text-sm text-accent-blue font-medium">✏️ Edit Mode</span>
+              <p className="text-xs text-secondary mt-1">Click any cell to edit. Press Enter to save, Escape to cancel.</p>
+            </div>
+            <div className="flex gap-3">
+              <button
+                onClick={() => {
+                  if (onSaveSuccess) onSaveSuccess();
+                }}
+                className="px-4 py-2 bg-neutral-medium text-primary rounded-lg hover:bg-neutral-medium/80 transition-colors text-sm font-medium"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleSave}
+                disabled={saving}
+                className="px-4 py-2 bg-accent-amber text-neutral-dark rounded-lg hover:bg-accent-amber/90 transition-colors text-sm font-medium disabled:opacity-50"
+              >
+                {saving ? 'Saving...' : 'Save Changes'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {dataToRender.map((boq, boqIndex) => (
         <div key={boq.id} className="bg-neutral-dark rounded-lg border border-neutral-medium">
           <div className="p-6 border-b border-neutral-medium">
             <div className="flex justify-between items-center mb-4">
@@ -154,31 +310,105 @@ export default function BOQDisplay({ projectId }: BOQDisplayProps) {
                   {boq.boq_items.map((item, index) => {
                     const isHeader = item.category === 'HEADER' || (item.quantity_text === 'HEADER');
                     return (
-                    <tr key={index} className={`transition-colors ${isHeader ? 'bg-neutral-darker font-medium' : 'hover:bg-neutral-darker/50'}`}>
-                      <td className={`border border-neutral-medium px-4 py-3 text-sm ${isHeader ? 'text-accent-amber font-semibold' : 'text-primary'}`}>
-                        {item.description}
+                    <tr key={`${boqIndex}-${index}-${item.description}`} className={`transition-colors ${isHeader ? 'bg-neutral-darker font-medium' : 'hover:bg-neutral-darker/50'}`}>
+                      <td 
+                        className={`border border-neutral-medium px-4 py-3 text-sm ${isHeader ? 'text-accent-amber font-semibold' : 'text-primary'} ${isEditable && !isHeader ? 'cursor-pointer hover:bg-neutral-medium/20' : ''}`}
+                        onClick={() => startEditing(boqIndex, index, 'description')}
+                      >
+                        {editingCell?.boqIndex === boqIndex && editingCell?.itemIndex === index && editingCell?.field === 'description' ? (
+                          <input
+                            type="text"
+                            value={tempValue}
+                            onChange={(e) => setTempValue(e.target.value)}
+                            onBlur={saveCellEdit}
+                            onKeyDown={handleKeyPress}
+                            className="w-full px-2 py-1 text-sm bg-neutral-dark text-primary border border-accent-blue rounded focus:outline-none"
+                            autoFocus
+                          />
+                        ) : (
+                          item.description
+                        )}
                       </td>
-                      <td className="border border-neutral-medium px-4 py-3 text-sm text-primary">
-                        {isHeader ? '-' : (item.unit || 'N/A')}
+                      <td 
+                        className={`border border-neutral-medium px-4 py-3 text-sm text-primary ${isEditable && !isHeader ? 'cursor-pointer hover:bg-neutral-medium/20' : ''}`}
+                        onClick={() => startEditing(boqIndex, index, 'unit')}
+                      >
+                        {isHeader ? '-' : (
+                          editingCell?.boqIndex === boqIndex && editingCell?.itemIndex === index && editingCell?.field === 'unit' ? (
+                            <select
+                              value={tempValue}
+                              onChange={(e) => setTempValue(e.target.value)}
+                              onBlur={saveCellEdit}
+                              onKeyDown={handleKeyPress}
+                              className="w-full px-2 py-1 text-sm bg-neutral-dark text-primary border border-accent-blue rounded focus:outline-none"
+                              autoFocus
+                            >
+                              <option value="Nos">Nos</option>
+                              <option value="Sqm">Sqm</option>
+                              <option value="Cum">Cum</option>
+                              <option value="MT">MT</option>
+                              <option value="Kg">Kg</option>
+                              <option value="Ltr">Ltr</option>
+                              <option value="Days">Days</option>
+                              <option value="Hours">Hours</option>
+                              <option value="LS">LS</option>
+                              <option value="Rm">Rm</option>
+                            </select>
+                          ) : (
+                            item.unit || 'N/A'
+                          )
+                        )}
                       </td>
-                      <td className="border border-neutral-medium px-4 py-3 text-sm text-primary text-right">
-                        {isHeader ? '-' : (() => {
-                          // Handle new format (quantity_text/quantity_numeric)
-                          if (item.quantity_text !== undefined) {
-                            return item.quantity_numeric !== null && item.quantity_numeric !== undefined
-                              ? item.quantity_numeric.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
-                              : item.quantity_text;
-                          }
-                          // Handle old format (quantity)
-                          else if (item.quantity !== undefined) {
-                            return item.quantity.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-                          }
-                          // Fallback
-                          return '0';
-                        })()}
+                      <td 
+                        className={`border border-neutral-medium px-4 py-3 text-sm text-primary text-right ${isEditable && !isHeader ? 'cursor-pointer hover:bg-neutral-medium/20' : ''}`}
+                        onClick={() => startEditing(boqIndex, index, 'quantity')}
+                      >
+                        {isHeader ? '-' : (
+                          editingCell?.boqIndex === boqIndex && editingCell?.itemIndex === index && editingCell?.field === 'quantity' ? (
+                            <input
+                              type="number"
+                              value={tempValue}
+                              onChange={(e) => setTempValue(e.target.value)}
+                              onBlur={saveCellEdit}
+                              onKeyDown={handleKeyPress}
+                              className="w-full px-2 py-1 text-sm text-right bg-neutral-dark text-primary border border-accent-blue rounded focus:outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                              autoFocus
+                            />
+                          ) : (() => {
+                            // Handle new format (quantity_text/quantity_numeric)
+                            if (item.quantity_text !== undefined) {
+                              return item.quantity_numeric !== null && item.quantity_numeric !== undefined
+                                ? item.quantity_numeric.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+                                : item.quantity_text;
+                            }
+                            // Handle old format (quantity)
+                            else if (item.quantity !== undefined) {
+                              return item.quantity.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+                            }
+                            // Fallback
+                            return '0';
+                          })()
+                        )}
                       </td>
-                      <td className="border border-neutral-medium px-4 py-3 text-sm text-primary text-right">
-                        {isHeader ? '-' : formatCurrency(item.rate)}
+                      <td 
+                        className={`border border-neutral-medium px-4 py-3 text-sm text-primary text-right ${isEditable && !isHeader ? 'cursor-pointer hover:bg-neutral-medium/20' : ''}`}
+                        onClick={() => startEditing(boqIndex, index, 'rate')}
+                      >
+                        {isHeader ? '-' : (
+                          editingCell?.boqIndex === boqIndex && editingCell?.itemIndex === index && editingCell?.field === 'rate' ? (
+                            <input
+                              type="number"
+                              value={tempValue}
+                              onChange={(e) => setTempValue(e.target.value)}
+                              onBlur={saveCellEdit}
+                              onKeyDown={handleKeyPress}
+                              className="w-full px-2 py-1 text-sm text-right bg-neutral-dark text-primary border border-accent-blue rounded focus:outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                              autoFocus
+                            />
+                          ) : (
+                            formatCurrency(item.rate)
+                          )
+                        )}
                       </td>
                       <td className="border border-neutral-medium px-4 py-3 text-sm text-accent-amber text-right font-semibold">
                         {isHeader ? '-' : formatCurrency(item.amount)}

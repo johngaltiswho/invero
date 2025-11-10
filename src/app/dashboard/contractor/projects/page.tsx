@@ -6,7 +6,7 @@ import React, { useState, useEffect } from 'react';
 import { ContractorDashboardLayout } from '@/components/ContractorDashboardLayout';
 import { Button, LoadingSpinner } from '@/components';
 import { useUser } from '@clerk/nextjs';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams, usePathname } from 'next/navigation';
 import { useContractorV2 } from '@/contexts/ContractorContextV2';
 import EditableBOQTable from '@/components/EditableBOQTable';
 import EditableScheduleTable from '@/components/EditableScheduleTable';
@@ -19,7 +19,13 @@ import { getBOQByProjectId, getScheduleByProjectId } from '@/lib/supabase-boq';
 export default function ContractorProjects(): React.ReactElement {
   const { user, isLoaded } = useUser();
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const pathname = usePathname();
   const { contractor, loading: contractorLoading } = useContractorV2();
+  
+  // Determine main tab from URL
+  const mainTab = pathname.includes('/tendering') ? 'boq-quoting' : 
+                  pathname.includes('/active') ? 'awarded' : 'boq-quoting';
   const [selectedProject, setSelectedProject] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'overview' | 'boq' | 'schedule' | 'materials' | 'requested-materials' | 'files'>('overview');
   const [refreshKey, setRefreshKey] = useState(0);
@@ -27,6 +33,7 @@ export default function ContractorProjects(): React.ReactElement {
   const [metricsLoading, setMetricsLoading] = useState(false);
   const [showBOQEntry, setShowBOQEntry] = useState(false);
   const [showScheduleEntry, setShowScheduleEntry] = useState(false);
+  const [editingBOQ, setEditingBOQ] = useState(false);
   const [contractorProjects, setContractorProjects] = useState<any[]>([]);
   const [projectsLoading, setProjectsLoading] = useState(true);
   const [hasBOQData, setHasBOQData] = useState(false);
@@ -45,9 +52,85 @@ export default function ContractorProjects(): React.ReactElement {
     notes: ''
   });
   
+  // Project creation form for BOQ Generator
+  const [showCreateProject, setShowCreateProject] = useState(false);
+  const [newProject, setNewProject] = useState({
+    project_name: '',
+    client_id: '',
+    description: '',
+    tender_submission_date: ''
+  });
+  
   // Purchase request state
   const [showPurchaseDialog, setShowPurchaseDialog] = useState(false);
   const [selectedMaterialForPurchase, setSelectedMaterialForPurchase] = useState<any>(null);
+  
+  // Project conversion state
+  const [showConversionDialog, setShowConversionDialog] = useState(false);
+  const [conversionForm, setConversionForm] = useState({
+    estimated_value: '',
+    po_number: '',
+    funding_required: '',
+    funding_status: 'pending'
+  });
+
+  // Awarded project creation state
+  const [showCreateAwardedProject, setShowCreateAwardedProject] = useState(false);
+  const [awardedProjectForm, setAwardedProjectForm] = useState({
+    project_name: '',
+    client_id: '',
+    estimated_value: '',
+    po_number: '',
+    funding_required: '',
+    funding_status: 'pending',
+    po_file: null as File | null
+  });
+
+  // Simple 2-stage filtering
+  const filteredProjects = contractorProjects.filter(project => {
+    if (mainTab === 'boq-quoting') {
+      // Show only draft projects
+      return project.project_status === 'draft';
+    } else if (mainTab === 'awarded') {
+      // Show everything except draft projects
+      return project.project_status !== 'draft';
+    }
+    return true;
+  });
+
+  // Create new project function
+  const createProject = async () => {
+    if (!newProject.project_name || !newProject.client_id || !contractor?.id) return;
+    
+    try {
+      // Find the selected client to get the client name
+      const selectedClient = clients.find(client => client.id === newProject.client_id);
+      if (!selectedClient) return;
+
+      const response = await fetch('/api/projects', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contractor_id: contractor.id,
+          project_name: newProject.project_name,
+          client_name: selectedClient.name,
+          project_status: 'draft',
+          tender_submission_date: newProject.tender_submission_date || null
+        })
+      });
+      
+      if (response.ok) {
+        const result = await response.json();
+        setRefreshKey(prev => prev + 1); // Refresh projects list
+        setNewProject({ project_name: '', client_id: '', description: '', tender_submission_date: '' });
+        setShowCreateProject(false);
+        // Optionally select the new project
+        setSelectedProject(result.data?.id || result.data?.project?.id);
+      }
+    } catch (error) {
+      console.error('Failed to create project:', error);
+    }
+  };
   const [purchaseForm, setPurchaseForm] = useState({
     vendorId: '',
     requestedQuantity: ''
@@ -57,6 +140,9 @@ export default function ContractorProjects(): React.ReactElement {
   const [vendors, setVendors] = useState<any[]>([]);
   const [materialSearchOpen, setMaterialSearchOpen] = useState(false);
   const [materialSearchTerm, setMaterialSearchTerm] = useState('');
+  
+  // Client state for project creation
+  const [clients, setClients] = useState<any[]>([]);
   
   // File management state
   const [projectFiles, setProjectFiles] = useState<any[]>([]);
@@ -132,20 +218,38 @@ export default function ContractorProjects(): React.ReactElement {
 
   // Handle URL parameters for direct navigation
   useEffect(() => {
-    if (typeof window !== 'undefined') {
-      const urlParams = new URLSearchParams(window.location.search);
-      const projectParam = urlParams.get('project');
-      const tabParam = urlParams.get('tab');
-      
-      if (projectParam) {
-        setSelectedProject(projectParam);
-      }
-      
-      if (tabParam && ['overview', 'boq', 'schedule', 'materials', 'requested-materials', 'files'].includes(tabParam)) {
-        setActiveTab(tabParam as 'overview' | 'boq' | 'schedule' | 'materials' | 'requested-materials' | 'files');
+    const tab = searchParams.get('tab');
+    const projectParam = searchParams.get('project');
+    
+    // Handle main tab navigation (boq-quoting, awarded)
+    if (tab && ['boq-quoting', 'awarded'].includes(tab)) {
+      const newPath = tab === 'boq-quoting' ? 
+        '/dashboard/contractor/projects/tendering' : 
+        '/dashboard/contractor/projects/active';
+      router.push(newPath);
+    }
+    
+    // Handle project selection
+    if (projectParam) {
+      setSelectedProject(projectParam);
+    }
+    
+    // Handle sub-tab navigation (overview, boq, schedule, etc.)
+    const subTab = searchParams.get('subtab');
+    if (subTab && ['overview', 'boq', 'schedule', 'materials', 'requested-materials', 'files'].includes(subTab)) {
+      setActiveTab(subTab as 'overview' | 'boq' | 'schedule' | 'materials' | 'requested-materials' | 'files');
+    }
+  }, [searchParams]);
+
+  // Clear selected project when switching tabs if it doesn't belong to current filter
+  useEffect(() => {
+    if (selectedProject && contractorProjects.length > 0) {
+      const isProjectInCurrentTab = filteredProjects.some(p => p.id === selectedProject);
+      if (!isProjectInCurrentTab) {
+        setSelectedProject(null);
       }
     }
-  }, []);
+  }, [mainTab, selectedProject, filteredProjects, contractorProjects]);
 
   // Redirect if not authenticated
   useEffect(() => {
@@ -168,20 +272,11 @@ export default function ContractorProjects(): React.ReactElement {
         const result = await response.json();
         
         if (result.success) {
-          // Transform database projects to match expected format
-          const transformedProjects = result.data.projects.map((project: any) => ({
-            id: project.id,
-            projectName: project.project_name,
-            clientName: project.client_name,
-            projectValue: project.estimated_value,
-            status: 'Planning', // Will be updated based on actual progress
-            expectedEndDate: new Date(Date.now() + 90 * 24 * 60 * 60 * 1000).toISOString(),
-            currentProgress: 0 // Will be updated based on actual data
-          }));
-          setContractorProjects(transformedProjects);
+          // Use projects directly from database
+          setContractorProjects(result.data.projects);
           
           // Update project statuses based on actual data
-          updateProjectStatuses(transformedProjects);
+          updateProjectStatuses(result.data.projects);
         } else {
           console.error('Failed to fetch projects:', result.error);
           setContractorProjects([]);
@@ -503,6 +598,7 @@ export default function ContractorProjects(): React.ReactElement {
   useEffect(() => {
     if (contractor?.id) {
       fetchVendors();
+      fetchClients();
     }
   }, [contractor?.id]);
 
@@ -515,6 +611,109 @@ export default function ContractorProjects(): React.ReactElement {
       }
     } catch (error) {
       console.error('Error fetching vendors:', error);
+    }
+  };
+
+  const fetchClients = async () => {
+    try {
+      if (!contractor?.id) return;
+      const response = await fetch(`/api/clients?contractor_id=${contractor.id}`);
+      if (response.ok) {
+        const data = await response.json();
+        setClients(data.data || []);
+      }
+    } catch (error) {
+      console.error('Error fetching clients:', error);
+    }
+  };
+
+  // Convert project to awarded status
+  const convertProjectToAwarded = async () => {
+    if (!selectedProject || !conversionForm.estimated_value) return;
+    
+    try {
+      const response = await fetch(`/api/projects/${selectedProject}/convert`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          estimated_value: parseFloat(conversionForm.estimated_value),
+          po_number: conversionForm.po_number,
+          funding_required: conversionForm.funding_required ? parseFloat(conversionForm.funding_required) : null,
+          funding_status: conversionForm.funding_status,
+          project_status: 'awarded'
+        })
+      });
+      
+      if (response.ok) {
+        setRefreshKey(prev => prev + 1); // Refresh projects list
+        setConversionForm({ estimated_value: '', po_number: '', funding_required: '', funding_status: 'pending' });
+        setShowConversionDialog(false);
+        // Switch to awarded tab to see the converted project
+        router.push('/dashboard/contractor/projects/active');
+        alert('Project successfully converted to awarded status!');
+      } else {
+        alert('Failed to convert project');
+      }
+    } catch (error) {
+      console.error('Failed to convert project:', error);
+      alert('Failed to convert project');
+    }
+  };
+
+  // Create new awarded project function
+  const createAwardedProject = async () => {
+    if (!awardedProjectForm.project_name || !awardedProjectForm.client_id || !awardedProjectForm.estimated_value || !contractor?.id) return;
+    
+    try {
+      // Find the selected client to get the client name
+      const selectedClient = clients.find(client => client.id === awardedProjectForm.client_id);
+      if (!selectedClient) return;
+
+      // Create FormData for the API (to support file upload)
+      const formData = new FormData();
+      formData.append('contractor_id', contractor.id);
+      formData.append('project_name', awardedProjectForm.project_name);
+      formData.append('client_name', selectedClient.name);
+      formData.append('project_value', awardedProjectForm.estimated_value);
+      formData.append('po_wo_number', awardedProjectForm.po_number);
+      formData.append('funding_status', awardedProjectForm.funding_status);
+      formData.append('project_status', 'awarded');
+      
+      if (awardedProjectForm.funding_required) {
+        formData.append('funding_required', awardedProjectForm.funding_required);
+      }
+      
+      if (awardedProjectForm.po_file) {
+        formData.append('po_file', awardedProjectForm.po_file);
+      }
+
+      const response = await fetch('/api/projects', {
+        method: 'POST',
+        body: formData
+      });
+      
+      if (response.ok) {
+        const result = await response.json();
+        setRefreshKey(prev => prev + 1); // Refresh projects list
+        setAwardedProjectForm({
+          project_name: '',
+          client_id: '',
+          estimated_value: '',
+          po_number: '',
+          funding_required: '',
+          funding_status: 'pending',
+          po_file: null
+        });
+        setShowCreateAwardedProject(false);
+        // Optionally select the new project
+        setSelectedProject(result.data?.id || result.data?.project?.id);
+        alert('Awarded project created successfully!');
+      } else {
+        alert('Failed to create awarded project');
+      }
+    } catch (error) {
+      console.error('Failed to create awarded project:', error);
+      alert('Failed to create awarded project');
     }
   };
 
@@ -880,7 +1079,7 @@ export default function ContractorProjects(): React.ReactElement {
   const isSelectedGoogleSheetsProject = selectedProjectData && 'clientName' in selectedProjectData;
   const selectedClientName = isSelectedGoogleSheetsProject ? 
     (selectedProjectData as any).clientName : 
-    'Unknown Client';
+    selectedProjectData?.client_name || 'Unknown Client';
   
   const selectedProjectProgress = selectedProjectData?.currentProgress ?? 
     (isSelectedGoogleSheetsProject ? (selectedProjectData as any).currentProgress : (selectedProjectData as any)?.progress || 0);
@@ -918,63 +1117,371 @@ export default function ContractorProjects(): React.ReactElement {
           </p>
         </div>
 
-        {/* Project Stats */}
-        <div className="grid lg:grid-cols-4 md:grid-cols-2 gap-6 mb-8">
-          <div className="bg-neutral-dark p-6 rounded-lg border border-neutral-medium">
-            <div className="text-accent-amber text-sm font-mono mb-2">TOTAL PROJECTS</div>
-            <div className="text-2xl font-bold text-primary mb-1">{contractorProjects.length}</div>
-            <div className="text-xs text-secondary">All time</div>
-          </div>
-          
-          <div className="bg-neutral-dark p-6 rounded-lg border border-neutral-medium">
-            <div className="text-accent-amber text-sm font-mono mb-2">ACTIVE PROJECTS</div>
-            <div className="text-2xl font-bold text-primary mb-1">
-              {contractorProjects.filter(p => p.status === 'Active').length}
-            </div>
-            <div className="text-xs text-success">Currently running</div>
-          </div>
-          
-          <div className="bg-neutral-dark p-6 rounded-lg border border-neutral-medium">
-            <div className="text-accent-amber text-sm font-mono mb-2">TOTAL VALUE</div>
-            <div className="text-2xl font-bold text-primary mb-1">
-              {formatCurrency(contractorProjects.reduce((sum, p) => sum + p.projectValue, 0))}
-            </div>
-            <div className="text-xs text-secondary">Contract value</div>
-          </div>
-          
-          <div className="bg-neutral-dark p-6 rounded-lg border border-neutral-medium">
-            <div className="text-accent-amber text-sm font-mono mb-2">AVG PROGRESS</div>
-            <div className="text-2xl font-bold text-accent-amber mb-1">
-              {contractorProjects.length > 0 ? 
-                Math.round(contractorProjects.reduce((sum, p) => {
-                  // Handle both currentProgress and progress fields
-                  const progress = 'currentProgress' in p ? (p as any).currentProgress : (p as any).progress || 0;
-                  return sum + progress;
-                }, 0) / contractorProjects.length) : 0}%
-            </div>
-            <div className="text-xs text-secondary">Across all projects</div>
+        {/* Main Tabs Navigation */}
+        <div className="mb-6">
+          <div className="border-b border-neutral-medium">
+            <nav className="-mb-px flex space-x-8">
+              {[
+                { id: 'boq-quoting', name: 'Tendering & Quotes', description: 'Create quotes and submit tenders' },
+                { id: 'awarded', name: 'Awarded Projects', description: 'Active & completed projects' }
+              ].map((tab) => (
+                <button
+                  key={tab.id}
+                  onClick={() => {
+                    const newPath = tab.id === 'boq-quoting' ? 
+                      '/dashboard/contractor/projects/tendering' : 
+                      '/dashboard/contractor/projects/active';
+                    router.push(newPath);
+                  }}
+                  className={`py-4 px-1 border-b-2 font-medium text-sm whitespace-nowrap ${
+                    mainTab === tab.id
+                      ? 'border-accent-blue text-accent-blue'
+                      : 'border-transparent text-secondary hover:text-primary hover:border-neutral-light'
+                  }`}
+                >
+                  <div className="flex flex-col items-start">
+                    <span>{tab.name}</span>
+                    <span className="text-xs opacity-70">{tab.description}</span>
+                  </div>
+                </button>
+              ))}
+            </nav>
           </div>
         </div>
 
+        {/* Project Stats - Different for each tab */}
+        <div className="grid lg:grid-cols-4 md:grid-cols-2 gap-6 mb-8">
+          {mainTab === 'boq-quoting' ? (
+            <>
+              <div className="bg-neutral-dark p-6 rounded-lg border border-neutral-medium">
+                <div className="text-accent-amber text-sm font-mono mb-2">DRAFT PROJECTS</div>
+                <div className="text-2xl font-bold text-primary mb-1">
+                  {contractorProjects.filter(p => p.project_status === 'draft').length}
+                </div>
+                <div className="text-xs text-secondary">Ready for BOQ & quoting</div>
+              </div>
+              
+              <div className="bg-neutral-dark p-6 rounded-lg border border-neutral-medium">
+                <div className="text-accent-amber text-sm font-mono mb-2">WITH BOQ</div>
+                <div className="text-2xl font-bold text-primary mb-1">
+                  {contractorProjects.filter(p => p.project_status === 'draft' && p.estimated_value > 0).length}
+                </div>
+                <div className="text-xs text-success">Ready for quoting</div>
+              </div>
+              
+              <div className="bg-neutral-dark p-6 rounded-lg border border-neutral-medium">
+                <div className="text-accent-amber text-sm font-mono mb-2">QUOTED</div>
+                <div className="text-2xl font-bold text-primary mb-1">0</div>
+                <div className="text-xs text-secondary">Awaiting client response</div>
+              </div>
+              
+              <div className="bg-neutral-dark p-6 rounded-lg border border-neutral-medium">
+                <div className="text-accent-amber text-sm font-mono mb-2">PIPELINE VALUE</div>
+                <div className="text-2xl font-bold text-primary mb-1">
+                  {formatCurrency(contractorProjects.filter(p => p.project_status === 'draft').reduce((sum, p) => sum + (p.estimated_value || 0), 0))}
+                </div>
+                <div className="text-xs text-secondary">Potential project value</div>
+              </div>
+            </>
+          ) : (
+            <>
+              <div className="bg-neutral-dark p-6 rounded-lg border border-neutral-medium">
+                <div className="text-accent-amber text-sm font-mono mb-2">AWARDED PROJECTS</div>
+                <div className="text-2xl font-bold text-primary mb-1">
+                  {contractorProjects.filter(p => p.project_status === 'awarded' || p.project_status === 'finalized' || (!p.project_status && p.project_status !== 'draft')).length}
+                </div>
+                <div className="text-xs text-secondary">Total awarded</div>
+              </div>
+              
+              <div className="bg-neutral-dark p-6 rounded-lg border border-neutral-medium">
+                <div className="text-accent-amber text-sm font-mono mb-2">ACTIVE PROJECTS</div>
+                <div className="text-2xl font-bold text-primary mb-1">
+                  {contractorProjects.filter(p => (p.project_status === 'awarded' || p.project_status === 'finalized') && p.status === 'Active').length}
+                </div>
+                <div className="text-xs text-success">Currently running</div>
+              </div>
+              
+              <div className="bg-neutral-dark p-6 rounded-lg border border-neutral-medium">
+                <div className="text-accent-amber text-sm font-mono mb-2">AVG PROGRESS</div>
+                <div className="text-2xl font-bold text-accent-amber mb-1">
+                  {(() => {
+                    const awardedProjects = contractorProjects.filter(p => p.project_status === 'awarded' || p.project_status === 'finalized' || !p.project_status);
+                    return awardedProjects.length > 0 ? 
+                      Math.round(awardedProjects.reduce((sum, p) => {
+                        const progress = 'currentProgress' in p ? (p as any).currentProgress : (p as any).progress || 0;
+                        return sum + progress;
+                      }, 0) / awardedProjects.length) : 0;
+                  })()}%
+                </div>
+                <div className="text-xs text-secondary">Across awarded projects</div>
+              </div>
+              
+              <div className="bg-neutral-dark p-6 rounded-lg border border-neutral-medium">
+                <div className="text-accent-amber text-sm font-mono mb-2">TOTAL VALUE</div>
+                <div className="text-2xl font-bold text-primary mb-1">
+                  {formatCurrency(contractorProjects.filter(p => p.project_status === 'awarded' || p.project_status === 'finalized' || !p.project_status).reduce((sum, p) => sum + (p.estimated_value || 0), 0))}
+                </div>
+                <div className="text-xs text-secondary">Portfolio value</div>
+              </div>
+            </>
+          )}
+        </div>
+
+        {/* BOQ & Quoting Tab - Create Project Form */}
+        {mainTab === 'boq-quoting' && (
+          <div className="mb-8">
+            <div className="flex justify-between items-center mb-4">
+              <h2 className="text-xl font-semibold text-primary">Tendering & Quotes</h2>
+              <button
+                onClick={() => setShowCreateProject(true)}
+                className="px-4 py-2 bg-accent-blue text-white rounded-lg hover:bg-accent-blue/90 transition-colors"
+              >
+                + Create New Project
+              </button>
+            </div>
+            
+            {showCreateProject && (
+              <div className="bg-neutral-dark border border-neutral-medium rounded-lg p-6 mb-6">
+                <h3 className="text-lg font-medium text-primary mb-4">Create New Project</h3>
+                <div className="grid md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-primary mb-2">Project Name</label>
+                    <input
+                      type="text"
+                      value={newProject.project_name}
+                      onChange={(e) => setNewProject(prev => ({ ...prev, project_name: e.target.value }))}
+                      className="w-full px-3 py-2 border border-neutral-medium rounded-lg bg-neutral-dark text-primary focus:outline-none focus:ring-2 focus:ring-accent-blue"
+                      placeholder="Enter project name"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-primary mb-2">Client</label>
+                    <select
+                      value={newProject.client_id}
+                      onChange={(e) => setNewProject(prev => ({ ...prev, client_id: e.target.value }))}
+                      className="w-full px-3 py-2 border border-neutral-medium rounded-lg bg-neutral-dark text-primary focus:outline-none focus:ring-2 focus:ring-accent-blue"
+                    >
+                      <option value="">Select a client</option>
+                      {clients.filter(client => client.status === 'active').map(client => (
+                        <option key={client.id} value={client.id}>
+                          {client.name}
+                        </option>
+                      ))}
+                    </select>
+                    {clients.length === 0 && (
+                      <p className="text-sm text-secondary mt-1">
+                        No clients found. <a href="/dashboard/contractor/network" className="text-accent-blue hover:underline">Add clients in Network tab</a>
+                      </p>
+                    )}
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-primary mb-2">Tender Submission Date</label>
+                    <input
+                      type="date"
+                      value={newProject.tender_submission_date}
+                      onChange={(e) => setNewProject(prev => ({ ...prev, tender_submission_date: e.target.value }))}
+                      className="w-full px-3 py-2 border border-neutral-medium rounded-lg bg-neutral-dark text-primary focus:outline-none focus:ring-2 focus:ring-accent-blue"
+                    />
+                  </div>
+                  <div className="md:col-span-2">
+                    <label className="block text-sm font-medium text-primary mb-2">Description (Optional)</label>
+                    <textarea
+                      value={newProject.description}
+                      onChange={(e) => setNewProject(prev => ({ ...prev, description: e.target.value }))}
+                      className="w-full px-3 py-2 border border-neutral-medium rounded-lg bg-neutral-dark text-primary focus:outline-none focus:ring-2 focus:ring-accent-blue"
+                      rows={3}
+                      placeholder="Brief project description"
+                    />
+                  </div>
+                </div>
+                <div className="flex gap-3 mt-4">
+                  <button
+                    onClick={createProject}
+                    disabled={!newProject.project_name || !newProject.client_id}
+                    className="px-4 py-2 bg-accent-blue text-white rounded-lg hover:bg-accent-blue/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    Create Project
+                  </button>
+                  <button
+                    onClick={() => setShowCreateProject(false)}
+                    className="px-4 py-2 border border-neutral-medium text-primary rounded-lg hover:bg-neutral-medium/20 transition-colors"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Awarded Projects Tab - Create Project Form */}
+        {mainTab === 'awarded' && (
+          <div className="mb-8">
+            <div className="flex justify-between items-center mb-4">
+              <h2 className="text-xl font-semibold text-primary">Awarded Projects</h2>
+              <button
+                onClick={() => setShowCreateAwardedProject(true)}
+                className="px-4 py-2 bg-success text-white rounded-lg hover:bg-success/90 transition-colors"
+              >
+                + Create Awarded Project
+              </button>
+            </div>
+            
+            {showCreateAwardedProject && (
+              <div className="bg-neutral-dark border border-neutral-medium rounded-lg p-6 mb-6">
+                <h3 className="text-lg font-medium text-primary mb-4">Create New Awarded Project</h3>
+                <div className="space-y-4">
+                  <div className="grid md:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-primary mb-2">Project Name *</label>
+                      <input
+                        type="text"
+                        value={awardedProjectForm.project_name}
+                        onChange={(e) => setAwardedProjectForm(prev => ({ ...prev, project_name: e.target.value }))}
+                        className="w-full px-3 py-2 border border-neutral-medium rounded-lg bg-neutral-dark text-primary focus:outline-none focus:ring-2 focus:ring-accent-blue"
+                        placeholder="Enter project name"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-primary mb-2">Client *</label>
+                      <select
+                        value={awardedProjectForm.client_id}
+                        onChange={(e) => setAwardedProjectForm(prev => ({ ...prev, client_id: e.target.value }))}
+                        className="w-full px-3 py-2 border border-neutral-medium rounded-lg bg-neutral-dark text-primary focus:outline-none focus:ring-2 focus:ring-accent-blue"
+                      >
+                        <option value="">Select a client</option>
+                        {clients.filter(client => client.status === 'active').map(client => (
+                          <option key={client.id} value={client.id}>
+                            {client.name}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+                  
+                  <div className="grid md:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-primary mb-2">Project Value *</label>
+                      <input
+                        type="number"
+                        value={awardedProjectForm.estimated_value}
+                        onChange={(e) => setAwardedProjectForm(prev => ({ ...prev, estimated_value: e.target.value }))}
+                        className="w-full px-3 py-2 border border-neutral-medium rounded-lg bg-neutral-dark text-primary focus:outline-none focus:ring-2 focus:ring-accent-blue"
+                        placeholder="Enter project value"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-primary mb-2">PO/WO Number</label>
+                      <input
+                        type="text"
+                        value={awardedProjectForm.po_number}
+                        onChange={(e) => setAwardedProjectForm(prev => ({ ...prev, po_number: e.target.value }))}
+                        className="w-full px-3 py-2 border border-neutral-medium rounded-lg bg-neutral-dark text-primary focus:outline-none focus:ring-2 focus:ring-accent-blue"
+                        placeholder="PO-2024-001"
+                      />
+                    </div>
+                  </div>
+                  
+                  <div className="grid md:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-primary mb-2">Funding Required</label>
+                      <input
+                        type="number"
+                        value={awardedProjectForm.funding_required}
+                        onChange={(e) => setAwardedProjectForm(prev => ({ ...prev, funding_required: e.target.value }))}
+                        className="w-full px-3 py-2 border border-neutral-medium rounded-lg bg-neutral-dark text-primary focus:outline-none focus:ring-2 focus:ring-accent-blue"
+                        placeholder="Enter funding amount"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-primary mb-2">Funding Status</label>
+                      <select
+                        value={awardedProjectForm.funding_status}
+                        onChange={(e) => setAwardedProjectForm(prev => ({ ...prev, funding_status: e.target.value }))}
+                        className="w-full px-3 py-2 border border-neutral-medium rounded-lg bg-neutral-dark text-primary focus:outline-none focus:ring-2 focus:ring-accent-blue"
+                      >
+                        <option value="pending">Pending</option>
+                        <option value="approved">Approved</option>
+                        <option value="received">Received</option>
+                        <option value="not_required">Not Required</option>
+                      </select>
+                    </div>
+                  </div>
+                  
+                  <div>
+                    <label className="block text-sm font-medium text-primary mb-2">PO Document (Optional)</label>
+                    <input
+                      type="file"
+                      onChange={(e) => setAwardedProjectForm(prev => ({ ...prev, po_file: e.target.files?.[0] || null }))}
+                      accept=".pdf,.doc,.docx,.xls,.xlsx,.jpg,.jpeg,.png,.gif,.dwg"
+                      className="w-full px-3 py-2 border border-neutral-medium rounded-lg bg-neutral-dark text-primary focus:outline-none focus:ring-2 focus:ring-accent-blue"
+                    />
+                    <p className="text-xs text-secondary mt-1">
+                      Supported formats: PDF, DOC, DOCX, XLS, XLSX, JPG, PNG, GIF, DWG (Max: 20MB)
+                    </p>
+                  </div>
+                </div>
+                <div className="flex gap-3 mt-4">
+                  <button
+                    onClick={createAwardedProject}
+                    disabled={!awardedProjectForm.project_name || !awardedProjectForm.client_id || !awardedProjectForm.estimated_value}
+                    className="px-4 py-2 bg-success text-white rounded-lg hover:bg-success/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    Create Awarded Project
+                  </button>
+                  <button
+                    onClick={() => {
+                      setShowCreateAwardedProject(false);
+                      setAwardedProjectForm({
+                        project_name: '',
+                        client_id: '',
+                        estimated_value: '',
+                        po_number: '',
+                        funding_required: '',
+                        funding_status: 'pending',
+                        po_file: null
+                      });
+                    }}
+                    className="px-4 py-2 border border-neutral-medium text-primary rounded-lg hover:bg-neutral-medium/20 transition-colors"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
         {/* Project Selector - Always a dropdown */}
         <div className="mb-6">
-          <label className="block text-sm font-medium text-primary mb-2">Select Project</label>
+          <label className="block text-sm font-medium text-primary mb-2">
+            Select Project
+          </label>
           <select
             value={selectedProject || ''}
             onChange={(e) => setSelectedProject(e.target.value)}
             className="w-full bg-neutral-dark border border-neutral-medium rounded-lg px-4 py-3 text-primary focus:border-accent-amber focus:outline-none"
           >
             <option value="">Choose a project...</option>
-            {contractorProjects.map((project) => {
+            {filteredProjects.map((project) => {
               const isGoogleSheetsProject = 'clientName' in project;
-              const clientName = isGoogleSheetsProject ? (project as any).clientName : 'Unknown Client';
+              const clientName = isGoogleSheetsProject ? (project as any).clientName : (project.client_name || 'Unknown Client');
               return (
                 <option key={project.id} value={project.id}>
-                  {project.projectName} - {clientName}
+                  {project.project_name} - {clientName}
                 </option>
               );
             })}
           </select>
+          
+          {filteredProjects.length === 0 && (
+            <div className="mt-4 p-4 bg-neutral-medium/20 rounded-lg text-center">
+              <p className="text-secondary">
+                {mainTab === 'boq-quoting' ? 'No draft projects found. Create a new project to get started.' :
+                 'No awarded projects yet.'}
+              </p>
+            </div>
+          )}
         </div>
 
         {/* Project Details - Always full width */}
@@ -985,14 +1492,36 @@ export default function ContractorProjects(): React.ReactElement {
                   <div className="flex justify-between items-start mb-4">
                     <div>
                       <h2 className="text-xl font-bold text-primary mb-2">
-                        {selectedProjectData.projectName}
+                        {selectedProjectData.project_name}
                       </h2>
                       <div className="flex items-center space-x-4 text-sm text-secondary">
                         <span>Client: {selectedClientName}</span>
                         <span>•</span>
                         <span>Project ID: {selectedProjectData.id}</span>
+                        {selectedProjectData.project_status && (
+                          <>
+                            <span>•</span>
+                            <span className={`px-2 py-1 rounded text-xs ${
+                              selectedProjectData.project_status === 'draft' 
+                                ? 'bg-accent-amber/20 text-accent-amber' 
+                                : 'bg-success/20 text-success'
+                            }`}>
+                              {selectedProjectData.project_status}
+                            </span>
+                          </>
+                        )}
                       </div>
                     </div>
+                    
+                    {/* Convert to Awarded Project Button - Only show for draft projects in BOQ & Quoting tab */}
+                    {mainTab === 'boq-quoting' && selectedProjectData.project_status === 'draft' && (
+                      <button
+                        onClick={() => setShowConversionDialog(true)}
+                        className="px-4 py-2 bg-success text-white rounded-lg hover:bg-success/90 transition-colors text-sm font-medium"
+                      >
+                        Convert to Awarded Project
+                      </button>
+                    )}
                   </div>
 
                   {/* Tab Navigation */}
@@ -1015,7 +1544,7 @@ export default function ContractorProjects(): React.ReactElement {
                           : 'text-secondary hover:text-primary hover:bg-neutral-medium'
                       }`}
                     >
-                      BOQ
+                      {mainTab === 'boq-quoting' ? 'Quote' : 'BOQ'}
                     </button>
                     <button
                       onClick={() => setActiveTab('schedule')}
@@ -1037,16 +1566,18 @@ export default function ContractorProjects(): React.ReactElement {
                     >
                       Materials
                     </button>
-                    <button
-                      onClick={() => setActiveTab('requested-materials')}
-                      className={`px-4 py-2 text-sm font-medium rounded-lg transition-all ${
-                        activeTab === 'requested-materials'
-                          ? 'bg-accent-amber text-neutral-dark'
-                          : 'text-secondary hover:text-primary hover:bg-neutral-medium'
-                      }`}
-                    >
-                      Requested Materials
-                    </button>
+                    {mainTab === 'awarded' && (
+                      <button
+                        onClick={() => setActiveTab('requested-materials')}
+                        className={`px-4 py-2 text-sm font-medium rounded-lg transition-all ${
+                          activeTab === 'requested-materials'
+                            ? 'bg-accent-amber text-neutral-dark'
+                            : 'text-secondary hover:text-primary hover:bg-neutral-medium'
+                        }`}
+                      >
+                        Requested Materials
+                      </button>
+                    )}
                     <button
                       onClick={() => setActiveTab('files')}
                       className={`px-4 py-2 text-sm font-medium rounded-lg transition-all ${
@@ -1072,7 +1603,7 @@ export default function ContractorProjects(): React.ReactElement {
                         <div>
                           <div className="text-xs text-secondary mb-1">Project Value</div>
                           <div className="text-lg font-bold text-primary">
-                            {metricsLoading ? '...' : formatCurrency(selectedProjectData.projectValue)}
+                            {metricsLoading ? '...' : formatCurrency(selectedProjectData.estimated_value)}
                           </div>
                         </div>
                         <div>
@@ -1141,7 +1672,12 @@ export default function ContractorProjects(): React.ReactElement {
                               onClick={() => setActiveTab('boq')}
                               className="text-xs font-medium text-accent-amber hover:text-accent-amber/80 flex items-center space-x-1"
                             >
-                              <span>{hasBOQData ? 'View BOQ' : '+ Add BOQ'}</span>
+                              <span>
+                                {hasBOQData ? 
+                                  (mainTab === 'boq-quoting' ? 'View Quote' : 'View BOQ') : 
+                                  (mainTab === 'boq-quoting' ? '+ Add Quote' : '+ Add BOQ')
+                                }
+                              </span>
                               <span>→</span>
                             </button>
                           </div>
@@ -1268,15 +1804,19 @@ export default function ContractorProjects(): React.ReactElement {
                             <div className="flex items-center space-x-3">
                               <div className="text-2xl">📊</div>
                               <div>
-                                <h3 className="text-lg font-semibold text-primary">Bill of Quantities</h3>
-                                <p className="text-sm text-secondary">Add project costs, quantities, and rates</p>
+                                <h3 className="text-lg font-semibold text-primary">
+                                  {mainTab === 'boq-quoting' ? 'Project Quote' : 'Bill of Quantities'}
+                                </h3>
+                                <p className="text-sm text-secondary">
+                                  {mainTab === 'boq-quoting' ? 'Create detailed quote with line items and rates' : 'Add project costs, quantities, and rates'}
+                                </p>
                               </div>
                             </div>
                             <button
                               onClick={() => setShowBOQEntry(true)}
                               className="bg-accent-amber text-neutral-dark px-4 py-2 rounded-lg font-medium hover:bg-accent-amber/90 transition-colors text-sm"
                             >
-                              + Add BOQ
+                              {mainTab === 'boq-quoting' ? '+ Create Quote' : '+ Add BOQ'}
                             </button>
                           </div>
                         </div>
@@ -1284,7 +1824,9 @@ export default function ContractorProjects(): React.ReactElement {
                         /* BOQ Entry Form */
                         <div className="space-y-6">
                           <div className="flex items-center justify-between">
-                            <h3 className="text-lg font-bold text-primary">Enter BOQ Details</h3>
+                            <h3 className="text-lg font-bold text-primary">
+                              {mainTab === 'boq-quoting' ? 'Enter Quote Details' : 'Enter BOQ Details'}
+                            </h3>
                             <button
                               onClick={() => setShowBOQEntry(false)}
                               className="text-secondary hover:text-primary text-sm flex items-center space-x-2"
@@ -1294,19 +1836,43 @@ export default function ContractorProjects(): React.ReactElement {
                             </button>
                           </div>
                           <EditableBOQTable
-                            projectId={selectedProjectData.id}
-                            contractorId={currentContractorId}
-                            onSaveSuccess={() => {
-                              setRefreshKey(prev => prev + 1);
-                              setShowBOQEntry(false); // Hide form after successful save
-                              setTimeout(() => setRefreshKey(prev => prev + 1), 500);
-                            }}
-                          />
+                              projectId={selectedProjectData.id}
+                              contractorId={currentContractorId}
+                              onSaveSuccess={() => {
+                                setRefreshKey(prev => prev + 1);
+                                setShowBOQEntry(false); // Hide form after successful save
+                                setTimeout(() => setRefreshKey(prev => prev + 1), 500);
+                              }}
+                            />
                         </div>
                       )}
                       
-                      {/* Always show existing BOQ data if available */}
-                      <BOQDisplay key={`boq-${refreshKey}`} projectId={selectedProjectData.id} />
+                      {/* Show BOQ data with edit button */}
+                      <div>
+                        {hasBOQData && (
+                          <div className="mb-4 flex justify-end">
+                            <button
+                              onClick={() => setEditingBOQ(!editingBOQ)}
+                              className={`px-4 py-2 rounded-lg transition-colors text-sm font-medium ${
+                                editingBOQ 
+                                  ? 'bg-neutral-medium text-primary hover:bg-neutral-medium/80'
+                                  : 'bg-accent-blue text-white hover:bg-accent-blue/90'
+                              }`}
+                            >
+                              {editingBOQ ? '← Back to View' : '✏️ Edit Quote'}
+                            </button>
+                          </div>
+                        )}
+                        <BOQDisplay 
+                          key={`boq-${refreshKey}`} 
+                          projectId={selectedProjectData.id} 
+                          isEditable={editingBOQ}
+                          onSaveSuccess={() => {
+                            setRefreshKey(prev => prev + 1);
+                            setEditingBOQ(false);
+                          }}
+                        />
+                      </div>
                     </div>
                   )}
 
@@ -2249,6 +2815,96 @@ export default function ContractorProjects(): React.ReactElement {
                   Submit Request
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Project Conversion Dialog */}
+      {showConversionDialog && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-neutral-dark rounded-lg p-6 w-full max-w-2xl border border-neutral-medium">
+            <h2 className="text-xl font-bold mb-4 text-primary">Convert to Awarded Project</h2>
+            <p className="text-secondary mb-6">
+              Add project value and contract details to convert this draft project to an awarded project.
+            </p>
+            
+            <div className="space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-primary mb-1">
+                    Project Value *
+                  </label>
+                  <input
+                    type="number"
+                    value={conversionForm.estimated_value}
+                    onChange={(e) => setConversionForm(prev => ({ ...prev, estimated_value: e.target.value }))}
+                    placeholder="Enter project value"
+                    className="w-full px-3 py-2 bg-neutral-darker border border-neutral-medium rounded-md text-primary"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-primary mb-1">
+                    PO/WO Number
+                  </label>
+                  <input
+                    type="text"
+                    value={conversionForm.po_number}
+                    onChange={(e) => setConversionForm(prev => ({ ...prev, po_number: e.target.value }))}
+                    placeholder="PO-2024-001"
+                    className="w-full px-3 py-2 bg-neutral-darker border border-neutral-medium rounded-md text-primary"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-primary mb-1">
+                    Funding Required
+                  </label>
+                  <input
+                    type="number"
+                    value={conversionForm.funding_required}
+                    onChange={(e) => setConversionForm(prev => ({ ...prev, funding_required: e.target.value }))}
+                    placeholder="Enter funding amount"
+                    className="w-full px-3 py-2 bg-neutral-darker border border-neutral-medium rounded-md text-primary"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-primary mb-1">
+                    Funding Status
+                  </label>
+                  <select
+                    value={conversionForm.funding_status}
+                    onChange={(e) => setConversionForm(prev => ({ ...prev, funding_status: e.target.value }))}
+                    className="w-full px-3 py-2 bg-neutral-darker border border-neutral-medium rounded-md text-primary"
+                  >
+                    <option value="pending">Pending</option>
+                    <option value="approved">Approved</option>
+                    <option value="received">Received</option>
+                    <option value="not_required">Not Required</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex justify-end space-x-3 mt-6">
+              <button
+                onClick={() => {
+                  setShowConversionDialog(false);
+                  setConversionForm({ estimated_value: '', po_number: '', funding_required: '', funding_status: 'pending' });
+                }}
+                className="px-4 py-2 bg-neutral-medium text-secondary rounded-md hover:bg-neutral-medium/80 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={convertProjectToAwarded}
+                disabled={!conversionForm.estimated_value}
+                className="px-4 py-2 bg-success text-white rounded-md hover:bg-success/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Convert to Awarded Project
+              </button>
             </div>
           </div>
         </div>
