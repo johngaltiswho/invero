@@ -661,7 +661,7 @@ function IndividualProjectContent(): React.ReactElement {
   return (
     <ContractorDashboardLayout activeTab="projects">
       <div className="p-6">
-        {/* Header */}We
+        {/* Header */}
         <div className="mb-6">
           <div className="flex items-center mb-4">
             <button
@@ -983,12 +983,6 @@ function IndividualProjectContent(): React.ReactElement {
                       </Button>
                     </>
                   )}
-                  <Button
-                    onClick={() => setShowAddMaterial(true)}
-                    className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg text-sm"
-                  >
-                    + Add Material
-                  </Button>
                 </div>
               </div>
 
@@ -996,15 +990,9 @@ function IndividualProjectContent(): React.ReactElement {
                 <div className="text-center py-12 bg-neutral-darker rounded-lg border border-neutral-medium">
                   <div className="text-secondary text-lg mb-4">📦</div>
                   <h4 className="text-primary font-semibold mb-2">No Materials Yet</h4>
-                  <p className="text-secondary text-sm mb-4">
-                    Add materials to start managing your project inventory and purchases.
+                  <p className="text-secondary text-sm">
+                    Materials will appear here once they are added to the project.
                   </p>
-                  <Button
-                    onClick={() => setShowAddMaterial(true)}
-                    className="bg-accent-amber hover:bg-accent-amber/90 text-neutral-dark px-6 py-2 rounded-lg"
-                  >
-                    Add Your First Material
-                  </Button>
                 </div>
               ) : (
                 <div className="space-y-4">
