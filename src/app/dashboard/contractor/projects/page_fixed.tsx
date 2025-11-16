@@ -2004,10 +2004,7 @@ function ContractorProjectsContent(): React.ReactElement {
                     key={project.id}
                     onClick={() => {
                       // Open project in new tab
-                      console.log('Clicking project:', project.id, project.project_name);
-                      const url = `/dashboard/contractor/projects/${project.id}`;
-                      console.log('Opening URL:', url);
-                      window.open(url, '_blank');
+                      window.open(`/dashboard/contractor/projects/${project.id}`, '_blank');
                     }}
                     className="bg-neutral-dark border border-neutral-medium rounded-lg p-4 hover:border-accent-amber transition-colors cursor-pointer group"
                   >
@@ -2034,15 +2031,15 @@ function ContractorProjectsContent(): React.ReactElement {
                       </span>
                     </div>
                     
-                    {/* Funding Info - actual values to be loaded */}
+                    {/* Basic Funding Info (placeholder for now) */}
                     <div className="space-y-2 text-sm">
                       <div className="flex justify-between">
                         <span className="text-secondary">Funded:</span>
-                        <span className="text-neutral-medium">-</span>
+                        <span className="text-accent-orange">₹2,50,000</span>
                       </div>
                       <div className="flex justify-between">
                         <span className="text-secondary">To Repay:</span>
-                        <span className="text-neutral-medium">-</span>
+                        <span className="text-primary">₹1,80,000</span>
                       </div>
                     </div>
                     
@@ -2057,10 +2054,20 @@ function ContractorProjectsContent(): React.ReactElement {
           )}
         </div>
 
-      </div>
-    </ContractorDashboardLayout>
+        {/* Project Navigation Message */}
+        <div className="w-full">
+            <div className="bg-neutral-dark rounded-lg border border-neutral-medium p-8 text-center">
+              <h3 className="text-xl font-bold text-primary mb-2">Click on a Project Card</h3>
+              <p className="text-secondary mb-4">
+                Select any project card above to open it in a new tab and access all project details, materials, schedules, and more.
+              </p>
+              <div className="text-sm text-secondary">
+                💡 Each project opens in its own tab so you can work on multiple projects simultaneously
+              </div>
+        </div>
+      </ContractorDashboardLayout>
     );
-}
+  }
 
 export default function ContractorProjects(): React.ReactElement {
   return (

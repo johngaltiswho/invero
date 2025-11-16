@@ -97,7 +97,9 @@ export async function POST(request: NextRequest) {
       quantity,
       unit,
       notes,
-      status = 'pending'
+      status = 'pending',
+      source_type = 'manual',
+      source_file_name
     } = body;
 
     if (!project_id || !material_id || !quantity || !unit) {
@@ -122,7 +124,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Contractor not found' }, { status: 404 });
     }
 
-    // Insert project material
+    // Insert project material with default values for new fields
     const { data: projectMaterial, error: insertError } = await supabase
       .from('project_materials')
       .insert({
@@ -130,9 +132,14 @@ export async function POST(request: NextRequest) {
         contractor_id: contractor.id,
         material_id,
         quantity: parseFloat(quantity),
+        available_qty: parseFloat(quantity), // Initialize available_qty with the full quantity
         unit,
         notes,
-        status
+        status,
+        // Add default values for new purchase workflow columns
+        purchase_status: 'none',
+        source_type: source_type,
+        source_file_name: source_file_name
       })
       .select(`
         *,
@@ -147,9 +154,23 @@ export async function POST(request: NextRequest) {
 
     if (insertError) {
       console.error('Failed to add project material:', insertError);
+      console.error('Insert data was:', {
+        project_id,
+        contractor_id: contractor.id,
+        material_id,
+        quantity: parseFloat(quantity),
+        unit,
+        notes,
+        status,
+        purchase_status: 'none',
+        source_type: source_type,
+        source_file_name: source_file_name
+      });
       return NextResponse.json({ 
         error: 'Failed to add project material',
-        details: insertError.message 
+        details: insertError.message,
+        code: insertError.code,
+        hint: insertError.hint 
       }, { status: 500 });
     }
 
@@ -307,7 +328,24 @@ export async function PUT(request: NextRequest) {
     // Prepare update data
     const updateData: any = { updated_at: new Date().toISOString() };
     if (status !== undefined) updateData.status = status;
-    if (quantity !== undefined) updateData.quantity = parseFloat(quantity);
+    if (quantity !== undefined) {
+      updateData.quantity = parseFloat(quantity);
+      // When quantity is updated, also update available_qty to maintain the same difference
+      // Get current material to calculate the difference
+      const { data: currentMaterial } = await supabase
+        .from('project_materials')
+        .select('quantity, available_qty')
+        .eq('id', id)
+        .single();
+      
+      if (currentMaterial) {
+        const currentDiff = (currentMaterial.quantity || 0) - (currentMaterial.available_qty || 0);
+        updateData.available_qty = parseFloat(quantity) - currentDiff;
+      } else {
+        // If we can't get current material, just set available_qty to the new quantity
+        updateData.available_qty = parseFloat(quantity);
+      }
+    }
     if (notes !== undefined) updateData.notes = notes;
 
     // Update project material

@@ -366,7 +366,7 @@ export default function MasterSchedule({ contractorProjects, contractorId }: Mas
                 </td>
                 <td className="py-3 px-4 text-center">
                   <button
-                    onClick={() => window.location.href = `/dashboard/contractor/projects?project=${task.projectId}&tab=schedule`}
+                    onClick={() => window.location.href = `/dashboard/contractor/projects/${task.projectId}?tab=schedule`}
                     className="px-3 py-1.5 bg-accent-amber text-neutral-dark rounded text-xs font-medium hover:bg-accent-amber/90 transition-colors"
                   >
                     View Schedule

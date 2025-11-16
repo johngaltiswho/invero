@@ -533,7 +533,9 @@ export default function BOQTakeoffViewer({ fileUrl, fileName, projectId, onError
             material_id: summary.materialId,
             quantity: summary.totalQuantity,
             unit: summary.unit,
-            notes: `BOQ Summary from ${fileName}. Used in ${summary.itemCount} sections: ${summary.descriptions.join(', ')}`
+            notes: `BOQ Summary from ${fileName}. Used in ${summary.itemCount} sections: ${summary.descriptions.join(', ')}`,
+            source_file_name: fileName,
+            source_type: 'boq_analysis'
           })
         });
 

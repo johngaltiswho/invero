@@ -101,9 +101,6 @@ export function ContractorDashboardLayout({ children, activeTab }: ContractorDas
               <Link href="/" className="text-sm text-secondary hover:text-primary transition-colors">
                 ← Back to Home
               </Link>
-              <Button variant="primary" size="sm">
-                Submit Report
-              </Button>
               <div className="flex items-center space-x-3">
                 <div className="text-right">
                   <div className="text-sm font-medium text-primary">

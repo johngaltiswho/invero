@@ -10,7 +10,7 @@ import { useRouter } from 'next/navigation';
 import { useContractorV2 } from '@/contexts/ContractorContextV2';
 import CreateProjectForm from '@/components/CreateProjectForm';
 import MasterSchedule from '@/components/MasterSchedule';
-import ProjectHealthOverview from '@/components/ProjectHealthOverview';
+// import ProjectHealthOverview from '@/components/ProjectHealthOverview'; // Hidden for now
 
 export default function ContractorDashboard(): React.ReactElement {
   const { user, isLoaded } = useUser();
@@ -157,13 +157,15 @@ export default function ContractorDashboard(): React.ReactElement {
           </div>
         </div>
 
-        {/* Project Health Section */}
+        {/* Project Health Section - Hidden for now, uncomment to bring back */}
+        {/*
         <div className="mb-8">
           <div className="bg-neutral-dark p-6 rounded-lg border border-neutral-medium">
             <h3 className="text-lg font-semibold text-primary mb-4">Project Health</h3>
             <ProjectHealthOverview projects={projects} />
           </div>
         </div>
+        */}
 
         {/* Master Schedule */}
         <div className="mb-8">

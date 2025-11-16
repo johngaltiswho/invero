@@ -44,6 +44,7 @@ export async function POST(request: NextRequest) {
       .select(`
         id, 
         quantity, 
+        available_qty,
         unit, 
         total_requested_qty, 
         remaining_qty,
@@ -67,7 +68,7 @@ export async function POST(request: NextRequest) {
 
     // Validate quantity
     const requestedQty = parseFloat(purchase_quantity.toString());
-    const availableQty = projectMaterial.remaining_qty || projectMaterial.quantity || 0;
+    const availableQty = projectMaterial.available_qty || projectMaterial.quantity || 0;
     
     if (requestedQty <= 0) {
       return NextResponse.json({ error: 'Quantity must be greater than 0' }, { status: 400 });
