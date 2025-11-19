@@ -185,6 +185,20 @@ export default function InvestorDashboard(): React.ReactElement {
     }
   };
 
+  type InvestmentRecord = Record<string, unknown>;
+
+  const getInvestmentValue = (investment: InvestmentRecord, fields: string[], fallback?: unknown) => {
+    for (const field of fields) {
+      if (Object.prototype.hasOwnProperty.call(investment, field)) {
+        const value = investment[field];
+        if (value !== undefined && value !== null && value !== '') {
+          return value;
+        }
+      }
+    }
+    return fallback;
+  };
+
   return (
     <DashboardLayout activeTab="overview">
       <div className="p-6">
@@ -234,52 +248,65 @@ export default function InvestorDashboard(): React.ReactElement {
               <div className="p-6">
                 <div className="space-y-6">
                   {recentInvestments.length > 0 ? recentInvestments.map((investment) => {
-                    // Find related contractor and project
-                    const contractor = investor?.relatedContractors?.find(c => c.id === investment.contractorId);
-                    const project = investor?.relatedProjects?.find(p => p.id === investment.projectId);
+                    const normalizedInvestment = investment as InvestmentRecord;
+                    const contractorId = (getInvestmentValue(normalizedInvestment, ['contractorId', 'contractor_id']) as string | undefined) || '';
+                    const projectId = (getInvestmentValue(normalizedInvestment, ['projectId', 'project_id']) as string | undefined) || '';
+                    const contractor = investor?.relatedContractors?.find(c => c.id === contractorId);
+                    const project = investor?.relatedProjects?.find(p => p.id === projectId);
+                    const contractorName = contractor?.companyName || contractor?.company_name || (contractorId ? `Contractor ${contractorId}` : 'Unknown Contractor');
+                    const projectName = project?.projectName || project?.project_name || (projectId ? `Project ${projectId}` : 'Unknown Project');
+                    const investmentAmount = Number(getInvestmentValue(normalizedInvestment, ['investmentAmount', 'investment_amount', 'amount'], 0) ?? 0);
+                    const expectedReturnRaw = getInvestmentValue(normalizedInvestment, ['expectedReturn', 'expected_returns', 'expected_return', 'expected_return_percent'], 0);
+                    const expectedReturn = Number(expectedReturnRaw ?? 0);
+                    const investmentDateRaw = getInvestmentValue(normalizedInvestment, ['investmentDate', 'investment_date'], '');
+                    const investmentDate = typeof investmentDateRaw === 'string' ? investmentDateRaw : investmentDateRaw ? String(investmentDateRaw) : '';
+                    const actualReturnRaw = getInvestmentValue(normalizedInvestment, ['actualReturn', 'actual_returns', 'actual_return']);
+                    const hasActualReturn = actualReturnRaw !== undefined && actualReturnRaw !== null && actualReturnRaw !== '';
+                    const actualReturnValue = hasActualReturn ? Number(actualReturnRaw) : null;
+                    const investmentStatus = (getInvestmentValue(normalizedInvestment, ['status'], 'Active') as string) || 'Active';
                     
                     return (
                     <div key={investment.id} className="border border-neutral-medium rounded-lg p-4">
                       <div className="flex justify-between items-start mb-3">
                         <div>
                           <h3 className="font-semibold text-primary mb-1">
-                            {project?.projectName || `Project ${investment.projectId}`}
+                            {projectName}
                           </h3>
                           <p className="text-sm text-secondary">
-                            {contractor?.companyName || `Contractor ${investment.contractorId}`}
+                            {contractorName}
                           </p>
                         </div>
                         <div className={`px-2 py-1 rounded text-xs font-medium ${
-                          investment.status === 'Active' 
+                          investmentStatus === 'Active' 
                             ? 'bg-accent-blue/10 text-accent-blue'
-                            : investment.status === 'Completed'
+                            : investmentStatus === 'Completed'
                             ? 'bg-success/10 text-success'
                             : 'bg-error/10 text-error'
                         }`}>
-                          {investment.status}
+                          {investmentStatus}
                         </div>
                       </div>
                       
                       <div className="grid grid-cols-3 gap-4 mb-3">
                         <div>
                           <div className="text-xs text-secondary">Investment</div>
-                          <div className="font-semibold text-primary">{formatCurrency(investment.investmentAmount)}</div>
+                          <div className="font-semibold text-primary">{formatCurrency(investmentAmount)}</div>
                         </div>
                         <div>
                           <div className="text-xs text-secondary">Expected Return</div>
-                          <div className="font-semibold text-accent-amber">{investment.expectedReturn.toFixed(1)}%</div>
+                          <div className="font-semibold text-accent-amber">{expectedReturn.toFixed(1)}%</div>
                         </div>
                         <div>
                           <div className="text-xs text-secondary">Date</div>
                           <div className="font-semibold text-primary">
-                            {investment.investmentDate ? formatDate(investment.investmentDate) : 'Not set'}
+                            {investmentDate ? formatDate(investmentDate) : 'Not set'}
                           </div>
                         </div>
                       </div>
                       
-                      {investment.actualReturn !== undefined && (
+                      {actualReturnValue !== null && !Number.isNaN(actualReturnValue) && (
                         <div className="text-xs text-success">
-                          Actual Return: {investment.actualReturn.toFixed(1)}%
+                          Actual Return: {Number(actualReturnValue).toFixed(1)}%
                         </div>
                       )}
                     </div>
@@ -307,7 +334,7 @@ export default function InvestorDashboard(): React.ReactElement {
               </div>
               <div className="p-6">
                 <div className="space-y-4">
-                  {sectorAllocation.map((sector, index) => (
+                  {sectorAllocation.map((sector) => (
                     <div key={sector.sector}>
                       <div className="flex justify-between items-center mb-2">
                         <span className="text-sm font-medium text-primary">{sector.sector}</span>

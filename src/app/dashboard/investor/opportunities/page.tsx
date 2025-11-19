@@ -32,7 +32,7 @@ export default function InvestmentOpportunities(): React.ReactElement {
     const allContractors = investor.allContractors || investor.relatedContractors || [];
     
     const allActiveProjects = allProjects.filter(project => 
-      project.status === 'Active' || project.status === 'Planning'
+      project.status !== 'Draft'
     );
     
     console.log('📋 Total projects available:', allProjects.length);
@@ -43,98 +43,91 @@ export default function InvestmentOpportunities(): React.ReactElement {
 
     // Create opportunities from ALL active projects
     allActiveProjects.forEach((project, index) => {
-      console.log(`Processing project ${index + 1}:`, project.projectName, 'from contractor:', project.contractorId);
+      console.log(`Processing project ${index + 1}:`, project.project_name, 'from contractor:', project.contractor_id);
       
       // Find the contractor for this project from ALL contractors
-      const contractor = allContractors.find(c => c.id === project.contractorId);
+      const contractor = allContractors.find(c => c.id === project.contractor_id);
       
       if (!contractor) {
-        console.log(`⚠️ No contractor found for project ${project.id} (${project.contractorId})`);
-        // Create a placeholder contractor if not found
-        const placeholderContractor = {
-          id: project.contractorId,
-          companyName: `Contractor ${project.contractorId}`,
-          businessCategory: 'General Services',
-          riskRating: 'Medium',
-          completedProjects: 10,
-          successRate: 90,
-          averageProjectValue: 5000000
-        };
-        return createOpportunityFromProject(project, placeholderContractor, index);
+        console.log(`⚠️ No contractor found for project ${project.id} (${project.contractor_id}) - skipping`);
+        return; // Skip projects without contractors
       }
 
-      return createOpportunityFromProject(project, contractor, index);
+      const opportunity = createOpportunityFromProject(project, contractor, index);
+      if (opportunity) {
+        opportunities.push(opportunity);
+      }
     });
 
     // Helper function to create opportunity from project and contractor
     function createOpportunityFromProject(project: any, contractor: any, index: number) {
-      // Use real data from Google Sheets instead of calculations
-      const fundingRequired = project.fundingRequired || 1000000; // From sheet column N
-      const expectedIRR = project.expectedIRR || 14; // From sheet column P  
-      const tenureMonths = project.projectTenure || 6; // From sheet column Q
+      // Use real data from Supabase project fields
+      const fundingRequired = project.funding_required || 1000000;
+      const expectedIRR = project.expected_irr || 14;  
+      const tenureMonths = project.project_tenure || 6;
       const minInvestment = Math.round(fundingRequired * 0.2); // 20% of funding required
       
       // Calculate real funding progress from actual investments
       const allInvestments = investor.investments || [];
-      const projectInvestments = allInvestments.filter(inv => inv.projectId === project.id);
-      const totalInvested = projectInvestments.reduce((sum, inv) => sum + inv.investmentAmount, 0);
+      const projectInvestments = allInvestments.filter(inv => inv.project_id === project.id);
+      const totalInvested = projectInvestments.reduce((sum, inv) => sum + inv.investment_amount, 0);
       const fundedPercentage = fundingRequired > 0 ? Math.round((totalInvested / fundingRequired) * 100) : 0;
       
       // Calculate remaining funding needed
       const remainingFunding = Math.max(0, fundingRequired - totalInvested);
       
-      console.log(`📋 Project ${project.projectName} funding analysis:`, {
-        fundingRequired: project.fundingRequired,
+      console.log(`📋 Project ${project.project_name} funding analysis:`, {
+        fundingRequired: project.funding_required,
         totalInvested: totalInvested,
         fundedPercentage: fundedPercentage,
         remainingFunding: remainingFunding,
         numberOfInvestors: projectInvestments.length,
-        expectedIRR: project.expectedIRR,
-        projectTenure: project.projectTenure,
-        fundingStatus: project.fundingStatus
+        expectedIRR: project.expected_irr,
+        projectTenure: project.project_tenure,
+        fundingStatus: project.status
       });
       
       // Generate ESG score based on contractor profile
-      const esgScore = contractor.businessCategory?.includes('Engineering') ? 'Gold' : 
-                      contractor.businessCategory?.includes('IT') ? 'Silver' : 'Bronze';
+      const esgScore = contractor.business_category?.includes('Engineering') ? 'Gold' : 
+                      contractor.business_category?.includes('IT') ? 'Silver' : 'Bronze';
 
       // Create client name for the opportunity
-      const clientName = project.clientName || `${contractor.businessCategory || 'Industrial'} Client`;
-      const projectName = project.projectName || `${contractor.businessCategory || 'Engineering'} Project`;
+      const clientName = project.client_name || `${contractor.business_category || 'Industrial'} Client`;
+      const projectName = project.project_name || `${contractor.business_category || 'Engineering'} Project`;
 
       const opportunity = {
         id: `OPP-2025-${String(index + 150).padStart(3, '0')}`,
         projectName: projectName,
-        contractor: contractor.companyName,
+        contractor: contractor.company_name,
         client: clientName,
         clientType: ['Tata', 'Mahindra', 'HCL', 'Infosys', 'TCS'].some(mnc => 
           clientName?.includes(mnc)) ? 'MNC' : 'Large Enterprise',
-        sector: contractor.businessCategory || 'Engineering Services',
+        sector: contractor.business_category || 'Engineering Services',
         fundingRequired: new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', minimumFractionDigits: 0 }).format(fundingRequired),
-        projectValue: new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', minimumFractionDigits: 0 }).format(project.projectValue || 0),
+        projectValue: new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', minimumFractionDigits: 0 }).format(project.project_value || 0),
         expectedIRR: `${expectedIRR}%`,
         tenure: `${tenureMonths} months`,
-        riskRating: project.riskLevel || contractor.riskRating || 'Medium',
-        esgRating: project.esgCompliance === 'Yes' ? 'Gold' : esgScore,
+        riskRating: project.risk_level || contractor.risk_rating || 'Medium',
+        esgRating: project.esg_compliance === 'Yes' ? 'Gold' : esgScore,
         minInvestment: new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', minimumFractionDigits: 0 }).format(minInvestment),
-        status: project.fundingStatus || 'Open',
+        status: project.status || 'Open',
         funded: fundedPercentage, // Real funding percentage from actual investments
         remainingFunding: new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', minimumFractionDigits: 0 }).format(remainingFunding),
         totalInvested: new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', minimumFractionDigits: 0 }).format(totalInvested),
         numberOfInvestors: projectInvestments.length,
         timeLeft: `${Math.round(Math.random() * 15 + 5)} days`, // Still random for now
-        currentProgress: project.currentProgress || 0,
-        teamSize: project.teamSize || 8,
+        currentProgress: project.current_progress || 0,
+        teamSize: project.team_size || 8,
         milestones: [
-          `${project.nextMilestone || 'Initial Planning'} - Month 1`,
+          `${project.next_milestone || 'Initial Planning'} - Month 1`,
           'Resource Allocation - Month 2',
           'Implementation Phase - Month 3',
           'Final Delivery & Testing'
         ],
         highlights: [
-          `${contractor.completedProjects || 25}+ completed projects`,
-          `${contractor.successRate || 95}% success rate`,
-          contractor.riskRating === 'Low' ? 'Low-risk opportunity' : 'Proven track record',
+          `${contractor.completed_projects || 25}+ completed projects`,
+          `${contractor.success_rate || 95}% success rate`,
+          contractor.risk_rating === 'Low' ? 'Low-risk opportunity' : 'Proven track record',
           'ESG compliance verified',
           esgScore === 'Gold' ? 'ESG Gold certified' : `ESG ${esgScore} rated`
         ],
@@ -158,70 +151,11 @@ export default function InvestmentOpportunities(): React.ReactElement {
         }
       };
 
-      opportunities.push(opportunity);
-      console.log(`✅ Created opportunity ${opportunity.id} for ${contractor.companyName} - ${projectName}`);
+      console.log(`✅ Created opportunity ${opportunity.id} for ${contractor.company_name} - ${projectName}`);
+      return opportunity;
     }
 
     console.log(`📊 Generated ${opportunities.length} opportunities total`);
-    
-    // If still no opportunities, create some sample ones to demonstrate the interface
-    if (opportunities.length === 0) {
-      console.log('⚠️ No contractor data available, creating sample opportunities');
-      const sampleOpportunities = [
-        {
-          id: 'OPP-2025-001',
-          projectName: 'Manufacturing Automation Solution',
-          contractor: 'TechSolutions Pvt Ltd',
-          client: 'Industrial Manufacturing Corp',
-          clientType: 'Large Enterprise',
-          sector: 'Manufacturing',
-          fundingRequired: '₹75,00,000',
-          projectValue: '₹2,50,00,000',
-          expectedIRR: '14.2%',
-          tenure: '8 months',
-          riskRating: 'Medium',
-          esgRating: 'Silver',
-          minInvestment: '₹15,00,000',
-          status: 'Open',
-          funded: 45,
-          timeLeft: '12 days',
-          currentProgress: 0,
-          teamSize: 12,
-          milestones: [
-            'Planning & Design - Month 1',
-            'System Implementation - Month 3',
-            'Testing & Optimization - Month 6',
-            'Final Delivery & Training - Month 8'
-          ],
-          highlights: [
-            '30+ completed projects',
-            '96% success rate',
-            'Proven track record',
-            'ESG compliance verified',
-            'ESG Silver rated'
-          ],
-          esgData: {
-            environmental: {
-              wasteReduction: 82,
-              energyEfficiency: 88,
-              localSourcing: 75
-            },
-            social: {
-              localEmployment: 85,
-              safetyCompliance: 95,
-              communityImpact: 78
-            },
-            governance: {
-              compliance: 98,
-              transparency: 92,
-              ethics: 97
-            }
-          }
-        }
-      ];
-      
-      return sampleOpportunities;
-    }
     
     return opportunities;
   };

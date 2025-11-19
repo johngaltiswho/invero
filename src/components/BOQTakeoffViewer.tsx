@@ -525,12 +525,16 @@ export default function BOQTakeoffViewer({ fileUrl, fileName, projectId, onError
 
       // Send each summarized material to the API
       for (const summary of materialSummary) {
+        const materialMeta = availableMaterials.find(m => m.id === summary.materialId);
         const response = await fetch('/api/project-materials', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             project_id: projectId,
             material_id: summary.materialId,
+            material_name: summary.materialName,
+            material_category: materialMeta?.category,
+            material_description: summary.descriptions.join(', '),
             quantity: summary.totalQuantity,
             unit: summary.unit,
             notes: `BOQ Summary from ${fileName}. Used in ${summary.itemCount} sections: ${summary.descriptions.join(', ')}`,
@@ -656,6 +660,9 @@ export default function BOQTakeoffViewer({ fileUrl, fileName, projectId, onError
           body: JSON.stringify({
             project_id: projectId,
             material_id: item.materialId,
+            material_name: item.materialName,
+            material_category: material?.category,
+            material_description: item.description || '',
             quantity: item.quantity,
             unit: material?.unit || item.unit,
             notes: `BOQ from ${fileName}. Dimensions: ${item.nos}×${item.length}×${item.breadth}×${item.height}. ${item.notes || ''}`

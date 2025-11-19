@@ -1,178 +1,258 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase';
 
-// GET /api/admin/purchase-requests - Get all purchase requests for admin review
-export async function GET(request: NextRequest) {
-  try {
-    const { searchParams } = new URL(request.url);
-    const status = searchParams.get('status') || 'pending';
-    const limit = parseInt(searchParams.get('limit') || '50');
-    const offset = parseInt(searchParams.get('offset') || '0');
+type PurchaseSummary = {
+  draft: number;
+  submitted: number;
+  approved: number;
+  funded: number;
+  po_generated: number;
+  completed: number;
+  rejected: number;
+};
 
-    // Get project materials with purchase requests
-    const { data: purchaseRequests, error } = await supabaseAdmin
-      .from('project_materials')
-      .select(`
+type PurchaseRequestItemRow = {
+  id: string;
+  purchase_request_id: string;
+  project_material_id: string;
+  requested_qty: number;
+  approved_qty?: number | null;
+  unit_rate?: number | null;
+  tax_percent?: number | null;
+  status: string;
+  project_materials?: {
+    unit?: string | null;
+    notes?: string | null;
+    materials?: {
+      name?: string | null;
+      description?: string | null;
+    } | null;
+  } | null;
+};
+
+type PurchaseRequestUpdate = {
+  status?: string;
+  approval_notes?: string | null;
+  updated_at?: string;
+  approved_at?: string | null;
+  funded_at?: string | null;
+};
+
+type PurchaseRequestItemUpdate = {
+  status?: string;
+  approved_qty?: number | null;
+  updated_at?: string;
+};
+
+const createEmptySummary = (): PurchaseSummary => ({
+  draft: 0,
+  submitted: 0,
+  approved: 0,
+  funded: 0,
+  po_generated: 0,
+  completed: 0,
+  rejected: 0
+});
+
+interface FetchOptions {
+  status?: string;
+  limit?: number;
+  offset?: number;
+  ids?: string[];
+}
+
+async function fetchPurchaseSummary(): Promise<PurchaseSummary> {
+  const summary = createEmptySummary();
+  const { data, error } = await supabaseAdmin
+    .from('purchase_requests')
+    .select('status');
+
+  if (error) {
+    console.error('Failed to compute purchase summary:', error);
+    return summary;
+  }
+
+  data?.forEach((row) => {
+    const key = row.status as keyof PurchaseSummary;
+    if (key in summary) {
+      summary[key] += 1;
+    }
+  });
+
+  return summary;
+}
+
+async function fetchPurchaseRequests(options: FetchOptions = {}) {
+  const limit = options.limit ?? 50;
+  const offset = options.offset ?? 0;
+
+  let query = supabaseAdmin
+    .from('purchase_requests')
+    .select(
+      `
         id,
         project_id,
         contractor_id,
-        vendor_id,
-        purchase_request_id,
-        quantity,
-        requested_qty,
-        unit,
-        notes,
-        purchase_status,
-        quoted_rate,
-        tax_percentage,
-        tax_amount,
-        total_amount,
-        purchase_invoice_url,
-        submitted_at,
-        contractor_notes,
+        status,
+        remarks,
+        approval_notes,
         created_at,
-        materials:material_id (
-          id,
-          name,
-          description,
-          category,
-          unit
-        ),
-        contractors!materials_requested_by_fkey (
+        updated_at,
+        submitted_at,
+        approved_at,
+        funded_at,
+        contractors:contractor_id (
           company_name,
           contact_person,
           email
-        ),
-        vendors:vendor_id (
-          id,
-          name,
-          contact_person,
-          email,
-          phone
         )
-      `)
-      .eq('purchase_status', status)
-      .order('submitted_at', { ascending: false })
-      .range(offset, offset + limit - 1);
+      `,
+      { count: 'exact' }
+    )
+    .order('created_at', { ascending: false });
 
-    if (error) {
-      console.error('Database error:', error);
-      return NextResponse.json(
-        { error: 'Failed to fetch purchase requests' },
-        { status: 500 }
-      );
+  if (options.ids && options.ids.length > 0) {
+    query = query.in('id', options.ids);
+  } else {
+    if (options.status && options.status !== 'all') {
+      query = query.eq('status', options.status);
+    }
+    query = query.range(offset, offset + limit - 1);
+  }
+
+  const { data: requestRows, error, count } = await query;
+
+  if (error) {
+    throw error;
+  }
+
+  const requestIds = requestRows?.map((row) => row.id) ?? [];
+  const itemsByRequest = new Map<string, PurchaseRequestItemRow[]>();
+
+  if (requestIds.length > 0) {
+    const { data: itemRows, error: itemsError } = await supabaseAdmin
+      .from('purchase_request_items')
+      .select(
+        `
+          id,
+          purchase_request_id,
+          project_material_id,
+          requested_qty,
+          approved_qty,
+          unit_rate,
+          tax_percent,
+          status,
+          created_at,
+          project_materials:project_material_id (
+            unit,
+            notes,
+            materials:material_id (
+              name,
+              description
+            )
+          )
+        `
+      )
+      .in('purchase_request_id', requestIds)
+      .order('created_at', { ascending: true });
+
+    if (itemsError) {
+      throw itemsError;
     }
 
-    // Get summary stats from project_materials table
-    const { data: stats, error: statsError } = await supabaseAdmin
-      .from('project_materials')
-      .select('purchase_status')
-      .neq('purchase_status', 'none');
-
-    let summary = {
-      purchase_requested: 0,
-      quote_received: 0,
-      purchase_request_raised: 0,
-      approved_for_funding: 0,
-      completed: 0,
-      rejected: 0
-    };
-
-    if (!statsError && stats) {
-      summary = stats.reduce((acc, item) => {
-        const status = item.purchase_status as keyof typeof acc;
-        if (status in acc) {
-          acc[status] = (acc[status] || 0) + 1;
-        }
-        return acc;
-      }, summary);
-    }
-
-    // Group materials by purchase_request_id to show as unified purchase requests
-    const groupedRequests = new Map();
-    
-    (purchaseRequests || []).forEach(material => {
-      const requestId = material.purchase_request_id;
-      
-      if (!requestId) {
-        // Handle legacy materials without purchase_request_id (treat individually)
-        const legacyId = `legacy_${material.id}`;
-        groupedRequests.set(legacyId, {
-          id: legacyId,
-          project_id: material.project_id,
-          contractor_id: material.contractor_id,
-          vendor_id: material.vendor_id,
-          status: material.purchase_status,
-          contractor_notes: material.contractor_notes,
-          created_at: material.submitted_at,
-          submitted_at: material.submitted_at,
-          purchase_invoice_url: material.purchase_invoice_url,
-          contractors: material.contractors,
-          vendors: material.vendors,
-          purchase_request_items: [{
-            id: material.id,
-            item_name: material.materials?.name || 'Unknown Material',
-            item_description: material.materials?.description || material.notes,
-            unit: material.unit,
-            quantity: material.requested_qty || material.quantity, // Show requested quantity
-            quoted_rate: material.quoted_rate,
-            tax_percentage: material.tax_percentage,
-            selected_for_order: true
-          }],
-          estimated_total: (material.requested_qty || material.quantity || 0) * (material.quoted_rate || 0),
-          quoted_total: material.total_amount || 0
-        });
-        return;
-      }
-      
-      if (!groupedRequests.has(requestId)) {
-        groupedRequests.set(requestId, {
-          id: requestId,
-          project_id: material.project_id,
-          contractor_id: material.contractor_id,
-          vendor_id: material.vendor_id,
-          status: material.purchase_status,
-          contractor_notes: material.contractor_notes,
-          created_at: material.submitted_at,
-          submitted_at: material.submitted_at,
-          purchase_invoice_url: material.purchase_invoice_url,
-          contractors: material.contractors,
-          vendors: material.vendors,
-          purchase_request_items: [],
-          estimated_total: 0,
-          quoted_total: 0
-        });
-      }
-      
-      const group = groupedRequests.get(requestId);
-      
-      // Add this material as an item to the group
-      group.purchase_request_items.push({
-        id: material.id,
-        item_name: material.materials?.name || 'Unknown Material',
-        item_description: material.materials?.description || material.notes,
-        unit: material.unit,
-        quantity: material.requested_qty || material.quantity, // Show requested quantity
-        quoted_rate: material.quoted_rate,
-        tax_percentage: material.tax_percentage,
-        selected_for_order: true
-      });
-      
-      // Update totals
-      const itemTotal = (material.requested_qty || material.quantity || 0) * (material.quoted_rate || 0);
-      group.estimated_total += itemTotal;
-      group.quoted_total += material.total_amount || 0;
+    itemRows?.forEach((item) => {
+      const list = itemsByRequest.get(item.purchase_request_id) || [];
+      list.push(item);
+      itemsByRequest.set(item.purchase_request_id, list);
     });
+  }
+
+  const projectIds = Array.from(new Set((requestRows || []).map(row => row.project_id).filter(Boolean)));
+  const projectMap = new Map<string, { name?: string | null; location?: string | null }>();
+
+  if (projectIds.length > 0) {
+    const { data: projects, error: projectError } = await supabaseAdmin
+      .from('projects')
+      .select('id, project_name, location')
+      .in('id', projectIds);
+
+    if (projectError) {
+      console.error('Failed to fetch project metadata:', projectError);
+    } else {
+      projects?.forEach(project => {
+        projectMap.set(project.id, {
+          name: (project as { project_name?: string }).project_name,
+          location: project.location
+        });
+      });
+    }
+  }
+
+  const normalizedRequests = (requestRows || []).map((request) => {
+    const items = (itemsByRequest.get(request.id) || []).map((item) => ({
+      id: item.id,
+      project_material_id: item.project_material_id,
+      requested_qty: item.requested_qty,
+      approved_qty: item.approved_qty,
+      unit_rate: item.unit_rate,
+      tax_percent: item.tax_percent,
+      status: item.status,
+      material_name: item.project_materials?.materials?.name || 'Unknown Material',
+      material_description: item.project_materials?.materials?.description || item.project_materials?.notes || null,
+      unit: item.project_materials?.unit || 'units'
+    }));
+
+    const totalRequestedQty = items.reduce((sum, item) => sum + (item.requested_qty || 0), 0);
+    const estimatedTotal = items.reduce((sum, item) => sum + (item.requested_qty || 0) * (item.unit_rate || 0), 0);
+
+    return {
+      id: request.id,
+      project_id: request.project_id,
+      contractor_id: request.contractor_id,
+      status: request.status,
+      remarks: request.remarks,
+      approval_notes: request.approval_notes,
+      created_at: request.created_at,
+      updated_at: request.updated_at,
+      submitted_at: request.submitted_at,
+      approved_at: request.approved_at,
+      funded_at: request.funded_at,
+      contractors: request.contractors,
+      project: projectMap.get(request.project_id) || null,
+      purchase_request_items: items,
+      total_items: items.length,
+      total_requested_qty: totalRequestedQty,
+      estimated_total: estimatedTotal
+    };
+  });
+
+  return {
+    requests: normalizedRequests,
+    total: typeof count === 'number' ? count : normalizedRequests.length
+  };
+}
+
+export async function GET(request: NextRequest) {
+  try {
+    const { searchParams } = new URL(request.url);
+    const status = searchParams.get('status') || 'submitted';
+    const limit = parseInt(searchParams.get('limit') || '50', 10);
+    const offset = parseInt(searchParams.get('offset') || '0', 10);
+
+    const [{ requests, total }, summary] = await Promise.all([
+      fetchPurchaseRequests({ status, limit, offset }),
+      fetchPurchaseSummary()
+    ]);
 
     return NextResponse.json({
       success: true,
       data: {
-        requests: Array.from(groupedRequests.values()),
+        requests,
         summary,
         pagination: {
           limit,
           offset,
-          total: groupedRequests.size
+          total
         }
       }
     });
@@ -185,158 +265,123 @@ export async function GET(request: NextRequest) {
   }
 }
 
-// PUT /api/admin/purchase-requests - Review a purchase request
 export async function PUT(request: NextRequest) {
   try {
     const body = await request.json();
     const {
       purchase_request_id,
-      material_id, // For backward compatibility with legacy requests
-      action, // 'approve_for_purchase', 'reject', 'approve_for_funding', 'approve_finverno_funding'
-      admin_notes,
-      approved_amount
+      action,
+      admin_notes
     } = body;
 
-    if (!purchase_request_id && !material_id) {
+    if (!purchase_request_id) {
       return NextResponse.json(
-        { error: 'purchase_request_id or material_id is required' },
+        { error: 'purchase_request_id is required' },
         { status: 400 }
       );
     }
 
-    if (!action) {
-      return NextResponse.json(
-        { error: 'action is required' },
-        { status: 400 }
-      );
-    }
-
-    const validActions = ['approve_for_purchase', 'reject', 'approve_for_funding', 'approve_finverno_funding'];
-    if (!validActions.includes(action)) {
+    const validActions = ['approve_for_purchase', 'approve_for_funding', 'reject'] as const;
+    if (!action || !validActions.includes(action)) {
       return NextResponse.json(
         { error: `Invalid action. Must be one of: ${validActions.join(', ')}` },
         { status: 400 }
       );
     }
 
-    // Determine which materials to update based on purchase_request_id or material_id
-    let whereClause: any;
-    if (purchase_request_id) {
-      whereClause = { purchase_request_id };
-    } else {
-      whereClause = { id: material_id };
-    }
+    const { data: existingRequest, error: fetchError } = await supabaseAdmin
+      .from('purchase_requests')
+      .select('id, approved_at')
+      .eq('id', purchase_request_id)
+      .single();
 
-    // Get materials to update
-    const { data: materialsToUpdate, error: fetchError } = await supabaseAdmin
-      .from('project_materials')
-      .select('id, available_qty, requested_qty')
-      .match(whereClause);
-
-    if (fetchError || !materialsToUpdate || materialsToUpdate.length === 0) {
+    if (fetchError || !existingRequest) {
       return NextResponse.json(
-        { error: 'Purchase request or material not found' },
+        { error: 'Purchase request not found' },
         { status: 404 }
       );
     }
 
-    // Prepare update data for all materials in the purchase request
-    const updateData: any = {
-      admin_purchase_notes: admin_notes,
-      updated_at: new Date().toISOString()
+    const now = new Date().toISOString();
+    const updates: PurchaseRequestUpdate = {
+      updated_at: now,
+      approval_notes: admin_notes || null
     };
+
+    let itemStatus: 'approved' | 'ordered' | 'rejected' = 'approved';
 
     switch (action) {
       case 'approve_for_purchase':
-        updateData.purchase_status = 'approved_for_purchase';
-        updateData.purchase_approved_at = new Date().toISOString();
-        break;
-      case 'reject':
-        updateData.purchase_status = 'rejected';
+        updates.status = 'approved';
+        updates.approved_at = now;
+        itemStatus = 'approved';
         break;
       case 'approve_for_funding':
-      case 'approve_finverno_funding':
-        updateData.purchase_status = 'approved_for_funding';
-        updateData.approved_amount = approved_amount;
-        updateData.purchase_approved_at = new Date().toISOString();
-        
-        // For funding approval, we need to reduce available_qty and clear requested_qty for each material
-        const materialUpdates = materialsToUpdate.map(material => ({
-          id: material.id,
-          available_qty: (material.available_qty || 0) - (material.requested_qty || 0),
-          requested_qty: null
-        }));
-        
-        // Update each material individually to handle quantity reductions
-        for (const materialUpdate of materialUpdates) {
-          await supabaseAdmin
-            .from('project_materials')
-            .update({
-              ...updateData,
-              available_qty: materialUpdate.available_qty,
-              requested_qty: materialUpdate.requested_qty
-            })
-            .eq('id', materialUpdate.id);
-        }
+        updates.status = 'funded';
+        updates.funded_at = now;
+        updates.approved_at = existingRequest.approved_at || now;
+        itemStatus = 'ordered';
+        break;
+      case 'reject':
+        updates.status = 'rejected';
+        itemStatus = 'rejected';
         break;
     }
 
-    // If not funding approval, do bulk update
-    if (action !== 'approve_for_funding' && action !== 'approve_finverno_funding') {
-      const { error } = await supabaseAdmin
-        .from('project_materials')
-        .update(updateData)
-        .match(whereClause);
+    const { data: requestItems, error: itemsError } = await supabaseAdmin
+      .from('purchase_request_items')
+      .select('id, requested_qty')
+      .eq('purchase_request_id', purchase_request_id);
 
-      if (error) {
-        console.error('Database error:', error);
-        return NextResponse.json(
-          { error: 'Failed to update purchase request' },
-          { status: 500 }
-        );
-      }
-    }
-
-    // Fetch updated materials for response
-    const { data: updatedMaterials, error: selectError } = await supabaseAdmin
-      .from('project_materials')
-      .select(`
-        *,
-        materials:material_id (
-          id,
-          name,
-          description,
-          category,
-          unit
-        ),
-        contractors!materials_requested_by_fkey (
-          company_name,
-          contact_person,
-          email
-        ),
-        vendors:vendor_id (
-          id,
-          name,
-          contact_person,
-          email,
-          phone
-        )
-      `)
-      .match(whereClause);
-
-    if (selectError) {
-      console.error('Database error:', selectError);
+    if (itemsError) {
+      console.error('Failed to fetch purchase request items:', itemsError);
       return NextResponse.json(
-        { error: 'Failed to fetch updated purchase request' },
+        { error: 'Failed to update purchase request items' },
         { status: 500 }
       );
     }
 
+    if (requestItems && requestItems.length > 0) {
+      await Promise.all(
+        requestItems.map((item) => {
+          const itemUpdate: PurchaseRequestItemUpdate = {
+            status: itemStatus,
+            updated_at: now
+          };
+
+          if (action === 'reject') {
+            itemUpdate.approved_qty = null;
+          } else {
+            itemUpdate.approved_qty = item.requested_qty;
+          }
+
+          return supabaseAdmin
+            .from('purchase_request_items')
+            .update(itemUpdate)
+            .eq('id', item.id);
+        })
+      );
+    }
+
+    const { error: updateError } = await supabaseAdmin
+      .from('purchase_requests')
+      .update(updates)
+      .eq('id', purchase_request_id);
+
+    if (updateError) {
+      console.error('Failed to update purchase request:', updateError);
+      return NextResponse.json(
+        { error: 'Failed to update purchase request' },
+        { status: 500 }
+      );
+    }
+
+    const { requests } = await fetchPurchaseRequests({ ids: [purchase_request_id] });
+
     return NextResponse.json({
       success: true,
-      data: updatedMaterials,
-      message: `Purchase request ${action.replace('_', ' ')}d successfully`,
-      materialsCount: updatedMaterials?.length || 0
+      data: requests[0] || null,
+      message: `Purchase request ${action.replace(/_/g, ' ')}d successfully`
     });
   } catch (error) {
     console.error('Error updating purchase request:', error);

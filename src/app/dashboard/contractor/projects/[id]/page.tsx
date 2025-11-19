@@ -17,6 +17,13 @@ import BOQTakeoffViewer from '@/components/BOQTakeoffViewer';
 import { getBOQByProjectId, getScheduleByProjectId } from '@/lib/supabase-boq';
 import { jsPDF } from 'jspdf';
 import { uploadPurchaseInvoice } from '@/lib/file-upload';
+import type { ProjectMaterialForUI } from '@/types/purchase-requests';
+
+type ProjectMaterialWithStats = ProjectMaterialForUI & {
+  pending_qty: number;
+  max_requestable: number;
+  purchase_status?: string | null;
+};
 
 function IndividualProjectContent(): React.ReactElement {
   const { isLoaded } = useUser();
@@ -39,7 +46,7 @@ function IndividualProjectContent(): React.ReactElement {
   const [documentStatusLoading, setDocumentStatusLoading] = useState(false);
   
   // Materials state
-  const [projectMaterials, setProjectMaterials] = useState<any[]>([]);
+  const [projectMaterials, setProjectMaterials] = useState<ProjectMaterialWithStats[]>([]);
   const [materialsAnalyzing, setMaterialsAnalyzing] = useState(false);
   const [materialsAnalyzed, setMaterialsAnalyzed] = useState(false);
   const [materialMappings, setMaterialMappings] = useState<any[]>([]);
@@ -78,6 +85,8 @@ function IndividualProjectContent(): React.ReactElement {
   const [purchaseQuantities, setPurchaseQuantities] = useState<{[key: string]: string}>({});
   const [selectedVendor, setSelectedVendor] = useState<any>(null);
   const [piFile, setPiFile] = useState<File | null>(null);
+  const [rfqQuantities, setRfqQuantities] = useState<{[key: string]: string}>({});
+  const [expandedMaterials, setExpandedMaterials] = useState<Set<string>>(new Set());
   
   // Generate PO state
   const [poRates, setPoRates] = useState<{[key: string]: number}>({});
@@ -168,13 +177,62 @@ function IndividualProjectContent(): React.ReactElement {
 
   const fetchProjectMaterials = async (projectId: string) => {
     try {
-      const response = await fetch(`/api/project-materials?project_id=${projectId}`);
-      if (response.ok) {
-        const data = await response.json();
-        setProjectMaterials(data.data || []);
+      const response = await fetch(`/api/project-materials-normalized?project_id=${projectId}`);
+      const result = await response.json();
+
+      if (!response.ok || !result.success) {
+        console.error('Failed to fetch normalized project materials:', result.error);
+        setProjectMaterials([]);
+        return;
       }
+
+    const transformed: ProjectMaterialWithStats[] = (result.data || []).map((material: ProjectMaterialForUI) => {
+      const requiredBase = Number(
+        material.required_qty ??
+        material.requested_qty ??
+        material.available_qty ??
+        0
+      );
+      let available = Number(material.available_qty ?? 0);
+      const requested = Number(material.requested_qty ?? 0);
+      const ordered = Number(material.ordered_qty ?? 0);
+      const pending = Math.max(requested - ordered, 0);
+
+      if (requiredBase > 0 && available === requiredBase && requested === 0) {
+        available = 0;
+      }
+
+      const maxRequestable = Math.max(requiredBase - available - pending, 0);
+
+      return {
+        ...material,
+        pending_qty: pending,
+        max_requestable: maxRequestable,
+      };
+    });
+
+      setProjectMaterials(transformed);
+    setSelectedMaterials(prev => {
+      const valid = new Set<string>();
+      transformed.forEach(material => {
+        if (prev.has(material.id) && material.max_requestable > 0) {
+          valid.add(material.id);
+        }
+      });
+      return valid;
+    });
+    setExpandedMaterials(prev => {
+      const next = new Set<string>();
+      transformed.forEach(material => {
+        if (prev.has(material.id)) {
+          next.add(material.id);
+        }
+      });
+      return next;
+    });
     } catch (error) {
       console.error('Error fetching project materials:', error);
+      setProjectMaterials([]);
     }
   };
 
@@ -388,37 +446,36 @@ function IndividualProjectContent(): React.ReactElement {
     }
   }, [isLoaded, contractor]);
 
-  // Material status helper function
-  const getMaterialStatusInfo = (status: string) => {
-    switch (status) {
-      case 'purchase_requested':
-        return { label: 'RFQ Generated', color: 'bg-blue-100 text-blue-800 dark:bg-blue-500/20 dark:text-blue-400' };
-      case 'quote_received':
-        return { label: 'Quote Received', color: 'bg-purple-100 text-purple-800 dark:bg-purple-500/20 dark:text-purple-400' };
-      case 'purchase_request_raised':
-        return { label: 'Purchase Request Raised', color: 'bg-orange-100 text-orange-800 dark:bg-orange-500/20 dark:text-orange-400' };
-      case 'approved_for_funding':
-        return { label: 'Approved for Funding', color: 'bg-green-100 text-green-800 dark:bg-green-500/20 dark:text-green-400' };
-      case 'completed':
-        return { label: 'Purchase Completed', color: 'bg-green-200 text-green-900 dark:bg-green-600/20 dark:text-green-300' };
-      case 'rejected':
-        return { label: 'Rejected', color: 'bg-red-100 text-red-800 dark:bg-red-500/20 dark:text-red-400' };
-      case 'rfq_generated':
-        return { label: 'RFQ Generated', color: 'bg-blue-100 text-blue-800 dark:bg-blue-500/20 dark:text-blue-400' };
-      case 'po_generated':
-        return { label: 'PO Generated', color: 'bg-indigo-100 text-indigo-800 dark:bg-indigo-500/20 dark:text-indigo-400' };
-      default:
-        return { label: 'Pending', color: 'bg-gray-100 text-gray-800 dark:bg-gray-500/20 dark:text-gray-400' };
-    }
+  const toggleMaterialExpansion = (materialId: string) => {
+    setExpandedMaterials(prev => {
+      const next = new Set(prev);
+      if (next.has(materialId)) {
+        next.delete(materialId);
+      } else {
+        next.add(materialId);
+      }
+      return next;
+    });
   };
-
   // Handle material selection for batch operations
   const handleMaterialSelection = (materialId: string, selected: boolean) => {
+    const material = projectMaterials.find(m => m.id === materialId);
     const newSelected = new Set(selectedMaterials);
     if (selected) {
       newSelected.add(materialId);
+      if (material) {
+        setRfqQuantities(prev => ({
+          ...prev,
+          [materialId]: prev[materialId] || (material.max_requestable > 0 ? material.max_requestable.toString() : (material.required_qty?.toString() || '0'))
+        }));
+      }
     } else {
       newSelected.delete(materialId);
+      setRfqQuantities(prev => {
+        const next = { ...prev };
+        delete next[materialId];
+        return next;
+      });
     }
     setSelectedMaterials(newSelected);
   };
@@ -473,7 +530,32 @@ function IndividualProjectContent(): React.ReactElement {
       return;
     }
 
-    const selectedMaterialsList = projectMaterials.filter(m => selectedMaterials.has(m.id));
+    if (selectedMaterials.size === 0) {
+      alert('Please select materials to include in the RFQ');
+      return;
+    }
+
+    const selectedMaterialsList = projectMaterials
+      .filter(m => selectedMaterials.has(m.id))
+      .map((material) => {
+        const enteredQty = parseFloat(rfqQuantities[material.id] || '');
+        const quantity = !isNaN(enteredQty) && enteredQty > 0
+          ? enteredQty
+          : material.max_requestable > 0
+          ? material.max_requestable
+          : material.required_qty || 0;
+        return { material, quantity };
+      });
+
+    const invalidMaterials = selectedMaterialsList.filter(({ material, quantity }) => 
+      quantity <= 0 || (material.max_requestable > 0 && quantity > material.max_requestable)
+    );
+
+    if (invalidMaterials.length > 0) {
+      const names = invalidMaterials.map(({ material }) => material.name || 'Unknown Material').join(', ');
+      alert(`Please enter valid quantities for: ${names}`);
+      return;
+    }
     
     // Create new PDF document
     const doc = new jsPDF();
@@ -540,12 +622,12 @@ function IndividualProjectContent(): React.ReactElement {
 
     // Table Rows
     doc.setFont('helvetica', 'normal');
-    selectedMaterialsList.forEach((material, index) => {
+    selectedMaterialsList.forEach(({ material, quantity }, index) => {
       xPos = 20;
       const rowData = [
         (index + 1).toString(),
-        material.materials?.name || material.name || 'Unknown Material',
-        material.quantity?.toString() || '0',
+        material.name || 'Unknown Material',
+        quantity.toString(),
         material.unit || 'Unit',
         '', // Rate to be filled by vendor
         '' // Total to be filled by vendor
@@ -592,6 +674,7 @@ function IndividualProjectContent(): React.ReactElement {
     setShowRFQDialog(false);
     setRfqForm({ vendor: '', deliveryDate: '', notes: '' });
     setSelectedMaterials(new Set());
+    setRfqQuantities({});
     
     alert('RFQ PDF generated and downloaded successfully!');
   };
@@ -1000,12 +1083,20 @@ function IndividualProjectContent(): React.ReactElement {
                   <div className="flex items-center space-x-2 p-3 bg-neutral-darker rounded-lg border border-neutral-medium">
                     <input
                       type="checkbox"
-                      checked={selectedMaterials.size === projectMaterials.length && projectMaterials.length > 0}
+                      checked={projectMaterials.length > 0 && selectedMaterials.size === projectMaterials.length}
                       onChange={(e) => {
                         if (e.target.checked) {
                           setSelectedMaterials(new Set(projectMaterials.map(m => m.id)));
+                          setRfqQuantities(prev => {
+                            const next = { ...prev };
+                            projectMaterials.forEach(m => {
+                              next[m.id] = next[m.id] || (m.max_requestable > 0 ? m.max_requestable.toString() : (m.required_qty?.toString() || '0'));
+                            });
+                            return next;
+                          });
                         } else {
                           setSelectedMaterials(new Set());
+                          setRfqQuantities({});
                         }
                       }}
                       className="w-4 h-4 text-accent-amber bg-neutral-dark border-neutral-medium rounded focus:ring-accent-amber focus:ring-2"
@@ -1021,86 +1112,133 @@ function IndividualProjectContent(): React.ReactElement {
                       <thead className="bg-neutral-dark border-b border-neutral-medium">
                         <tr>
                           <th className="p-3 text-left text-secondary w-12">Select</th>
-                          <th className="p-3 text-left text-secondary">Name</th>
+                          <th className="p-3 text-left text-secondary">Material</th>
                           <th className="p-3 text-left text-secondary">Source</th>
                           <th className="p-3 text-left text-secondary">Qty</th>
                           <th className="p-3 text-left text-secondary">Available Qty</th>
                           <th className="p-3 text-left text-secondary">Requested Qty</th>
-                          <th className="p-3 text-left text-secondary">Status</th>
+                          <th className="p-3 text-left text-secondary">Requests</th>
                           <th className="p-3 text-left text-secondary">Actions</th>
                         </tr>
                       </thead>
                       <tbody>
                         {projectMaterials.map((material) => {
-                          const statusInfo = getMaterialStatusInfo(material.purchase_status || 'none');
-                          const source = material.source || material.materials?.source || 'Manual';
+                          const requestedLabel = (() => {
+                            if ((material.requested_qty || 0) === 0 && (material.ordered_qty || 0) === 0) return '—';
+                            const pending = material.requested_qty || 0;
+                            const approved = material.ordered_qty || 0;
+                            if (approved > 0) {
+                              return `${pending.toLocaleString(undefined, { maximumFractionDigits: 2 })} (Approved: ${approved.toLocaleString(undefined, { maximumFractionDigits: 2 })})`;
+                            }
+                            return pending.toLocaleString(undefined, { maximumFractionDigits: 2 });
+                          })();
+
+                          const sourceText =
+                            material.notes ||
+                            (material.source_file_name
+                              ? `BOQ Summary from ${material.source_file_name}`
+                              : material.source_type === 'boq_analysis'
+                              ? 'BOQ Analysis'
+                              : material.source_type === 'drawing_takeoff'
+                              ? 'Drawing Takeoff'
+                              : 'Manual Entry');
+
+                          const requestCount = material.request_history?.length || 0;
+                          const isExpanded = expandedMaterials.has(material.id);
+
                           return (
-                            <tr key={material.id} className="border-b border-neutral-medium/40 hover:bg-neutral-medium/10">
-                              <td className="p-3">
-                                <input
-                                  type="checkbox"
-                                  checked={selectedMaterials.has(material.id)}
-                                  onChange={(e) => handleMaterialSelection(material.id, e.target.checked)}
-                                  className="w-4 h-4 text-accent-amber bg-neutral-dark border-neutral-medium rounded focus:ring-accent-amber focus:ring-2"
-                                />
-                              </td>
-                              <td className="p-3">
-                                <div className="text-primary font-medium">
-                                  {material.materials?.name || material.name || 'Unknown Material'}
-                                </div>
-                                <div className="text-xs text-secondary">
-                                  {material.materials?.description || material.notes || 'No description'}
-                                </div>
-                              </td>
-                              <td className="p-3 text-secondary">
-                                {source}
-                              </td>
-                              <td className="p-3 text-secondary">
-                                {material.quantity || 0} {material.unit || 'units'}
-                              </td>
-                              <td className="p-3 text-secondary">
-                                {material.available_qty !== undefined ? `${material.available_qty} ${material.unit || 'units'}` : '—'}
-                              </td>
-                              <td className="p-3 text-secondary">
-                                {material.requested_qty ? `${material.requested_qty} ${material.unit || 'units'}` : '—'}
-                              </td>
-                              <td className="p-3">
-                                <span className={`text-xs px-2 py-1 rounded font-medium ${statusInfo.color}`}>
-                                  {statusInfo.label}
-                                </span>
-                              </td>
-                              <td className="p-3">
-                                <div className="flex flex-wrap gap-2">
-                                  {material.purchase_status === 'none' && (
-                                    <button
-                                      onClick={() => {
-                                        setSelectedMaterialForPurchase(material);
-                                        setShowPurchaseDialog(true);
-                                      }}
-                                      className="px-3 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded text-xs transition-colors"
-                                    >
-                                      Request Quote
-                                    </button>
-                                  )}
-                                  {material.purchase_invoice_url && (
-                                    <a
-                                      href={material.purchase_invoice_url}
-                                      target="_blank"
-                                      rel="noopener noreferrer"
-                                      className="px-3 py-1 bg-green-600 hover:bg-green-700 text-white rounded text-xs transition-colors"
-                                    >
-                                      View Invoice
-                                    </a>
-                                  )}
+                            <React.Fragment key={material.id}>
+                              <tr className="border-b border-neutral-medium/40 hover:bg-neutral-medium/10">
+                                <td className="p-3">
+                                  <input
+                                    type="checkbox"
+                                    checked={selectedMaterials.has(material.id)}
+                                    onChange={(e) => handleMaterialSelection(material.id, e.target.checked)}
+                                    className="w-4 h-4 text-accent-amber bg-neutral-dark border-neutral-medium rounded focus:ring-accent-amber focus:ring-2"
+                                  />
+                                </td>
+                                <td className="p-3">
+                                  <div className="text-primary font-medium">
+                                    {material.name || 'Unknown Material'}
+                                  </div>
+                                  <div className="text-xs text-secondary">
+                                    {material.description || 'No description'}
+                                  </div>
+                                </td>
+                                <td className="p-3 text-secondary text-xs">
+                                  {sourceText}
+                                </td>
+                                <td className="p-3 text-secondary">
+                                  {material.required_qty?.toLocaleString(undefined, { maximumFractionDigits: 2 }) || 0} {material.unit || 'units'}
+                                </td>
+                                <td className="p-3 text-secondary">
+                                  {material.available_qty !== undefined ? `${material.available_qty.toLocaleString(undefined, { maximumFractionDigits: 2 })} ${material.unit || 'units'}` : '—'}
+                                </td>
+                                <td className="p-3 text-secondary">
+                                  {requestedLabel}
+                                </td>
+                                <td className="p-3">
                                   <button
-                                    onClick={() => deleteMaterial(material.id)}
-                                    className="px-3 py-1 bg-red-600 hover:bg-red-700 text-white rounded text-xs transition-colors"
+                                    onClick={() => toggleMaterialExpansion(material.id)}
+                                    className="text-xs px-3 py-1 rounded border border-neutral-medium text-primary hover:bg-neutral-medium/30 transition-colors"
                                   >
-                                    Delete
+                                    {isExpanded ? 'Hide Requests' : 'View Requests'} ({requestCount})
                                   </button>
-                                </div>
-                              </td>
-                            </tr>
+                                </td>
+                                <td className="p-3">
+                                  <div className="flex flex-wrap gap-2">
+                                    <button
+                                      onClick={() => deleteMaterial(material.id)}
+                                      className="px-3 py-1 bg-red-600 hover:bg-red-700 text-white rounded text-xs transition-colors"
+                                    >
+                                      Delete
+                                    </button>
+                                  </div>
+                                </td>
+                              </tr>
+                              {isExpanded && (
+                                <tr>
+                                  <td colSpan={8} className="bg-neutral-dark/60 border-b border-neutral-medium">
+                                    {requestCount === 0 ? (
+                                      <div className="p-3 text-xs text-secondary">
+                                        No purchase requests have been raised for this material yet.
+                                      </div>
+                                    ) : (
+                                      <div className="p-3 space-y-3">
+                                        {material.request_history!.map((item) => (
+                                          <div key={item.id} className="flex flex-col md:flex-row md:items-center md:justify-between bg-neutral-dark border border-neutral-medium rounded-lg p-3 text-xs">
+                                            <div className="flex-1">
+                                              <div className="text-primary font-medium">
+                                                Request #{item.purchase_request_id.slice(0, 8).toUpperCase()}
+                                              </div>
+                                              <div className="text-secondary mt-1">
+                                                Qty Requested: {item.requested_qty}{' '}
+                                                {material.unit || 'units'}
+                                                {item.approved_qty ? ` • Approved: ${item.approved_qty}` : ''}
+                                              </div>
+                                              <div className="text-secondary mt-1">
+                                                Raised: {formatDate(item.created_at)}{' '}
+                                                {item.purchase_request?.status ? `• PR Status: ${item.purchase_request.status}` : ''}
+                                              </div>
+                                            </div>
+                                            <div className="flex gap-2 mt-2 md:mt-0">
+                                              <span className="px-2 py-1 rounded-full bg-neutral-medium/40 text-primary uppercase tracking-wide">
+                                                {item.status}
+                                              </span>
+                                              {item.purchase_request?.status && (
+                                                <span className="px-2 py-1 rounded-full bg-neutral-medium/20 text-secondary uppercase tracking-wide">
+                                                  {item.purchase_request.status}
+                                                </span>
+                                              )}
+                                            </div>
+                                          </div>
+                                        ))}
+                                      </div>
+                                    )}
+                                  </td>
+                                </tr>
+                              )}
+                            </React.Fragment>
                           );
                         })}
                       </tbody>
@@ -1108,6 +1246,7 @@ function IndividualProjectContent(): React.ReactElement {
                   </div>
                 </div>
               )}
+
             </div>
           )}
 
@@ -1339,16 +1478,16 @@ function IndividualProjectContent(): React.ReactElement {
                     Select Vendor
                   </label>
                   <select
-                    value={selectedVendor?.id || ''}
+                    value={selectedVendor?.id?.toString() || ''}
                     onChange={(e) => {
-                      const vendor = vendors.find(v => v.id === e.target.value);
+                      const vendor = vendors.find(v => v.id?.toString() === e.target.value);
                       setSelectedVendor(vendor || null);
                     }}
                     className="w-full px-3 py-2 bg-neutral-darker border border-neutral-medium rounded-lg text-primary focus:border-accent-amber focus:outline-none"
                   >
                     <option value="">Choose vendor...</option>
                     {vendors.map((vendor) => (
-                      <option key={vendor.id} value={vendor.id}>
+                      <option key={vendor.id} value={vendor.id?.toString()}>
                         {vendor.name}
                       </option>
                     ))}
@@ -1365,6 +1504,40 @@ function IndividualProjectContent(): React.ReactElement {
                     onChange={(e) => setRfqForm({ ...rfqForm, deliveryDate: e.target.value })}
                     className="w-full px-3 py-2 bg-neutral-darker border border-neutral-medium rounded-lg text-primary focus:border-accent-amber focus:outline-none"
                   />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-secondary mb-2">
+                    Quantities
+                  </label>
+                  <div className="space-y-3 max-h-48 overflow-y-auto pr-1">
+                    {projectMaterials.filter(material => selectedMaterials.has(material.id)).map((material) => (
+                      <div key={material.id} className="bg-neutral-darker border border-neutral-medium rounded-lg p-3 text-xs text-secondary">
+                        <div className="text-primary font-medium text-sm mb-1">
+                          {material.name || 'Unknown Material'}
+                        </div>
+                        <div className="flex flex-wrap gap-3 items-end">
+                          <div className="flex-1 min-w-[120px]">
+                            <label className="block text-[11px] uppercase tracking-wide mb-1">Quantity</label>
+                            <input
+                              type="number"
+                              min="0"
+                              step="0.01"
+                              value={rfqQuantities[material.id] ?? ''}
+                              onChange={(e) => setRfqQuantities(prev => ({
+                                ...prev,
+                                [material.id]: e.target.value
+                              }))}
+                              placeholder={material.max_requestable > 0 ? `Max ${material.max_requestable}` : `Available ${material.required_qty || 0}`}
+                              className="w-full px-2 py-1 bg-neutral-dark border border-neutral-medium rounded text-primary text-sm focus:border-accent-amber focus:outline-none"
+                            />
+                          </div>
+                          <div className="text-[11px]">
+                            <div>Available: {material.max_requestable > 0 ? material.max_requestable : material.required_qty || 0} {material.unit || 'units'}</div>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
                 </div>
                 
                 <div>
@@ -1387,7 +1560,10 @@ function IndividualProjectContent(): React.ReactElement {
               
               <div className="flex justify-end space-x-3 mt-6">
                 <Button
-                  onClick={() => setShowRFQDialog(false)}
+                  onClick={() => {
+                    setShowRFQDialog(false);
+                    setRfqQuantities({});
+                  }}
                   className="px-4 py-2 text-secondary hover:text-primary transition-colors"
                 >
                   Cancel
@@ -1411,31 +1587,17 @@ function IndividualProjectContent(): React.ReactElement {
               <h3 className="text-lg font-semibold text-primary mb-4">Submit Purchase Request</h3>
               
               <div className="space-y-4 mb-6">
-                {/* Vendor Selection */}
-                <div>
-                  <label className="block text-sm font-medium text-secondary mb-2">
-                    Select Vendor * ({vendors.length} available)
-                  </label>
-                  <select
-                    value={selectedVendor?.id || ''}
-                    onChange={(e) => {
-                      console.log('Selected vendor ID:', e.target.value);
-                      const vendor = vendors.find(v => v.id === e.target.value || v.id === parseInt(e.target.value));
-                      console.log('Found vendor:', vendor);
-                      setSelectedVendor(vendor || null);
-                    }}
-                    className="w-full px-3 py-2 bg-neutral-darker border border-neutral-medium rounded-lg text-primary focus:border-accent-amber focus:outline-none"
-                  >
-                    <option value="">Choose vendor...</option>
-                    {vendors.map((vendor) => (
-                      <option key={vendor.id} value={vendor.id}>
-                        {vendor.name} ({vendor.contact_person || 'No contact'})
-                      </option>
-                    ))}
-                  </select>
-                  {vendors.length === 0 && (
-                    <p className="text-xs text-red-400 mt-1">No vendors found. Please add vendors in Network section first.</p>
-                  )}
+                {/* Purchase Request Info */}
+                <div className="bg-neutral-darker p-4 rounded-lg border border-neutral-medium">
+                  <h4 className="font-medium text-primary mb-2">📋 Purchase Request Details</h4>
+                  <p className="text-sm text-secondary">
+                    Creating a purchase request for {Array.from(selectedMaterials).length} materials. 
+                    This will be submitted to the admin for approval without specifying a vendor.
+                  </p>
+                  <p className="text-xs text-secondary mt-2">
+                    ⚡ The admin will review quantities and approve for purchase. 
+                    Vendor selection happens during the procurement process.
+                  </p>
                 </div>
                 
                 {/* Materials List with Inputs */}
@@ -1450,11 +1612,14 @@ function IndividualProjectContent(): React.ReactElement {
                         <div key={material.id} className="bg-neutral-darker p-4 rounded-lg border border-neutral-medium">
                           <div className="mb-3">
                             <h5 className="font-medium text-primary">
-                              {material.materials?.name || material.name || 'Unknown Material'}
+                              {material.name || 'Unknown Material'}
                             </h5>
-                            <p className="text-xs text-secondary">
-                              Available: {material.quantity || 0} {material.unit || 'units'}
-                            </p>
+                            <div className="text-xs text-secondary space-x-3 mt-1">
+                              <span>Required: {material.required_qty || 0} {material.unit || 'units'}</span>
+                              <span>Available: {material.available_qty || 0}</span>
+                              <span>Requested: {material.requested_qty || 0}</span>
+                              <span>Remaining: {material.max_requestable || material.required_qty || 0}</span>
+                            </div>
                           </div>
                           
                           <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
@@ -1470,8 +1635,8 @@ function IndividualProjectContent(): React.ReactElement {
                                   ...prev,
                                   [material.id]: e.target.value
                                 }))}
-                                placeholder={`Max ${material.quantity || 0}`}
-                                max={material.quantity || 0}
+                                placeholder={`Max ${material.max_requestable || material.available_qty || material.required_qty || 0}`}
+                                max={material.max_requestable || material.available_qty || material.required_qty || undefined}
                                 className="w-full px-2 py-1 bg-neutral-dark border border-neutral-medium rounded text-primary text-sm focus:border-accent-amber focus:outline-none"
                               />
                             </div>
@@ -1596,112 +1761,71 @@ function IndividualProjectContent(): React.ReactElement {
                 </Button>
                 <Button
                   onClick={async () => {
-                    // Validate inputs
+                    // Validate that quantities, rates, and tax are provided for all materials
                     const missingData = Array.from(selectedMaterials).filter(materialId => 
                       !purchaseQuantities[materialId] || 
+                      parseFloat(purchaseQuantities[materialId]) <= 0 ||
                       !purchaseRates[materialId] || 
-                      purchaseTax[materialId] === undefined
+                      purchaseRates[materialId] <= 0
                     );
-                    
-                    // Validate quantities don't exceed available quantities
-                    const invalidQuantities = Array.from(selectedMaterials).filter(materialId => {
-                      const material = projectMaterials.find(m => m.id === materialId);
-                      const requestedQty = parseFloat(purchaseQuantities[materialId] || '0');
-                      const availableQty = material?.quantity || 0;
-                      return requestedQty > availableQty;
-                    });
-                    
-                    if (!selectedVendor) {
-                      alert('Please select a vendor');
-                      return;
-                    }
                     
                     if (missingData.length > 0) {
                       alert('Please fill in quantity, rate, and tax for all selected materials');
                       return;
                     }
                     
+                    // Validate quantities don't exceed available quantities
+                    const invalidQuantities = Array.from(selectedMaterials).filter(materialId => {
+                      const material = projectMaterials.find(m => m.id === materialId);
+                      const requestedQty = parseFloat(purchaseQuantities[materialId] || '0');
+                      const remainingQty = material?.max_requestable ?? material?.required_qty ?? 0;
+                      return requestedQty > remainingQty;
+                    });
+                    
                     if (invalidQuantities.length > 0) {
                       const invalidMaterials = invalidQuantities.map(materialId => {
                         const material = projectMaterials.find(m => m.id === materialId);
-                        return material?.materials?.name || material?.name || 'Unknown Material';
+                        return material?.name || 'Unknown Material';
                       }).join(', ');
                       alert(`Requested quantity exceeds available quantity for: ${invalidMaterials}`);
                       return;
                     }
                     
                     try {
-                      // Generate unique purchase_request_id UUID for this batch
-                      const purchaseRequestId = crypto.randomUUID();
+                      console.log('🚀 Creating purchase request with normalized schema');
                       
-                      // First upload PI file if provided
-                      let purchaseInvoiceUrl = null;
-                      if (piFile && contractor?.id) {
-                        // Upload file using the first material ID for organization
-                        const firstMaterialId = Array.from(selectedMaterials)[0];
-                        if (firstMaterialId) {
-                          const uploadResult = await uploadPurchaseInvoice(
-                            piFile,
-                            contractor.id,
-                            firstMaterialId
-                          );
-                        
-                          if (uploadResult.success) {
-                            purchaseInvoiceUrl = uploadResult.url;
-                          } else {
-                            alert(`File upload failed: ${uploadResult.error}`);
-                            return;
-                          }
-                        }
-                      }
-                      
-                      // Update each selected material with batch purchase request data
-                      const updatePromises = Array.from(selectedMaterials).map(materialId => {
-                        const updateData = {
-                          purchase_request_id: purchaseRequestId,
-                          purchase_status: 'purchase_request_raised',
-                          vendor_id: selectedVendor.id,
+                      // Prepare purchase request data for new normalized API
+                      const purchaseRequestData = {
+                        project_id: project.id,
+                        contractor_id: contractor?.id,
+                        remarks: Array.from(selectedMaterials).map(materialId => 
+                          purchaseRemarks[materialId] || ''
+                        ).filter(remark => remark).join('; ') || null,
+                        items: Array.from(selectedMaterials).map(materialId => ({
+                          project_material_id: materialId,
                           requested_qty: parseFloat(purchaseQuantities[materialId] || '0'),
-                          quoted_rate: purchaseRates[materialId] || 0,
-                          tax_percentage: purchaseTax[materialId] || 0,
-                          tax_amount: (parseFloat(purchaseQuantities[materialId] || '0') * (purchaseRates[materialId] || 0) * (purchaseTax[materialId] || 0)) / 100,
-                          total_amount: parseFloat(purchaseQuantities[materialId] || '0') * (purchaseRates[materialId] || 0) + ((parseFloat(purchaseQuantities[materialId] || '0') * (purchaseRates[materialId] || 0) * (purchaseTax[materialId] || 0)) / 100),
-                          contractor_notes: purchaseRemarks[materialId] || '',
-                          purchase_invoice_url: purchaseInvoiceUrl,
-                          submitted_at: new Date().toISOString()
-                        };
-                        
-                        return fetch(`/api/project-materials/${materialId}`, {
-                          method: 'PUT',
-                          headers: {
-                            'Content-Type': 'application/json',
-                          },
-                          body: JSON.stringify(updateData)
-                        });
+                          unit_rate: purchaseRates[materialId] || 0,
+                          tax_percent: purchaseTax[materialId] || 0
+                        }))
+                      };
+                      
+                      // Create purchase request using normalized API
+                      const response = await fetch('/api/purchase-requests', {
+                        method: 'POST',
+                        headers: {
+                          'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify(purchaseRequestData)
                       });
                       
-                      const responses = await Promise.all(updatePromises);
+                      const result = await response.json();
                       
-                      // Check if all updates were successful
-                      const allSuccessful = responses.every(response => response.ok);
-                      
-                      if (allSuccessful) {
-                        alert(`Purchase request submitted successfully! Request ID: ${purchaseRequestId}`);
+                      if (response.ok && result.success) {
+                        alert(`Purchase request created successfully! Request ID: ${result.data.id}`);
+                        console.log('✅ Purchase request created:', result.data);
                         
-                        // Update material statuses locally
-                        setProjectMaterials(prev => prev.map(material => 
-                          selectedMaterials.has(material.id)
-                            ? { 
-                                ...material, 
-                                purchase_status: 'purchase_request_raised',
-                                purchase_request_id: purchaseRequestId,
-                                vendor_id: selectedVendor.id,
-                                requested_qty: parseFloat(purchaseQuantities[material.id] || '0'),
-                                quoted_rate: purchaseRates[material.id] || 0,
-                                purchase_invoice_url: purchaseInvoiceUrl
-                              }
-                            : material
-                        ));
+                        // Refresh project materials to reflect the new purchase request
+                        await fetchProjectMaterials(project.id);
                         
                         // Clear states and close dialog
                         setShowBatchPurchaseDialog(false);
@@ -1711,16 +1835,16 @@ function IndividualProjectContent(): React.ReactElement {
                         setPurchaseTax({});
                         setPurchaseRemarks({});
                         setSelectedVendor(null);
-                        setPiFile(null);
                       } else {
-                        alert('Some materials failed to update. Please try again.');
+                        console.error('❌ Failed to create purchase request:', result);
+                        alert(`Failed to create purchase request: ${result.error || 'Unknown error'}`);
                       }
                     } catch (error) {
                       console.error('Error submitting purchase request:', error);
                       alert('Error submitting purchase request');
                     }
                   }}
-                  disabled={!selectedVendor || Array.from(selectedMaterials).length === 0}
+                  disabled={Array.from(selectedMaterials).length === 0}
                   className="bg-accent-amber hover:bg-accent-amber/90 text-neutral-dark px-6 py-2 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   Submit Request

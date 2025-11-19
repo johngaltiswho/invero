@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { Button } from '@/components';
-import { DocumentService, type DocumentType } from '@/lib/document-service';
+import { type DocumentType } from '@/lib/document-service';
 import type { Contractor } from '@/types/supabase';
 import SimplePDFViewer from './SimplePDFViewer';
 
@@ -34,42 +34,22 @@ interface MaterialRequest {
   };
 }
 
-interface BOQSubmission {
-  id: number;
-  project_id: string;
-  contractor_id: string;
-  status: 'pending' | 'under_review' | 'revision_required' | 'approved' | 'rejected';
-  submitted_at: string;
-  reviewed_at?: string;
-  review_comments?: string;
-  total_estimated_value?: number;
-  total_materials_count?: number;
-  contractor?: {
-    company_name: string;
-    contact_person: string;
-    email: string;
-  };
-  project?: {
-    name: string;
-    location: string;
-  };
+interface ParsedTakeoffRow {
+  materialName?: string;
+  description?: string;
+  unit?: string;
+  quantity?: number;
+  nos?: number;
+  length?: number;
+  breadth?: number;
+  height?: number;
 }
 
-interface QuantityTakeoff {
-  id: number;
-  boq_submission_id: number;
-  material_category: string;
-  material_specification: string;
-  material_unit: string;
-  drawing_reference?: string;
-  drawing_sheet_number?: string;
-  quantity_from_drawings: number;
-  quantity_verified?: number;
-  variance_percentage?: number;
-  verification_status: 'pending' | 'verified' | 'disputed' | 'corrected';
-  verification_notes?: string;
-  estimated_rate?: number;
-  estimated_amount?: number;
+interface MaterialSummaryEntry {
+  name: string;
+  unit?: string;
+  totalQuantity: number;
+  count: number;
 }
 
 interface BOQTakeoff {
@@ -95,50 +75,54 @@ interface BOQTakeoff {
   };
 }
 
+interface PurchaseRequestItemUI {
+  id: string;
+  project_material_id: string;
+  requested_qty: number;
+  approved_qty?: number;
+  unit_rate?: number;
+  tax_percent?: number;
+  status: 'pending' | 'approved' | 'ordered' | 'received' | 'rejected';
+  material_name: string;
+  material_description?: string | null;
+  unit?: string;
+}
+
 interface PurchaseRequest {
   id: string;
   project_id: string;
   contractor_id: string;
-  vendor_id: string;
-  status: 'purchase_requested' | 'quote_received' | 'purchase_request_raised' | 'finverno_submitted' | 'approved_for_funding' | 'completed' | 'rejected';
-  estimated_total: number;
-  quoted_total?: number;
-  approved_amount?: number;
-  delivery_date?: string;
-  contractor_notes?: string;
-  admin_notes?: string;
+  status: 'draft' | 'submitted' | 'approved' | 'funded' | 'po_generated' | 'completed' | 'rejected';
+  remarks?: string | null;
+  approval_notes?: string | null;
   created_at: string;
-  // Finverno-specific fields
-  finverno_rate?: number;
-  finverno_tax_percentage?: number;
-  finverno_tax_amount?: number;
-  finverno_total_amount?: number;
-  purchase_invoice_url?: string;
-  finverno_submitted_at?: string;
-  contractors: {
+  updated_at: string;
+  submitted_at?: string;
+  approved_at?: string;
+  funded_at?: string;
+  contractors?: {
     company_name: string;
-    contact_person: string;
-    email: string;
+    contact_person?: string;
+    email?: string;
   };
-  vendors: {
-    name: string;
-    contact_person: string;
-    email: string;
-    phone: string;
+  project?: {
+    name?: string;
+    location?: string;
   };
-  purchase_request_items: Array<{
-    id: string;
-    item_name: string;
-    item_description: string;
-    unit: string;
-    quantity: number;
-    estimated_rate?: number;
-    quoted_rate?: number;
-    tax_percentage?: number;
-    finverno_rate?: number;
-    finverno_tax_percentage?: number;
-    selected_for_order: boolean;
-  }>;
+  purchase_request_items: PurchaseRequestItemUI[];
+  total_items: number;
+  total_requested_qty: number;
+  estimated_total: number;
+}
+
+interface PurchaseSummary {
+  draft: number;
+  submitted: number;
+  approved: number;
+  funded: number;
+  po_generated: number;
+  completed: number;
+  rejected: number;
 }
 
 export default function AdminVerificationDashboard(): React.ReactElement {
@@ -151,7 +135,15 @@ export default function AdminVerificationDashboard(): React.ReactElement {
   const [currentPDFUrl, setCurrentPDFUrl] = useState('');
   const [currentPDFName, setCurrentPDFName] = useState('');
   const [purchaseRequests, setPurchaseRequests] = useState<PurchaseRequest[]>([]);
-  const [purchaseSummary, setPurchaseSummary] = useState({ purchase_requested: 0, quote_received: 0, purchase_request_raised: 0, finverno_submitted: 0, approved_for_funding: 0, completed: 0, rejected: 0 });
+  const [purchaseSummary, setPurchaseSummary] = useState<PurchaseSummary>({
+    draft: 0,
+    submitted: 0,
+    approved: 0,
+    funded: 0,
+    po_generated: 0,
+    completed: 0,
+    rejected: 0
+  });
   const [selectedPurchaseRequest, setSelectedPurchaseRequest] = useState<PurchaseRequest | null>(null);
   const [loading, setLoading] = useState(true);
   const [selectedContractor, setSelectedContractor] = useState<ContractorWithDocuments | null>(null);
@@ -159,6 +151,15 @@ export default function AdminVerificationDashboard(): React.ReactElement {
   const [verifyingDoc, setVerifyingDoc] = useState<string | null>(null);
   const [reviewingMaterial, setReviewingMaterial] = useState<string | null>(null);
   const [reviewingTakeoff, setReviewingTakeoff] = useState<string | null>(null);
+
+  const formatDate = (dateString?: string | null) => {
+    if (!dateString) return 'N/A';
+    try {
+      return new Date(dateString).toLocaleDateString();
+    } catch {
+      return 'N/A';
+    }
+  };
 
   useEffect(() => {
     if (activeTab === 'contractors') {
@@ -231,15 +232,16 @@ export default function AdminVerificationDashboard(): React.ReactElement {
     }
   };
 
-  const loadPurchaseRequests = async () => {
+  const loadPurchaseRequests = async (statusFilter = 'submitted') => {
     try {
       setLoading(true);
-      const response = await fetch('/api/admin/purchase-requests?status=purchase_request_raised');
+      const response = await fetch(`/api/admin/purchase-requests?status=${statusFilter}`);
       const result = await response.json();
       
       if (result.success) {
         setPurchaseRequests(result.data.requests);
         setPurchaseSummary(result.data.summary);
+        return result.data.requests as PurchaseRequest[];
       } else {
         console.error('Failed to load purchase requests:', result.error);
         alert('Failed to load purchase requests');
@@ -250,6 +252,7 @@ export default function AdminVerificationDashboard(): React.ReactElement {
     } finally {
       setLoading(false);
     }
+    return [];
   };
 
   // Load PDF for takeoff - same pattern as files section
@@ -270,8 +273,8 @@ export default function AdminVerificationDashboard(): React.ReactElement {
   };
 
   const handlePurchaseRequestAction = async (
-    materialId: string,
-    action: 'approve_for_purchase' | 'reject' | 'approve_for_funding' | 'approve_finverno_funding',
+    purchaseRequestId: string,
+    action: 'approve_for_purchase' | 'reject' | 'approve_for_funding',
     admin_notes?: string,
     approved_amount?: number
   ) => {
@@ -280,7 +283,7 @@ export default function AdminVerificationDashboard(): React.ReactElement {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          material_id: materialId,
+          purchase_request_id: purchaseRequestId,
           action,
           admin_notes,
           approved_amount
@@ -291,20 +294,11 @@ export default function AdminVerificationDashboard(): React.ReactElement {
       if (result.success) {
         alert(`Purchase request ${action.replace(/_/g, ' ')}d successfully`);
         
-        // Update the selected purchase request optimistically
-        if (selectedPurchaseRequest?.id === materialId) {
-          setSelectedPurchaseRequest({
-            ...selectedPurchaseRequest,
-            status: action === 'approve_for_purchase' ? 'approved_for_purchase' : 
-                   action === 'approve_for_funding' ? 'approved_for_funding' :
-                   action === 'approve_finverno_funding' ? 'approved_for_funding' : 'rejected',
-            admin_notes: admin_notes || selectedPurchaseRequest.admin_notes,
-            approved_amount: approved_amount || selectedPurchaseRequest.approved_amount
-          });
+        const refreshed = await loadPurchaseRequests();
+        if (selectedPurchaseRequest?.id === purchaseRequestId) {
+          const updatedSelection = refreshed.find(req => req.id === purchaseRequestId) || null;
+          setSelectedPurchaseRequest(updatedSelection);
         }
-        
-        // Reload data
-        await loadPurchaseRequests();
       } else {
         alert(result.error || 'Failed to process purchase request');
       }
@@ -528,6 +522,25 @@ export default function AdminVerificationDashboard(): React.ReactElement {
     }
   };
 
+  const getPurchaseRequestStatusStyle = (status: PurchaseRequest['status']) => {
+    switch (status) {
+      case 'submitted':
+        return { label: 'Submitted', classes: 'text-yellow-600 bg-yellow-100 border-yellow-300' };
+      case 'approved':
+        return { label: 'Approved', classes: 'text-green-600 bg-green-100 border-green-300' };
+      case 'funded':
+        return { label: 'Funded', classes: 'text-blue-600 bg-blue-100 border-blue-300' };
+      case 'po_generated':
+        return { label: 'PO Generated', classes: 'text-indigo-600 bg-indigo-100 border-indigo-300' };
+      case 'completed':
+        return { label: 'Completed', classes: 'text-emerald-700 bg-emerald-100 border-emerald-300' };
+      case 'rejected':
+        return { label: 'Rejected', classes: 'text-red-600 bg-red-100 border-red-300' };
+      default:
+        return { label: status.replace(/_/g, ' ').toUpperCase(), classes: 'text-secondary bg-neutral-medium/50 border-neutral-medium' };
+    }
+  };
+
   const getDocumentIcon = (docType: DocumentType) => {
     switch (docType) {
       case 'pan_card': return '🆔';
@@ -615,9 +628,9 @@ export default function AdminVerificationDashboard(): React.ReactElement {
               }`}
             >
               Purchase Requests
-              {purchaseSummary.purchase_requested > 0 && (
+              {purchaseSummary.submitted > 0 && (
                 <span className="ml-2 bg-accent-orange text-white text-xs px-2 py-1 rounded-full">
-                  {purchaseSummary.purchase_requested}
+                  {purchaseSummary.submitted}
                 </span>
               )}
             </button>
@@ -1154,36 +1167,46 @@ export default function AdminVerificationDashboard(): React.ReactElement {
                       <div className="space-y-2 text-sm">
                         {(() => {
                           try {
-                            const takeoffData = JSON.parse(selectedTakeoff.takeoff_data);
-                            const materialSummary = new Map();
+                            const takeoffData = JSON.parse(selectedTakeoff.takeoff_data) as ParsedTakeoffRow[];
+                            if (!Array.isArray(takeoffData)) {
+                              throw new Error('Invalid takeoff dataset');
+                            }
+                            const materialSummary = new Map<string, MaterialSummaryEntry>();
                             
-                            takeoffData.forEach((item: any) => {
-                              if (item.materialName && item.quantity > 0) {
-                                const key = item.materialName;
-                                if (materialSummary.has(key)) {
-                                  const existing = materialSummary.get(key);
-                                  materialSummary.set(key, {
-                                    ...existing,
-                                    totalQuantity: existing.totalQuantity + item.quantity,
-                                    count: existing.count + 1
-                                  });
-                                } else {
-                                  materialSummary.set(key, {
-                                    name: item.materialName,
-                                    unit: item.unit,
-                                    totalQuantity: item.quantity,
-                                    count: 1
-                                  });
-                                }
+                            takeoffData.forEach((item) => {
+                              if (!item?.materialName || !item.quantity || item.quantity <= 0) {
+                                return;
+                              }
+                              const key = item.materialName;
+                              const existing = materialSummary.get(key);
+                              if (existing) {
+                                materialSummary.set(key, {
+                                  ...existing,
+                                  totalQuantity: existing.totalQuantity + item.quantity,
+                                  count: existing.count + 1
+                                });
+                              } else {
+                                materialSummary.set(key, {
+                                  name: item.materialName,
+                                  unit: item.unit,
+                                  totalQuantity: item.quantity,
+                                  count: 1
+                                });
                               }
                             });
                             
-                            return Array.from(materialSummary.values()).slice(0, 5).map((material: any, index: number) => (
-                              <div key={index}>
-                                <strong>{material.name}:</strong> {material.totalQuantity.toFixed(2)} {material.unit}
+                            const summaryEntries = Array.from(materialSummary.values()).slice(0, 5);
+                            if (summaryEntries.length === 0) {
+                              return <div className="text-secondary text-sm">No material summary available</div>;
+                            }
+                            return summaryEntries.map((material) => (
+                              <div key={material.name}>
+                                <strong>{material.name}:</strong>{' '}
+                                {material.totalQuantity.toFixed(2)} {material.unit || 'units'}
                               </div>
                             ));
-                          } catch (error) {
+                          } catch (parseError) {
+                            console.error('Failed to parse takeoff material summary:', parseError);
                             return <div>Error parsing takeoff data</div>;
                           }
                         })()}
@@ -1234,36 +1257,49 @@ export default function AdminVerificationDashboard(): React.ReactElement {
                             <tbody>
                               {(() => {
                                 try {
-                                  const takeoffData = JSON.parse(selectedTakeoff.takeoff_data);
-                                  return takeoffData.map((item: any, index: number) => (
-                                    <tr key={index} className="border-b border-neutral-medium hover:bg-neutral-medium/30">
+                                  const takeoffData = JSON.parse(selectedTakeoff.takeoff_data) as ParsedTakeoffRow[];
+                                  if (!Array.isArray(takeoffData)) {
+                                    throw new Error('Invalid takeoff dataset');
+                                  }
+                                  if (takeoffData.length === 0) {
+                                    return (
+                                      <tr>
+                                        <td colSpan={7} className="p-4 text-center text-secondary">
+                                          No detailed items available
+                                        </td>
+                                      </tr>
+                                    );
+                                  }
+                                  return takeoffData.map((item, index) => (
+                                    <tr key={`${item.materialName || 'material'}-${index}`} className="border-b border-neutral-medium hover:bg-neutral-medium/30">
                                       <td className="px-2 py-1 border-r border-neutral-medium">
-                                        <div className="font-medium text-primary text-xs">{item.materialName}</div>
+                                        <div className="font-medium text-primary text-xs">{item.materialName || 'Material'}</div>
                                         {item.description && (
                                           <div className="text-xs text-secondary">{item.description}</div>
                                         )}
                                       </td>
                                       <td className="px-1 py-1 border-r border-neutral-medium text-center text-primary text-xs">
-                                        {item.nos || 1}
+                                        {item.nos ?? 1}
                                       </td>
                                       <td className="px-1 py-1 border-r border-neutral-medium text-center text-primary text-xs">
-                                        {item.length || 0}
+                                        {item.length ?? 0}
                                       </td>
                                       <td className="px-1 py-1 border-r border-neutral-medium text-center text-primary text-xs">
-                                        {item.breadth || 0}
+                                        {item.breadth ?? 0}
                                       </td>
                                       <td className="px-1 py-1 border-r border-neutral-medium text-center text-primary text-xs">
-                                        {item.height || 0}
+                                        {item.height ?? 0}
                                       </td>
                                       <td className="px-1 py-1 border-r border-neutral-medium text-center text-secondary text-xs">
-                                        {item.unit}
+                                        {item.unit || 'units'}
                                       </td>
                                       <td className="px-2 py-1 text-center font-medium text-accent-orange text-xs">
                                         {(Number(item.quantity) || 0).toFixed(2)}
                                       </td>
                                     </tr>
                                   ));
-                                } catch (error) {
+                                } catch (parseError) {
+                                  console.error('Failed to parse detailed takeoff data:', parseError);
                                   return (
                                     <tr>
                                       <td colSpan={7} className="p-4 text-center text-secondary">
@@ -1374,28 +1410,19 @@ export default function AdminVerificationDashboard(): React.ReactElement {
           </div>
         </div>
       ) : activeTab === 'purchases' ? (
-        /* Purchase Requests Tab */
         <div className="grid lg:grid-cols-3 gap-8">
-          {/* Purchase Requests List */}
           <div className="lg:col-span-1">
             <div className="bg-neutral-dark rounded-lg border border-neutral-medium">
               <div className="p-4 border-b border-neutral-medium">
                 <h2 className="text-lg font-semibold text-primary">Purchase Requests</h2>
-                <p className="text-sm text-secondary">Contractor purchase requests pending review</p>
-                
-                {/* Summary Stats */}
+                <p className="text-sm text-secondary">Contractor submissions awaiting admin review</p>
+
                 <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
-                  <div className="bg-yellow-100 text-yellow-800 px-2 py-1 rounded">
-                    Requested: {purchaseSummary.purchase_requested}
-                  </div>
-                  <div className="bg-blue-100 text-blue-800 px-2 py-1 rounded">
-                    Quote Received: {purchaseSummary.quote_received}
-                  </div>
-                  {purchaseSummary.purchase_request_raised > 0 && (
-                    <div className="bg-accent-orange/10 text-accent-orange px-2 py-1 rounded">
-                      Purchase Requests: {purchaseSummary.purchase_request_raised}
-                    </div>
-                  )}
+                  <div className="bg-yellow-100 text-yellow-800 px-2 py-1 rounded">Submitted: {purchaseSummary.submitted}</div>
+                  <div className="bg-blue-100 text-blue-800 px-2 py-1 rounded">Approved: {purchaseSummary.approved}</div>
+                  <div className="bg-purple-100 text-purple-800 px-2 py-1 rounded">Funded: {purchaseSummary.funded}</div>
+                  <div className="bg-green-100 text-green-800 px-2 py-1 rounded">Completed: {purchaseSummary.completed}</div>
+                  <div className="bg-red-100 text-red-800 px-2 py-1 rounded col-span-2">Rejected: {purchaseSummary.rejected}</div>
                 </div>
               </div>
               <div className="divide-y divide-neutral-medium max-h-96 overflow-y-auto">
@@ -1406,103 +1433,103 @@ export default function AdminVerificationDashboard(): React.ReactElement {
                     <p className="text-secondary text-sm">All purchase requests have been processed.</p>
                   </div>
                 ) : (
-                  purchaseRequests.map((request) => (
-                    <div
-                      key={request.id}
-                      className={`p-4 cursor-pointer hover:bg-neutral-medium/50 transition-colors ${
-                        selectedPurchaseRequest?.id === request.id ? 'bg-neutral-medium/50 border-l-4 border-l-accent-orange' : ''
-                      }`}
-                      onClick={() => setSelectedPurchaseRequest(request)}
-                    >
-                      <div className="flex justify-between items-start mb-2">
-                        <div>
-                          <h3 className="font-semibold text-primary text-sm">{request.vendors?.name || request.purchase_request_items[0]?.item_name || 'Material Purchase Request'}</h3>
-                          <p className="text-xs text-secondary">{request.contractors?.company_name || 'Unknown Contractor'}</p>
+                  purchaseRequests.map((request) => {
+                    const statusMeta = getPurchaseRequestStatusStyle(request.status);
+                    const estimated = request.estimated_total || 0;
+                    return (
+                      <div
+                        key={request.id}
+                        className={`p-4 cursor-pointer hover:bg-neutral-medium/50 transition-colors ${
+                          selectedPurchaseRequest?.id === request.id ? 'bg-neutral-medium/50 border-l-4 border-l-accent-orange' : ''
+                        }`}
+                        onClick={() => setSelectedPurchaseRequest(request)}
+                      >
+                        <div className="flex justify-between items-start mb-2">
+                          <div>
+                            <h3 className="font-semibold text-primary text-sm">
+                              Request #{request.id.slice(0, 8).toUpperCase()}
+                            </h3>
+                            <p className="text-xs text-secondary">
+                              {request.project?.name || 'Project'} • {request.contractors?.company_name || 'Unknown Contractor'}
+                            </p>
+                          </div>
+                          <span className={`text-xs px-2 py-1 rounded border ${statusMeta.classes}`}>{statusMeta.label}</span>
                         </div>
-                        <span className={`text-xs px-2 py-1 rounded border ${
-                          request.status === 'purchase_requested' ? 'text-yellow-600 bg-yellow-100 border-yellow-300' :
-                          request.status === 'quote_received' ? 'text-blue-600 bg-blue-100 border-blue-300' :
-                          request.status === 'purchase_request_raised' ? 'text-accent-orange bg-accent-orange/10 border-accent-orange/30' :
-                          request.status === 'approved_for_funding' ? 'text-green-600 bg-green-100 border-green-300' :
-                          request.status === 'completed' ? 'text-green-800 bg-green-200 border-green-400' :
-                          'text-red-600 bg-red-100 border-red-300'
-                        }`}>
-                          {request.status.replace(/_/g, ' ').toUpperCase()}
-                        </span>
+                        <div className="text-xs text-secondary">
+                          ₹{estimated.toLocaleString(undefined, { maximumFractionDigits: 2 })} • {request.total_items} items
+                        </div>
+                        <div className="text-xs text-secondary mt-1">
+                          {formatDate(request.submitted_at || request.created_at)}
+                        </div>
                       </div>
-                      <div className="text-xs text-secondary">
-                        ₹{request.estimated_total?.toLocaleString()} • {request.purchase_request_items.length} items
-                      </div>
-                      <div className="text-xs text-secondary mt-1">
-                        {new Date(request.created_at).toLocaleDateString()}
-                      </div>
-                    </div>
-                  ))
+                    );
+                  })
                 )}
               </div>
             </div>
           </div>
 
-          {/* Purchase Request Details */}
           <div className="lg:col-span-2">
             {selectedPurchaseRequest ? (
               <div className="bg-neutral-dark rounded-lg border border-neutral-medium">
                 <div className="p-6 border-b border-neutral-medium">
                   <div className="flex justify-between items-start">
                     <div>
-                      <h2 className="text-xl font-semibold text-primary">{selectedPurchaseRequest.vendors.company_name}</h2>
-                      <p className="text-secondary">{selectedPurchaseRequest.contractors.company_name}</p>
+                      <h2 className="text-xl font-semibold text-primary">
+                        Purchase Request #{selectedPurchaseRequest.id.slice(0, 8).toUpperCase()}
+                      </h2>
+                      <p className="text-secondary">
+                        {selectedPurchaseRequest.project?.name || 'Project'} • {selectedPurchaseRequest.contractors?.company_name || 'Unknown Contractor'}
+                      </p>
                       <p className="text-sm text-secondary mt-1">
-                        Requested: {new Date(selectedPurchaseRequest.created_at).toLocaleDateString()}
+                        Submitted: {formatDate(selectedPurchaseRequest.submitted_at || selectedPurchaseRequest.created_at)}
                       </p>
                     </div>
-                    <span className={`px-3 py-1 rounded border text-sm ${
-                      selectedPurchaseRequest.status === 'purchase_requested' ? 'text-yellow-600 bg-yellow-100 border-yellow-300' :
-                      selectedPurchaseRequest.status === 'quote_received' ? 'text-blue-600 bg-blue-100 border-blue-300' :
-                      selectedPurchaseRequest.status === 'purchase_request_raised' ? 'text-accent-orange bg-accent-orange/10 border-accent-orange/30' :
-                      selectedPurchaseRequest.status === 'approved_for_funding' ? 'text-green-600 bg-green-100 border-green-300' :
-                      selectedPurchaseRequest.status === 'completed' ? 'text-green-800 bg-green-200 border-green-400' :
-                      'text-red-600 bg-red-100 border-red-300'
-                    }`}>
-                      {selectedPurchaseRequest.status.replace(/_/g, ' ').toUpperCase()}
+                    <span className={`px-3 py-1 rounded border text-sm ${getPurchaseRequestStatusStyle(selectedPurchaseRequest.status).classes}`}>
+                      {getPurchaseRequestStatusStyle(selectedPurchaseRequest.status).label}
                     </span>
                   </div>
                 </div>
 
-                <div className="p-6">
-                  <div className="grid md:grid-cols-2 gap-6 mb-6">
+                <div className="p-6 space-y-6">
+                  <div className="grid md:grid-cols-2 gap-6">
                     <div>
                       <h3 className="text-lg font-semibold text-primary mb-3">Request Details</h3>
                       <div className="space-y-2 text-sm">
-                        <div><strong>Estimated Total:</strong> ₹{selectedPurchaseRequest.estimated_total?.toLocaleString()}</div>
-                        {selectedPurchaseRequest.quoted_total && (
-                          <div><strong>Quoted Total:</strong> ₹{selectedPurchaseRequest.quoted_total.toLocaleString()}</div>
-                        )}
-                        {selectedPurchaseRequest.status === 'finverno_submitted' && selectedPurchaseRequest.finverno_total_amount && (
-                          <div><strong>Finverno Total:</strong> ₹{selectedPurchaseRequest.finverno_total_amount.toLocaleString()}</div>
-                        )}
-                        <div><strong>Items Count:</strong> {selectedPurchaseRequest.purchase_request_items.length}</div>
-                        {selectedPurchaseRequest.delivery_date && (
-                          <div><strong>Delivery Date:</strong> {new Date(selectedPurchaseRequest.delivery_date).toLocaleDateString()}</div>
-                        )}
-                        {selectedPurchaseRequest.status === 'finverno_submitted' && selectedPurchaseRequest.finverno_submitted_at && (
-                          <div><strong>Submitted to Finverno:</strong> {new Date(selectedPurchaseRequest.finverno_submitted_at).toLocaleDateString()}</div>
-                        )}
+                        <div><strong>Total Items:</strong> {selectedPurchaseRequest.total_items}</div>
+                        <div><strong>Total Quantity:</strong> {selectedPurchaseRequest.total_requested_qty}</div>
+                        <div>
+                          <strong>Estimated Total:</strong> ₹{(selectedPurchaseRequest.estimated_total || 0).toLocaleString(undefined, { maximumFractionDigits: 2 })}
+                        </div>
+                        {selectedPurchaseRequest.remarks && (<div><strong>Remarks:</strong> {selectedPurchaseRequest.remarks}</div>)}
+                        {selectedPurchaseRequest.approval_notes && (<div><strong>Admin Notes:</strong> {selectedPurchaseRequest.approval_notes}</div>)}
                       </div>
                     </div>
-
                     <div>
-                      <h3 className="text-lg font-semibold text-primary mb-3">Vendor Details</h3>
+                      <h3 className="text-lg font-semibold text-primary mb-3">Contractor & Project</h3>
                       <div className="space-y-2 text-sm">
-                        <div><strong>Contact Person:</strong> {selectedPurchaseRequest.vendors.contact_person}</div>
-                        <div><strong>Email:</strong> {selectedPurchaseRequest.vendors.email}</div>
-                        <div><strong>Phone:</strong> {selectedPurchaseRequest.vendors.phone}</div>
+                        <div><strong>Company:</strong> {selectedPurchaseRequest.contractors?.company_name || 'N/A'}</div>
+                        {selectedPurchaseRequest.contractors?.contact_person && (
+                          <div><strong>Contact:</strong> {selectedPurchaseRequest.contractors?.contact_person}</div>
+                        )}
+                        {selectedPurchaseRequest.contractors?.email && (
+                          <div><strong>Email:</strong> {selectedPurchaseRequest.contractors?.email}</div>
+                        )}
+                        {selectedPurchaseRequest.project?.name ? (
+                          <div><strong>Project:</strong> {selectedPurchaseRequest.project?.name}</div>
+                        ) : (
+                          selectedPurchaseRequest.project_id && (
+                            <div><strong>Project:</strong> {selectedPurchaseRequest.project_id}</div>
+                          )
+                        )}
+                        {selectedPurchaseRequest.project?.location && (
+                          <div><strong>Location:</strong> {selectedPurchaseRequest.project?.location}</div>
+                        )}
                       </div>
                     </div>
                   </div>
 
-                  {/* Items List */}
-                  <div className="mb-6">
+                  <div>
                     <h3 className="text-lg font-semibold text-primary mb-3">Requested Items</h3>
                     <div className="overflow-x-auto">
                       <table className="w-full text-xs">
@@ -1519,38 +1546,34 @@ export default function AdminVerificationDashboard(): React.ReactElement {
                           </tr>
                         </thead>
                         <tbody>
-                          {selectedPurchaseRequest.purchase_request_items.map((item, index) => {
-                            const rate = item.quoted_rate || item.estimated_rate || 0;
-                            const subtotal = item.quantity * rate;
-                            const taxPercent = item.tax_percentage || 0;
+                          {selectedPurchaseRequest.purchase_request_items.map((item) => {
+                            const rate = item.unit_rate || 0;
+                            const qty = item.requested_qty || 0;
+                            const subtotal = qty * rate;
+                            const taxPercent = item.tax_percent || 0;
                             const taxAmount = (subtotal * taxPercent) / 100;
                             const total = subtotal + taxAmount;
-                            
+
                             return (
-                              <tr key={index} className="border-b border-neutral-medium hover:bg-neutral-medium/30">
+                              <tr key={item.id} className="border-b border-neutral-medium hover:bg-neutral-medium/30">
                                 <td className="p-2 border-r border-neutral-medium">
-                                  <div className="font-medium text-primary">{item.item_name}</div>
-                                  {item.item_description && (
-                                    <div className="text-secondary text-xs">{item.item_description}</div>
-                                  )}
+                                  <div className="font-medium text-primary">{item.material_name}</div>
+                                  {item.material_description && (<div className="text-secondary text-xs">{item.material_description}</div>)}
                                 </td>
-                                <td className="p-2 border-r border-neutral-medium text-center text-primary">{item.quantity}</td>
-                                <td className="p-2 border-r border-neutral-medium text-center text-primary">{item.unit}</td>
-                                <td className="p-2 border-r border-neutral-medium text-center text-primary">
-                                  {rate.toLocaleString()}
-                                </td>
-                                <td className="p-2 border-r border-neutral-medium text-center text-primary">
-                                  {taxPercent}%
-                                </td>
-                                <td className="p-2 border-r border-neutral-medium text-center text-primary">
-                                  ₹{taxAmount.toLocaleString()}
-                                </td>
-                                <td className="p-2 border-r border-neutral-medium text-center text-primary font-medium">
-                                  ₹{total.toLocaleString()}
-                                </td>
+                                <td className="p-2 border-r border-neutral-medium text-center text-primary">{qty}</td>
+                                <td className="p-2 border-r border-neutral-medium text-center text-primary">{item.unit || 'units'}</td>
+                                <td className="p-2 border-r border-neutral-medium text-center text-primary">{rate.toLocaleString(undefined, { maximumFractionDigits: 2 })}</td>
+                                <td className="p-2 border-r border-neutral-medium text-center text-primary">{taxPercent}%</td>
+                                <td className="p-2 border-r border-neutral-medium text-center text-primary">₹{taxAmount.toLocaleString(undefined, { maximumFractionDigits: 2 })}</td>
+                                <td className="p-2 border-r border-neutral-medium text-center text-primary font-medium">₹{total.toLocaleString(undefined, { maximumFractionDigits: 2 })}</td>
                                 <td className="p-2 text-center">
-                                  <span className={`text-xs px-2 py-1 rounded ${item.selected_for_order ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-600'}`}>
-                                    {item.selected_for_order ? 'Selected' : 'Not Selected'}
+                                  <span className={`text-xs px-2 py-1 rounded ${
+                                    item.status === 'approved' ? 'bg-green-100 text-green-800' :
+                                    item.status === 'rejected' ? 'bg-red-100 text-red-700' :
+                                    item.status === 'ordered' ? 'bg-blue-100 text-blue-700' :
+                                    'bg-neutral-medium/40 text-secondary'
+                                  }`}>
+                                    {item.status.replace(/_/g, ' ').toUpperCase()}
                                   </span>
                                 </td>
                               </tr>
@@ -1561,30 +1584,36 @@ export default function AdminVerificationDashboard(): React.ReactElement {
                     </div>
                   </div>
 
-                  {/* Admin Actions */}
-                  {selectedPurchaseRequest.status === 'purchase_requested' && (
+                  {selectedPurchaseRequest.status === 'submitted' && (
                     <div className="bg-accent-amber/5 border border-accent-amber/20 rounded-lg p-6">
                       <h3 className="text-lg font-semibold text-primary mb-4">Review Purchase Request</h3>
                       <div className="mb-4">
-                        <label className="block text-sm font-medium text-primary mb-2">
-                          Admin Notes
-                        </label>
+                        <label className="block text-sm font-medium text-primary mb-2">Admin Notes</label>
                         <textarea
                           rows={3}
                           className="w-full px-3 py-2 border border-neutral-medium rounded-md bg-neutral-darker text-primary placeholder-secondary"
-                          placeholder="Review notes for this purchase request..."
-                          id={`purchase-notes-${selectedPurchaseRequest.id}`}
+                          placeholder="Add your review notes..."
+                          id={`admin-notes-${selectedPurchaseRequest.id}`}
                         ></textarea>
                       </div>
-                      <div className="flex space-x-3">
+                      <div className="flex flex-wrap gap-3">
                         <Button
                           variant="primary"
                           onClick={() => {
-                            const notes = (document.getElementById(`purchase-notes-${selectedPurchaseRequest.id}`) as HTMLTextAreaElement)?.value;
-                            handlePurchaseRequestAction(selectedPurchaseRequest.id, 'approve_for_purchase', notes);
+                            const notes = (document.getElementById(`admin-notes-${selectedPurchaseRequest.id}`) as HTMLTextAreaElement)?.value;
+                            handlePurchaseRequestAction(selectedPurchaseRequest.id, 'approve_for_purchase', notes || undefined);
                           }}
                         >
-                          Approve for Procurement
+                          Approve Request
+                        </Button>
+                        <Button
+                          variant="outline"
+                          onClick={() => {
+                            const notes = (document.getElementById(`admin-notes-${selectedPurchaseRequest.id}`) as HTMLTextAreaElement)?.value;
+                            handlePurchaseRequestAction(selectedPurchaseRequest.id, 'approve_for_funding', notes || undefined);
+                          }}
+                        >
+                          Mark as Funded
                         </Button>
                         <Button
                           variant="outline"
@@ -1601,109 +1630,10 @@ export default function AdminVerificationDashboard(): React.ReactElement {
                     </div>
                   )}
 
-                  {/* Purchase Request Submission Admin Actions */}
-                  {selectedPurchaseRequest.status === 'purchase_request_raised' && (
-                    <div className="bg-accent-orange/5 border border-accent-orange/20 rounded-lg p-6">
-                      <h3 className="text-lg font-semibold text-primary mb-4">Review Purchase Request</h3>
-                      
-                      {/* Display Finverno Details */}
-                      <div className="mb-6 bg-neutral-darker border border-neutral-medium rounded-lg p-4">
-                        <h4 className="font-semibold text-primary mb-3">Submission Details</h4>
-                        <div className="grid grid-cols-2 gap-4 text-sm">
-                          {selectedPurchaseRequest.purchase_request_items.map((item, index) => (
-                            <div key={index} className="border border-neutral-medium rounded p-3">
-                              <div className="font-medium text-primary">{item.item_name}</div>
-                              <div className="text-secondary">Qty: {item.quantity} {item.unit}</div>
-                              {item.finverno_rate && (
-                                <>
-                                  <div className="text-accent-orange">Rate: ₹{item.finverno_rate.toLocaleString()}</div>
-                                  {item.finverno_tax_percentage && (
-                                    <div className="text-secondary">Tax: {item.finverno_tax_percentage}%</div>
-                                  )}
-                                </>
-                              )}
-                            </div>
-                          ))}
-                        </div>
-                        
-                        {selectedPurchaseRequest.purchase_invoice_url && (
-                          <div className="mt-4">
-                            <button
-                              onClick={async () => {
-                                try {
-                                  // Extract file path from URL for API call (contractor-documents bucket)
-                                  const urlParts = selectedPurchaseRequest.purchase_invoice_url?.split('/');
-                                  const pathIndex = urlParts?.findIndex(part => part === 'contractor-documents');
-                                  const filePath = pathIndex && pathIndex >= 0 
-                                    ? urlParts?.slice(pathIndex + 1).join('/')
-                                    : selectedPurchaseRequest.purchase_invoice_url;
-                                  
-                                  if (filePath) {
-                                    // Get signed URL from admin API
-                                    const response = await fetch(`/api/admin/purchase-invoices/${filePath}`);
-                                    const result = await response.json();
-                                    
-                                    if (result.success) {
-                                      // Open file in new tab
-                                      window.open(result.data.signedUrl, '_blank');
-                                    } else {
-                                      alert('Error accessing file: ' + result.error);
-                                    }
-                                  }
-                                } catch (error) {
-                                  console.error('Error opening PI file:', error);
-                                  alert('Error accessing Purchase Invoice file');
-                                }
-                              }}
-                              className="text-accent-orange hover:underline text-sm cursor-pointer bg-transparent border-none"
-                            >
-                              View Purchase Invoice (PI) →
-                            </button>
-                          </div>
-                        )}
-                      </div>
-                      
-                      <div className="mb-4">
-                        <label className="block text-sm font-medium text-primary mb-2">
-                          Admin Notes
-                        </label>
-                        <textarea
-                          rows={3}
-                          className="w-full px-3 py-2 border border-neutral-medium rounded-md bg-neutral-darker text-primary placeholder-secondary"
-                          placeholder="Review notes for this Finverno submission..."
-                          id={`finverno-notes-${selectedPurchaseRequest.id}`}
-                        ></textarea>
-                      </div>
-                      <div className="flex space-x-3">
-                        <Button
-                          variant="primary"
-                          onClick={() => {
-                            const notes = (document.getElementById(`finverno-notes-${selectedPurchaseRequest.id}`) as HTMLTextAreaElement)?.value;
-                            const amount = selectedPurchaseRequest.finverno_total_amount || 0;
-                            handlePurchaseRequestAction(selectedPurchaseRequest.id, 'approve_finverno_funding', notes, amount);
-                          }}
-                        >
-                          Approve Purchase Request
-                        </Button>
-                        <Button
-                          variant="outline"
-                          onClick={() => {
-                            const reason = prompt('Rejection reason:');
-                            if (reason) {
-                              handlePurchaseRequestAction(selectedPurchaseRequest.id, 'reject', reason);
-                            }
-                          }}
-                        >
-                          Reject Submission
-                        </Button>
-                      </div>
-                    </div>
-                  )}
-
-                  {selectedPurchaseRequest.admin_notes && (
+                  {selectedPurchaseRequest.approval_notes && selectedPurchaseRequest.status !== 'submitted' && (
                     <div className="mt-6 p-4 bg-neutral-darker border border-neutral-medium rounded-lg">
-                      <h4 className="font-semibold text-primary mb-2">Admin Notes</h4>
-                      <p className="text-sm text-primary">{selectedPurchaseRequest.admin_notes}</p>
+                      <h4 className="font-semibold text-primary mb-2">Latest Admin Notes</h4>
+                      <p className="text-sm text-primary">{selectedPurchaseRequest.approval_notes}</p>
                     </div>
                   )}
                 </div>

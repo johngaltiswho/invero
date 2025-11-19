@@ -94,17 +94,19 @@ export async function POST(request: NextRequest) {
     const {
       project_id,
       material_id,
+      material_name,
+      material_category,
+      material_description,
       quantity,
       unit,
       notes,
-      status = 'pending',
       source_type = 'manual',
       source_file_name
     } = body;
 
-    if (!project_id || !material_id || !quantity || !unit) {
+    if (!project_id || !quantity || !unit || (!material_id && !material_name)) {
       return NextResponse.json({ 
-        error: 'Missing required fields: project_id, material_id, quantity, unit' 
+        error: 'Missing required fields: project_id, material (id or name), quantity, unit' 
       }, { status: 400 });
     }
 
@@ -124,18 +126,75 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Contractor not found' }, { status: 404 });
     }
 
+    // Ensure material exists (auto-create if missing and name provided)
+    let resolvedMaterialId = material_id;
+    if (resolvedMaterialId) {
+      const { data: existingMaterial } = await supabase
+        .from('materials')
+        .select('id')
+        .eq('id', resolvedMaterialId)
+        .maybeSingle();
+
+      if (!existingMaterial) {
+        resolvedMaterialId = null;
+      }
+    }
+
+    if (!resolvedMaterialId) {
+      if (!material_name) {
+        return NextResponse.json({
+          error: 'Material not found in catalog. Please select a valid material or request a new one.'
+        }, { status: 400 });
+      }
+
+      // Try to find by name/unit to avoid duplicates
+      const { data: matchingMaterial } = await supabase
+        .from('materials')
+        .select('id')
+        .eq('name', material_name)
+        .eq('unit', unit)
+        .maybeSingle();
+
+      if (matchingMaterial) {
+        resolvedMaterialId = matchingMaterial.id;
+      } else {
+        const { data: newMaterial, error: createMaterialError } = await supabase
+          .from('materials')
+          .insert({
+            name: material_name,
+            description: material_description || notes || null,
+            category: material_category || 'Uncategorized',
+            unit,
+            is_active: true,
+            approval_status: 'approved',
+            requested_by: contractor.id
+          })
+          .select('id')
+          .single();
+
+        if (createMaterialError) {
+          console.error('Failed to create fallback material:', createMaterialError);
+          return NextResponse.json({
+            error: 'Failed to create material for project',
+            details: createMaterialError.message
+          }, { status: 500 });
+        }
+
+        resolvedMaterialId = newMaterial.id;
+      }
+    }
+
     // Insert project material with default values for new fields
     const { data: projectMaterial, error: insertError } = await supabase
       .from('project_materials')
       .insert({
         project_id,
         contractor_id: contractor.id,
-        material_id,
+        material_id: resolvedMaterialId,
         quantity: parseFloat(quantity),
-        available_qty: parseFloat(quantity), // Initialize available_qty with the full quantity
+        available_qty: 0,
         unit,
         notes,
-        status,
         // Add default values for new purchase workflow columns
         purchase_status: 'none',
         source_type: source_type,

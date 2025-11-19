@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { currentUser } from '@clerk/nextjs/server';
 import { createClient } from '@supabase/supabase-js';
+import type { CreatePurchaseRequestPayload } from '@/types/purchase-requests';
 
 // GET - Fetch purchase requests for contractor
 export async function GET(request: NextRequest) {
@@ -30,26 +31,28 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Contractor not found' }, { status: 404 });
     }
 
-    // Build query
+    // Build query for normalized purchase requests
     let query = supabase
       .from('purchase_requests')
       .select(`
-        *,
-        vendors!purchase_requests_vendor_id_fkey (
+        id,
+        project_id,
+        contractor_id,
+        status,
+        created_by,
+        remarks,
+        created_at,
+        updated_at,
+        submitted_at,
+        approved_at,
+        funded_at,
+        approved_by,
+        approval_notes,
+        contractors:contractor_id (
+          id,
           company_name,
           contact_person,
-          email,
-          phone
-        ),
-        purchase_request_items (
-          id,
-          item_name,
-          item_description,
-          unit,
-          quantity,
-          estimated_rate,
-          quoted_rate,
-          selected_for_order
+          email
         )
       `)
       .eq('contractor_id', contractor.id)
@@ -100,20 +103,12 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
     }
 
-    const body = await request.json();
-    const {
-      project_id,
-      vendor_id,
-      items, // Array of items to include in purchase request
-      delivery_date,
-      delivery_address,
-      priority = 'medium',
-      contractor_notes
-    } = body;
+    const body: CreatePurchaseRequestPayload = await request.json();
+    const { project_id, contractor_id, remarks, items } = body;
 
-    if (!project_id || !vendor_id || !items || !Array.isArray(items) || items.length === 0) {
+    if (!project_id || !items || !Array.isArray(items) || items.length === 0) {
       return NextResponse.json({ 
-        error: 'Missing required fields: project_id, vendor_id, items' 
+        error: 'Missing required fields: project_id, items' 
       }, { status: 400 });
     }
 
@@ -133,75 +128,87 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Contractor not found' }, { status: 404 });
     }
 
-    // Calculate estimated total
-    const estimated_total = items.reduce((sum: number, item: any) => {
-      return sum + (item.quantity * (item.estimated_rate || 0));
-    }, 0);
+    // Verify contractor matches request (if contractor_id is provided)
+    if (contractor_id && contractor.id !== contractor_id) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
+    }
 
-    // Create purchase request
+    console.log('🚀 Creating purchase request for contractor:', contractor.id);
+    console.log('📄 Request details:', { project_id, items: items.length, remarks });
+
+    // Create purchase request with normalized schema
+    const now = new Date().toISOString();
     const { data: purchaseRequest, error: requestError } = await supabase
       .from('purchase_requests')
       .insert({
         project_id,
         contractor_id: contractor.id,
-        vendor_id,
-        delivery_date,
-        delivery_address,
-        priority,
-        contractor_notes,
-        estimated_total,
-        status: 'pending'
+        status: 'submitted',
+        created_by: contractor.id,
+        remarks: remarks || null,
+        created_at: now,
+        updated_at: now,
+        submitted_at: now
       })
       .select()
       .single();
 
     if (requestError) {
-      console.error('Failed to create purchase request:', requestError);
+      console.error('❌ Failed to create purchase request:', requestError);
       return NextResponse.json({ 
         error: 'Failed to create purchase request',
         details: requestError.message 
       }, { status: 500 });
     }
 
-    // Create purchase request items
-    const requestItems = items.map((item: any) => ({
+    console.log('✅ Purchase request created:', purchaseRequest.id);
+
+    // Create purchase request items with normalized schema
+    const requestItems = items.map((item) => ({
       purchase_request_id: purchaseRequest.id,
-      material_request_id: item.material_request_id || null,
-      item_name: item.item_name,
-      item_description: item.item_description,
-      item_category: item.item_category,
-      unit: item.unit,
-      quantity: item.quantity,
-      estimated_rate: item.estimated_rate,
-      selected_for_order: item.selected_for_order !== false // Default to true
+      project_material_id: item.project_material_id,
+      requested_qty: item.requested_qty,
+      unit_rate: item.unit_rate || null,
+      tax_percent: item.tax_percent || 0,
+      status: 'pending',
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString()
     }));
 
-    const { error: itemsError } = await supabase
+    const { data: createdItems, error: itemsError } = await supabase
       .from('purchase_request_items')
-      .insert(requestItems);
+      .insert(requestItems)
+      .select();
 
     if (itemsError) {
-      // Rollback purchase request if items creation failed
+      console.error('❌ Failed to create purchase request items:', itemsError);
+      // Rollback: delete the purchase request
       await supabase
         .from('purchase_requests')
         .delete()
         .eq('id', purchaseRequest.id);
-
-      console.error('Failed to create purchase request items:', itemsError);
+      
       return NextResponse.json({ 
         error: 'Failed to create purchase request items',
         details: itemsError.message 
       }, { status: 500 });
     }
 
+    console.log('✅ Purchase request items created:', createdItems.length);
+
+    // Return the full purchase request with items
     return NextResponse.json({
       success: true,
-      data: purchaseRequest,
-      message: 'Purchase request created successfully'
+      data: {
+        ...purchaseRequest,
+        items: createdItems,
+        total_items: createdItems.length,
+        total_requested_qty: createdItems.reduce((sum, item) => sum + item.requested_qty, 0)
+      }
     });
 
   } catch (error) {
-    console.error('Error creating purchase request:', error);
+    console.error('💥 Error creating purchase request:', error);
     return NextResponse.json(
       { 
         error: 'Failed to create purchase request',
@@ -212,7 +219,7 @@ export async function POST(request: NextRequest) {
   }
 }
 
-// PUT - Update purchase request
+// PUT - Submit purchase request
 export async function PUT(request: NextRequest) {
   try {
     const user = await currentUser();
@@ -228,13 +235,11 @@ export async function PUT(request: NextRequest) {
     }
 
     const body = await request.json();
-    const {
-      selected_items, // Array of item IDs that contractor wants to include in final order
-      delivery_date,
-      delivery_address,
-      contractor_notes,
-      quote_file_url
-    } = body;
+    const { action, remarks } = body;
+
+    if (action !== 'submit') {
+      return NextResponse.json({ error: 'Only submit action is supported' }, { status: 400 });
+    }
 
     const supabase = createClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -252,64 +257,39 @@ export async function PUT(request: NextRequest) {
       return NextResponse.json({ error: 'Contractor not found' }, { status: 404 });
     }
 
-    // Update purchase request
-    const updateData: any = {
-      updated_at: new Date().toISOString()
-    };
-
-    if (delivery_date) updateData.delivery_date = delivery_date;
-    if (delivery_address) updateData.delivery_address = delivery_address;
-    if (contractor_notes !== undefined) updateData.contractor_notes = contractor_notes;
-    if (quote_file_url) {
-      updateData.quote_file_url = quote_file_url;
-      updateData.status = 'quote_received';
-    }
-
+    // Update purchase request to submitted status
     const { data: updatedRequest, error: updateError } = await supabase
       .from('purchase_requests')
-      .update(updateData)
+      .update({
+        status: 'submitted',
+        submitted_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+        ...(remarks && { remarks })
+      })
       .eq('id', requestId)
       .eq('contractor_id', contractor.id)
       .select()
       .single();
 
     if (updateError) {
-      console.error('Failed to update purchase request:', updateError);
+      console.error('Failed to submit purchase request:', updateError);
       return NextResponse.json({ 
-        error: 'Failed to update purchase request',
+        error: 'Failed to submit purchase request',
         details: updateError.message 
       }, { status: 500 });
-    }
-
-    // Update item selections if provided
-    if (selected_items && Array.isArray(selected_items)) {
-      // First, set all items to not selected
-      await supabase
-        .from('purchase_request_items')
-        .update({ selected_for_order: false })
-        .eq('purchase_request_id', requestId);
-
-      // Then, set selected items to true
-      if (selected_items.length > 0) {
-        await supabase
-          .from('purchase_request_items')
-          .update({ selected_for_order: true })
-          .eq('purchase_request_id', requestId)
-          .in('id', selected_items);
-      }
     }
 
     return NextResponse.json({
       success: true,
       data: updatedRequest,
-      message: 'Purchase request updated successfully'
+      message: 'Purchase request submitted successfully'
     });
 
   } catch (error) {
-    console.error('Error updating purchase request:', error);
+    console.error('Error submitting purchase request:', error);
     return NextResponse.json(
       { 
-        error: 'Failed to update purchase request',
+        error: 'Failed to submit purchase request',
         details: error instanceof Error ? error.message : 'Unknown error'
       },
       { status: 500 }
