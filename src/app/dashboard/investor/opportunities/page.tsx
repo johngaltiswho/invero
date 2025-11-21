@@ -2,8 +2,86 @@
 
 import React, { useState } from 'react';
 import { DashboardLayout } from '@/components/DashboardLayout';
-import { Button, LoadingSpinner } from '@/components';
+import { LoadingSpinner } from '@/components';
 import { useInvestor } from '@/contexts/InvestorContext';
+
+interface OpportunityCard {
+  id: string;
+  projectName: string;
+  contractor: string;
+  client: string;
+  clientType: string;
+  sector: string;
+  fundingRequired: string;
+  projectValue: string;
+  expectedIRR: string;
+  tenure: string;
+  currentProgress?: number;
+  teamSize?: number;
+  riskRating: string;
+  esgRating: string;
+  status: string;
+  funded: number;
+  remainingFunding: string;
+  totalInvested: string;
+  numberOfInvestors: number;
+  milestones: string[];
+  highlights: string[];
+  esgData?: {
+    environmental: {
+      wasteReduction: number;
+      energyEfficiency: number;
+      localSourcing: number;
+    };
+    social: {
+      localEmployment: number;
+      skillDevelopment: number;
+      safetyCompliance: number;
+    };
+    governance: {
+      transparency: number;
+      compliance: number;
+      audits: number;
+    };
+  } | null;
+  esgNote?: string;
+  fundingNumeric?: number;
+  expectedIrrValue?: number | null;
+  tenureValue?: number | null;
+}
+
+interface ProjectRecord {
+  id: string;
+  contractor_id: string;
+  project_name?: string | null;
+  client_name?: string | null;
+  funding_required?: number | null;
+  project_value?: number | null;
+  expected_irr?: number | null;
+  project_tenure?: number | null;
+  purchase_request_total?: number | null;
+  purchase_requests_total?: number | null;
+  total_purchase_requests?: number | null;
+  total_purchase_value?: number | null;
+  status?: string | null;
+  project_status?: string | null;
+  current_progress?: number | null;
+  team_size?: number | null;
+  esg_compliance?: string | null;
+  risk_level?: string | null;
+  next_milestone?: string | null;
+  [key: string]: string | number | null | undefined;
+}
+
+interface ContractorRecord {
+  id: string;
+  company_name?: string | null;
+  business_category?: string | null;
+  risk_rating?: string | null;
+  completed_projects?: number | null;
+  success_rate?: number | null;
+  [key: string]: string | number | null | undefined;
+}
 
 export default function InvestmentOpportunities(): React.ReactElement {
   const [selectedFilter, setSelectedFilter] = useState('all');
@@ -39,7 +117,7 @@ export default function InvestmentOpportunities(): React.ReactElement {
     console.log('📋 Active projects for opportunities:', allActiveProjects.length);
     console.log('📋 Total contractors available:', allContractors.length);
 
-    const opportunities = [];
+    const opportunities: OpportunityCard[] = [];
 
     // Create opportunities from ALL active projects
     allActiveProjects.forEach((project, index) => {
@@ -60,21 +138,33 @@ export default function InvestmentOpportunities(): React.ReactElement {
     });
 
     // Helper function to create opportunity from project and contractor
-    function createOpportunityFromProject(project: any, contractor: any, index: number) {
-      // Use real data from Supabase project fields
-      const fundingRequired = project.funding_required || 1000000;
-      const expectedIRR = project.expected_irr || 14;  
-      const tenureMonths = project.project_tenure || 6;
-      const minInvestment = Math.round(fundingRequired * 0.2); // 20% of funding required
+    function createOpportunityFromProject(
+      project: ProjectRecord,
+      contractor: ContractorRecord,
+      index: number
+    ): OpportunityCard | null {
+      const purchaseRequestTotal =
+        project.purchase_request_total ||
+        project.purchase_requests_total ||
+        project.total_purchase_requests ||
+        project.total_purchase_value ||
+        0;
+
+      const fundingNumeric = purchaseRequestTotal || project.funding_required || project.project_value || 0;
+      const fundingRequired = new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', minimumFractionDigits: 0 }).format(fundingNumeric);
+      const projectValueNumeric = project.estimated_value || project.project_value || fundingNumeric;
+      const projectValueDisplay = new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', minimumFractionDigits: 0 }).format(projectValueNumeric);
+      const expectedIRRDisplay = '--';
+      const tenureDisplay = '3-6 months';
       
       // Calculate real funding progress from actual investments
       const allInvestments = investor.investments || [];
       const projectInvestments = allInvestments.filter(inv => inv.project_id === project.id);
       const totalInvested = projectInvestments.reduce((sum, inv) => sum + inv.investment_amount, 0);
-      const fundedPercentage = fundingRequired > 0 ? Math.round((totalInvested / fundingRequired) * 100) : 0;
+      const fundedPercentage = fundingNumeric > 0 ? Math.round((totalInvested / fundingNumeric) * 100) : 0;
       
       // Calculate remaining funding needed
-      const remainingFunding = Math.max(0, fundingRequired - totalInvested);
+      const remainingFunding = Math.max(0, fundingNumeric - totalInvested);
       
       console.log(`📋 Project ${project.project_name} funding analysis:`, {
         fundingRequired: project.funding_required,
@@ -95,7 +185,41 @@ export default function InvestmentOpportunities(): React.ReactElement {
       const clientName = project.client_name || `${contractor.business_category || 'Industrial'} Client`;
       const projectName = project.project_name || `${contractor.business_category || 'Engineering'} Project`;
 
-      const opportunity = {
+      const formatMilestoneDate = (dateValue?: string | null) => {
+        if (!dateValue) return null;
+        const date = new Date(dateValue);
+        if (Number.isNaN(date.getTime())) return null;
+        return date.toLocaleDateString('en-IN', { month: 'short', day: 'numeric' });
+      };
+
+      const milestones: string[] = [];
+      const nextMilestone = project.next_milestone as string | null;
+      const nextMilestoneDate = formatMilestoneDate(project.next_milestone_date as string | null);
+      if (nextMilestone) {
+        milestones.push(nextMilestoneDate ? `${nextMilestone} • ${nextMilestoneDate}` : nextMilestone);
+      }
+      if (typeof project.current_progress === 'number') {
+        milestones.push(`Current progress: ${project.current_progress}%`);
+      }
+      if (project.project_status) {
+        milestones.push(`Status: ${project.project_status}`);
+      }
+      if (milestones.length === 0) {
+        milestones.push('Project milestones will be updated as schedules sync from the contractor.');
+      }
+
+      const highlights: string[] = [
+        'Project highlights will be updated from contractor reports soon.'
+      ];
+
+      const scheduleProgress =
+        typeof project.schedule_progress === 'number'
+          ? project.schedule_progress
+          : typeof project.current_progress === 'number'
+          ? project.current_progress
+          : 0;
+
+      const opportunity: OpportunityCard = {
         id: `OPP-2025-${String(index + 150).padStart(3, '0')}`,
         projectName: projectName,
         contractor: contractor.company_name,
@@ -103,52 +227,26 @@ export default function InvestmentOpportunities(): React.ReactElement {
         clientType: ['Tata', 'Mahindra', 'HCL', 'Infosys', 'TCS'].some(mnc => 
           clientName?.includes(mnc)) ? 'MNC' : 'Large Enterprise',
         sector: contractor.business_category || 'Engineering Services',
-        fundingRequired: new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', minimumFractionDigits: 0 }).format(fundingRequired),
-        projectValue: new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', minimumFractionDigits: 0 }).format(project.project_value || 0),
-        expectedIRR: `${expectedIRR}%`,
-        tenure: `${tenureMonths} months`,
+        fundingRequired,
+        projectValue: projectValueDisplay,
+        fundingNumeric,
+        expectedIrrValue: typeof project.expected_irr === 'number' ? project.expected_irr : null,
+        tenureValue: typeof project.project_tenure === 'number' ? project.project_tenure : null,
+        expectedIRR: expectedIRRDisplay,
+        tenure: tenureDisplay,
         riskRating: project.risk_level || contractor.risk_rating || 'Medium',
         esgRating: project.esg_compliance === 'Yes' ? 'Gold' : esgScore,
-        minInvestment: new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', minimumFractionDigits: 0 }).format(minInvestment),
         status: project.status || 'Open',
-        funded: fundedPercentage, // Real funding percentage from actual investments
+        funded: fundedPercentage,
         remainingFunding: new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', minimumFractionDigits: 0 }).format(remainingFunding),
         totalInvested: new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', minimumFractionDigits: 0 }).format(totalInvested),
         numberOfInvestors: projectInvestments.length,
-        timeLeft: `${Math.round(Math.random() * 15 + 5)} days`, // Still random for now
-        currentProgress: project.current_progress || 0,
+        currentProgress: scheduleProgress,
         teamSize: project.team_size || 8,
-        milestones: [
-          `${project.next_milestone || 'Initial Planning'} - Month 1`,
-          'Resource Allocation - Month 2',
-          'Implementation Phase - Month 3',
-          'Final Delivery & Testing'
-        ],
-        highlights: [
-          `${contractor.completed_projects || 25}+ completed projects`,
-          `${contractor.success_rate || 95}% success rate`,
-          contractor.risk_rating === 'Low' ? 'Low-risk opportunity' : 'Proven track record',
-          'ESG compliance verified',
-          esgScore === 'Gold' ? 'ESG Gold certified' : `ESG ${esgScore} rated`
-        ],
-        // ESG specific data
-        esgData: {
-          environmental: {
-            wasteReduction: Math.round(Math.random() * 30 + 70), // 70-100%
-            energyEfficiency: Math.round(Math.random() * 25 + 75), // 75-100%
-            localSourcing: Math.round(Math.random() * 40 + 60) // 60-100%
-          },
-          social: {
-            localEmployment: Math.round(Math.random() * 30 + 70), // 70-100%
-            safetyCompliance: Math.round(Math.random() * 10 + 90), // 90-100%
-            communityImpact: Math.round(Math.random() * 20 + 80) // 80-100%
-          },
-          governance: {
-            compliance: Math.round(Math.random() * 5 + 95), // 95-100%
-            transparency: Math.round(Math.random() * 10 + 90), // 90-100%
-            ethics: Math.round(Math.random() * 5 + 95) // 95-100%
-          }
-        }
+        milestones,
+        highlights,
+        esgData: null,
+        esgNote: 'ESG performance metrics will be published once contractor reporting is synced.'
       };
 
       console.log(`✅ Created opportunity ${opportunity.id} for ${contractor.company_name} - ${projectName}`);
@@ -195,6 +293,25 @@ export default function InvestmentOpportunities(): React.ReactElement {
     if (selectedESG !== 'all' && opp.esgRating !== selectedESG) return false;
     return true;
   });
+
+  const totalFundingRequired = filteredOpportunities.reduce(
+    (sum, opportunity) => sum + (opportunity.fundingNumeric ?? 0),
+    0
+  );
+
+  const irrValues = filteredOpportunities
+    .map((opportunity) => opportunity.expectedIrrValue)
+    .filter((value): value is number => typeof value === 'number');
+  const avgIrrValue = irrValues.length
+    ? irrValues.reduce((sum, value) => sum + value, 0) / irrValues.length
+    : null;
+
+  const tenureValues = filteredOpportunities
+    .map((opportunity) => opportunity.tenureValue)
+    .filter((value): value is number => typeof value === 'number');
+  const avgTenureValue = tenureValues.length
+    ? tenureValues.reduce((sum, value) => sum + value, 0) / tenureValues.length
+    : null;
 
   if (loading) {
     return (
@@ -300,15 +417,26 @@ export default function InvestmentOpportunities(): React.ReactElement {
           </div>
           <div className="bg-neutral-dark p-4 rounded-lg border border-neutral-medium">
             <div className="text-accent-amber text-sm font-mono mb-1">TOTAL FUNDING</div>
-            <div className="text-2xl font-bold text-primary">₹4.1 Cr</div>
+            <div className="text-2xl font-bold text-primary">
+              {new Intl.NumberFormat('en-IN', {
+                style: 'currency',
+                currency: 'INR',
+                minimumFractionDigits: 0,
+                maximumFractionDigits: 0
+              }).format(totalFundingRequired)}
+            </div>
           </div>
           <div className="bg-neutral-dark p-4 rounded-lg border border-neutral-medium">
             <div className="text-accent-amber text-sm font-mono mb-1">AVG. IRR</div>
-            <div className="text-2xl font-bold text-accent-amber">14.8%</div>
+            <div className="text-2xl font-bold text-accent-amber">
+              {avgIrrValue !== null ? `${avgIrrValue.toFixed(1)}%` : '--'}
+            </div>
           </div>
           <div className="bg-neutral-dark p-4 rounded-lg border border-neutral-medium">
             <div className="text-accent-amber text-sm font-mono mb-1">AVG. TENURE</div>
-            <div className="text-2xl font-bold text-primary">9 months</div>
+            <div className="text-2xl font-bold text-primary">
+              {avgTenureValue !== null ? `${avgTenureValue.toFixed(1)} months` : '--'}
+            </div>
           </div>
         </div>
 
@@ -352,7 +480,11 @@ export default function InvestmentOpportunities(): React.ReactElement {
                   </div>
                 </div>
 
-                <div className="grid lg:grid-cols-5 md:grid-cols-3 gap-6 mb-6">
+                <div className="grid lg:grid-cols-4 md:grid-cols-4 gap-6 mb-6">
+                  <div>
+                    <div className="text-xs text-secondary mb-1">Project Value</div>
+                    <div className="text-lg font-bold text-primary">{opportunity.projectValue}</div>
+                  </div>
                   <div>
                     <div className="text-xs text-secondary mb-1">Funding Required</div>
                     <div className="text-lg font-bold text-primary">{opportunity.fundingRequired}</div>
@@ -365,50 +497,23 @@ export default function InvestmentOpportunities(): React.ReactElement {
                     <div className="text-xs text-secondary mb-1">Tenure</div>
                     <div className="text-lg font-bold text-primary">{opportunity.tenure}</div>
                   </div>
-                  <div>
-                    <div className="text-xs text-secondary mb-1">Min. Investment</div>
-                    <div className="text-lg font-bold text-primary">{opportunity.minInvestment}</div>
-                  </div>
-                  <div>
-                    <div className="text-xs text-secondary mb-1">Closing In</div>
-                    <div className="text-lg font-bold text-warning">{opportunity.timeLeft}</div>
-                  </div>
                 </div>
 
                 <div className="mb-6">
                   <div className="flex justify-between text-sm mb-2">
-                    <span className="text-secondary">Funding Progress</span>
-                    <span className="text-primary">{opportunity.funded}% funded</span>
+                    <span className="text-secondary">Project Progress (Schedule)</span>
+                    <span className="text-primary">
+                      {Math.round(opportunity.currentProgress || 0)}% complete
+                    </span>
                   </div>
-                  <div className="w-full bg-neutral-medium rounded-full h-2 mb-3">
-                    <div 
-                      className="bg-accent-amber h-2 rounded-full" 
-                      style={{ width: `${opportunity.funded}%` }}
+                  <div className="w-full bg-neutral-medium rounded-full h-2 mb-2">
+                    <div
+                      className="bg-accent-amber h-2 rounded-full"
+                      style={{ width: `${Math.min(100, Math.max(0, opportunity.currentProgress || 0))}%` }}
                     ></div>
                   </div>
-                  <div className="grid grid-cols-2 gap-4 text-xs">
-                    <div>
-                      <span className="text-secondary">Raised: </span>
-                      <span className="text-success font-semibold">{opportunity.totalInvested}</span>
-                    </div>
-                    <div>
-                      <span className="text-secondary">Remaining: </span>
-                      <span className="text-warning font-semibold">{opportunity.remainingFunding}</span>
-                    </div>
-                    <div>
-                      <span className="text-secondary">Investors: </span>
-                      <span className="text-primary font-semibold">{opportunity.numberOfInvestors}</span>
-                    </div>
-                    <div>
-                      <span className="text-secondary">Status: </span>
-                      <span className={`font-semibold ${
-                        opportunity.funded === 0 ? 'text-warning' : 
-                        opportunity.funded >= 100 ? 'text-success' : 'text-accent-amber'
-                      }`}>
-                        {opportunity.funded === 0 ? 'Not Started' : 
-                         opportunity.funded >= 100 ? 'Fully Funded' : 'In Progress'}
-                      </span>
-                    </div>
+                  <div className="text-xs text-secondary">
+                    Progress is calculated from the latest uploaded project schedule.
                   </div>
                 </div>
 
@@ -437,48 +542,38 @@ export default function InvestmentOpportunities(): React.ReactElement {
                   </div>
                   <div>
                     <h4 className="text-sm font-semibold text-primary mb-3">ESG Performance</h4>
-                    <div className="space-y-3">
-                      <div className="flex justify-between items-center">
-                        <span className="text-xs text-secondary">Environmental</span>
-                        <span className="text-xs text-green-400 font-semibold">
-                          {opportunity.esgData?.environmental?.wasteReduction || 85}%
-                        </span>
-                      </div>
-                      <div className="flex justify-between items-center">
-                        <span className="text-xs text-secondary">Social Impact</span>
-                        <span className="text-xs text-blue-400 font-semibold">
-                          {opportunity.esgData?.social?.localEmployment || 78}%
-                        </span>
-                      </div>
-                      <div className="flex justify-between items-center">
-                        <span className="text-xs text-secondary">Governance</span>
-                        <span className="text-xs text-purple-400 font-semibold">
-                          {opportunity.esgData?.governance?.compliance || 95}%
-                        </span>
-                      </div>
-                      <div className="pt-2 border-t border-neutral-medium">
+                    {opportunity.esgData ? (
+                      <div className="space-y-3">
                         <div className="flex justify-between items-center">
-                          <span className="text-xs text-secondary">Overall ESG Score</span>
-                          <span className={`text-xs font-bold ${getESGColor(opportunity.esgRating)}`}>
-                            {opportunity.esgRating}
+                          <span className="text-xs text-secondary">Environmental</span>
+                          <span className="text-xs text-green-400 font-semibold">
+                            {opportunity.esgData.environmental.wasteReduction}%
+                          </span>
+                        </div>
+                        <div className="flex justify-between items-center">
+                          <span className="text-xs text-secondary">Social</span>
+                          <span className="text-xs text-blue-400 font-semibold">
+                            {opportunity.esgData.social.localEmployment}%
+                          </span>
+                        </div>
+                        <div className="flex justify-between items-center">
+                          <span className="text-xs text-secondary">Governance</span>
+                          <span className="text-xs text-purple-400 font-semibold">
+                            {opportunity.esgData.governance.transparency}%
                           </span>
                         </div>
                       </div>
-                    </div>
+                    ) : (
+                      <p className="text-sm text-secondary">
+                        {opportunity.esgNote || 'ESG performance will be updated as compliance data becomes available.'}
+                      </p>
+                    )}
                   </div>
                 </div>
 
                 <div className="flex justify-between items-center pt-4 border-t border-neutral-medium">
                   <div className="text-sm text-secondary">
                     Project ID: {opportunity.id} • Sector: {opportunity.sector}
-                  </div>
-                  <div className="flex space-x-3">
-                    <Button variant="outline" size="sm">
-                      View Details
-                    </Button>
-                    <Button variant="primary" size="sm">
-                      Invest Now
-                    </Button>
                   </div>
                 </div>
               </div>

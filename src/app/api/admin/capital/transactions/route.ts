@@ -107,25 +107,37 @@ export async function POST(request: NextRequest) {
       reference_number 
     } = body;
 
-    // Validate required fields
-    if (!investor_id || !transaction_type || !amount || !description) {
+    if (!transaction_type || !amount || !description) {
       return NextResponse.json(
-        { error: 'Missing required fields: investor_id, transaction_type, amount, description' },
+        { error: 'Missing required fields: transaction_type, amount, description' },
         { status: 400 }
       );
     }
 
-    // Ensure investor account exists (for legacy investors without auto-created accounts)
-    const { error: ensureAccountError } = await supabase
-      .from('investor_accounts')
-      .upsert({ investor_id }, { onConflict: 'investor_id' });
-
-    if (ensureAccountError) {
-      console.error('Failed to ensure investor account exists:', ensureAccountError);
+    if (transaction_type !== 'return' && !investor_id) {
       return NextResponse.json(
-        { error: 'Unable to prepare investor account for transaction' },
-        { status: 500 }
+        { error: 'investor_id is required for this transaction type' },
+        { status: 400 }
       );
+    }
+
+    const referenceNumberTrimmed = typeof reference_number === 'string' && reference_number.trim().length > 0
+      ? reference_number.trim()
+      : null;
+
+    // Ensure investor account exists (for legacy investors without auto-created accounts)
+    if (transaction_type !== 'return' && investor_id) {
+      const { error: ensureAccountError } = await supabase
+        .from('investor_accounts')
+        .upsert({ investor_id }, { onConflict: 'investor_id' });
+
+      if (ensureAccountError) {
+        console.error('Failed to ensure investor account exists:', ensureAccountError);
+        return NextResponse.json(
+          { error: 'Unable to prepare investor account for transaction' },
+          { status: 500 }
+        );
+      }
     }
 
     // Validate transaction type
@@ -147,7 +159,7 @@ export async function POST(request: NextRequest) {
     }
 
     // For deployment and withdrawal, check if investor has sufficient balance
-    if (transaction_type === 'deployment' || transaction_type === 'withdrawal') {
+    if ((transaction_type === 'deployment' || transaction_type === 'withdrawal') && investor_id) {
       const { data: account, error: accountError } = await supabase
         .from('investor_accounts')
         .select('available_balance')
@@ -177,6 +189,234 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    const normalizedPurchaseRequestId = purchase_request_id?.trim() || '';
+
+    if (transaction_type === 'return') {
+      if (!normalizedPurchaseRequestId) {
+        return NextResponse.json(
+          { error: 'purchase_request_id is required for capital returns' },
+          { status: 400 }
+        );
+      }
+
+      const { data: deployments, error: deploymentsError } = await supabase
+        .from('capital_transactions')
+        .select('investor_id, amount, project_id, contractor_id')
+        .eq('transaction_type', 'deployment')
+        .eq('status', 'completed')
+        .eq('purchase_request_id', normalizedPurchaseRequestId);
+
+      if (deploymentsError) {
+        console.error('Failed to fetch deployments for return allocation:', deploymentsError);
+        return NextResponse.json(
+          { error: 'Unable to allocate return across investors' },
+          { status: 500 }
+        );
+      }
+
+      if (!deployments || deployments.length === 0) {
+        return NextResponse.json(
+          { error: 'No completed deployments found for this purchase request' },
+          { status: 400 }
+        );
+      }
+
+      const aggregatedDeployments = deployments.reduce<Map<string, { amount: number; project_id?: string | null; contractor_id?: string | null }>>((map, deployment) => {
+        if (!deployment.investor_id) {
+          return map;
+        }
+        const existing = map.get(deployment.investor_id) || { amount: 0, project_id: deployment.project_id, contractor_id: deployment.contractor_id };
+        existing.amount += Number(deployment.amount) || 0;
+        if (!existing.project_id && deployment.project_id) {
+          existing.project_id = deployment.project_id;
+        }
+        if (!existing.contractor_id && deployment.contractor_id) {
+          existing.contractor_id = deployment.contractor_id;
+        }
+        map.set(deployment.investor_id, existing);
+        return map;
+      }, new Map());
+
+      const aggregatedEntries = Array.from(aggregatedDeployments.entries());
+
+      const totalDeployed = aggregatedEntries.reduce(
+        (sum, [, deployment]) => sum + deployment.amount,
+        0
+      );
+
+      if (totalDeployed <= 0) {
+        return NextResponse.json(
+          { error: 'Cannot allocate returns because deployment totals are zero' },
+          { status: 400 }
+        );
+      }
+
+      if (aggregatedEntries.length === 0) {
+        return NextResponse.json(
+          { error: 'Unable to determine investors for this purchase request' },
+          { status: 400 }
+        );
+      }
+
+      await Promise.all(
+        aggregatedEntries.map(([investorId]) =>
+          supabase
+            .from('investor_accounts')
+            .upsert({ investor_id: investorId }, { onConflict: 'investor_id' })
+        )
+      );
+
+      let amountAllocated = 0;
+      const transactionsToInsert = aggregatedEntries.map(([investorId, deployment], index) => {
+        const rawShare = totalDeployed === 0 ? 0 : deployment.amount / totalDeployed;
+        let shareAmount = Number((numAmount * rawShare).toFixed(2));
+        if (index === aggregatedEntries.length - 1) {
+          shareAmount = Number((numAmount - amountAllocated).toFixed(2));
+        }
+        amountAllocated += shareAmount;
+
+        return {
+          investor_id: investorId,
+          transaction_type: 'return' as const,
+          amount: shareAmount,
+          description: description.trim(),
+          admin_user_id: adminUser?.id || 'unknown',
+          status: 'completed',
+          project_id: deployment.project_id,
+          contractor_id: deployment.contractor_id,
+          purchase_request_id: normalizedPurchaseRequestId,
+          reference_number: referenceNumberTrimmed
+        };
+      }).filter((transaction) => transaction.amount > 0);
+
+      if (transactionsToInsert.length === 0) {
+        return NextResponse.json(
+          { error: 'Unable to allocate capital return with the provided amount' },
+          { status: 400 }
+        );
+      }
+
+      const { data: insertedReturns, error: insertReturnsError } = await supabase
+        .from('capital_transactions')
+        .insert(transactionsToInsert)
+        .select(`
+          *,
+          investor:investors!capital_transactions_investor_id_fkey(
+            id,
+            name,
+            email,
+            investor_type
+          ),
+          project:projects!capital_transactions_project_id_fkey(
+            id,
+            project_name
+          )
+        `);
+
+      if (insertReturnsError) {
+        console.error('Failed to record distributed capital returns:', insertReturnsError);
+        return NextResponse.json(
+          { error: 'Failed to record capital returns' },
+          { status: 500 }
+        );
+      }
+
+      return NextResponse.json({
+        message: 'Capital return recorded and distributed successfully',
+        transactions: insertedReturns
+      }, { status: 201 });
+    }
+    let linkedPurchaseRequestId: string | null = null;
+    let purchaseRequestTotal = 0;
+    let existingFundedAmount = 0;
+    let shouldMarkRequestFunded = false;
+    let purchaseRequestApprovedAt: string | null = null;
+
+    if (transaction_type === 'deployment' && normalizedPurchaseRequestId) {
+      const { data: purchaseRequest, error: purchaseRequestError } = await supabase
+        .from('purchase_requests')
+        .select(`
+          id,
+          status,
+          approved_at,
+          purchase_request_items (
+            requested_qty,
+            unit_rate
+          )
+        `)
+        .eq('id', normalizedPurchaseRequestId)
+        .single();
+
+      if (purchaseRequestError || !purchaseRequest) {
+        console.error('Failed to load purchase request for deployment:', purchaseRequestError);
+        return NextResponse.json(
+          { error: 'Purchase request not found' },
+          { status: 404 }
+        );
+      }
+
+      purchaseRequestApprovedAt = purchaseRequest.approved_at ?? null;
+
+      const currentStatus = (purchaseRequest.status || '').toLowerCase();
+      if (['funded', 'po_generated', 'completed'].includes(currentStatus)) {
+        return NextResponse.json(
+          { error: 'This purchase request has already been fully funded' },
+          { status: 400 }
+        );
+      }
+
+      purchaseRequestTotal = (purchaseRequest.purchase_request_items || []).reduce((sum, item) => {
+        const qty = Number(item.requested_qty) || 0;
+        const rate = Number(item.unit_rate) || 0;
+        return sum + qty * rate;
+      }, 0);
+
+      if (purchaseRequestTotal > 0) {
+        const { data: fundingRows, error: existingFundingError } = await supabase
+          .from('capital_transactions')
+          .select('amount')
+          .eq('transaction_type', 'deployment')
+          .eq('status', 'completed')
+          .eq('purchase_request_id', normalizedPurchaseRequestId);
+
+        if (existingFundingError) {
+          console.error('Failed to load previous deployments for purchase request:', existingFundingError);
+        } else {
+          existingFundedAmount = (fundingRows || []).reduce(
+            (sum, txn) => sum + (Number(txn.amount) || 0),
+            0
+          );
+        }
+
+        const remainingAmount = Math.max(purchaseRequestTotal - existingFundedAmount, 0);
+        if (remainingAmount <= 0) {
+          return NextResponse.json(
+            { error: 'This purchase request has already been fully funded' },
+            { status: 400 }
+          );
+        }
+
+        if (numAmount - remainingAmount > 1e-2) {
+          const formattedRemaining = new Intl.NumberFormat('en-IN', {
+            style: 'currency',
+            currency: 'INR',
+            minimumFractionDigits: 0
+          }).format(remainingAmount);
+
+          return NextResponse.json(
+            { error: `Only ${formattedRemaining} remains to fund for this purchase request` },
+            { status: 400 }
+          );
+        }
+
+        shouldMarkRequestFunded = existingFundedAmount + numAmount >= purchaseRequestTotal - 1e-2;
+      } else {
+        shouldMarkRequestFunded = true;
+      }
+
+      linkedPurchaseRequestId = purchaseRequest.id;
+    }
+
     // Create transaction
     const transactionData: Record<string, unknown> = {
       investor_id,
@@ -203,12 +443,12 @@ export async function POST(request: NextRequest) {
       transactionData.project_name = project_name.trim();
     }
 
-    if (reference_number?.trim()) {
-      transactionData.reference_number = reference_number.trim();
+    if (referenceNumberTrimmed) {
+      transactionData.reference_number = referenceNumberTrimmed;
     }
 
-    if (purchase_request_id?.trim()) {
-      transactionData.purchase_request_id = purchase_request_id.trim();
+    if (normalizedPurchaseRequestId) {
+      transactionData.purchase_request_id = normalizedPurchaseRequestId;
     }
 
     const { data, error } = await supabase
@@ -246,12 +486,41 @@ export async function POST(request: NextRequest) {
         deployment_date: new Date().toISOString().split('T')[0],
         admin_deployed_by: adminUser?.id || 'unknown',
         notes: description,
-        purchase_request_id: purchase_request_id?.trim() || null
+        purchase_request_id: normalizedPurchaseRequestId || null
       };
 
       await supabase
         .from('project_deployments')
         .insert([deploymentData]);
+    }
+
+    if (linkedPurchaseRequestId && shouldMarkRequestFunded) {
+      const now = new Date().toISOString();
+      const { error: purchaseRequestUpdateError } = await supabase
+        .from('purchase_requests')
+        .update({
+          status: 'funded',
+          funded_at: now,
+          updated_at: now,
+          approved_at: purchaseRequestApprovedAt || now
+        })
+        .eq('id', linkedPurchaseRequestId);
+
+      if (purchaseRequestUpdateError) {
+        console.error('Failed to update purchase request status after deployment:', purchaseRequestUpdateError);
+      } else {
+        const { error: purchaseRequestItemsUpdateError } = await supabase
+          .from('purchase_request_items')
+          .update({
+            status: 'ordered',
+            updated_at: now
+          })
+          .eq('purchase_request_id', linkedPurchaseRequestId);
+
+        if (purchaseRequestItemsUpdateError) {
+          console.error('Failed to update purchase request items status after deployment:', purchaseRequestItemsUpdateError);
+        }
+      }
     }
 
     return NextResponse.json({

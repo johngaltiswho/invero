@@ -38,24 +38,6 @@ interface CapitalTransaction {
   project_name?: string;
 }
 
-interface Contractor {
-  id: string;
-  company_name: string;
-  contact_person: string;
-  email: string;
-  status: string;
-  verification_status?: string;
-}
-
-interface Project {
-  id: string;
-  project_name: string;
-  contractor_id: string;
-  client_name: string;
-  estimated_value: number;
-  funding_required: number;
-}
-
 interface TransactionFormData {
   investor_id: string;
   transaction_type: 'inflow' | 'deployment' | 'return' | 'withdrawal';
@@ -75,6 +57,9 @@ interface FundingPurchaseRequest {
   contractor_id: string;
   estimated_total?: number;
   status: string;
+  funded_amount?: number;
+  remaining_amount?: number;
+  funding_progress?: number | null;
   contractors?: {
     company_name: string;
     contact_person?: string;
@@ -90,9 +75,6 @@ const CapitalTransactions: React.FC = () => {
   const [investors, setInvestors] = useState<Investor[]>([]);
   const [accounts, setAccounts] = useState<InvestorAccount[]>([]);
   const [accountsLoading, setAccountsLoading] = useState(false);
-  const [contractors, setContractors] = useState<Contractor[]>([]);
-  const [projects, setProjects] = useState<Project[]>([]);
-  const [filteredProjects, setFilteredProjects] = useState<Project[]>([]);
   const [purchaseRequests, setPurchaseRequests] = useState<FundingPurchaseRequest[]>([]);
   const [purchaseRequestsLoading, setPurchaseRequestsLoading] = useState(false);
   const [selectedInvestor, setSelectedInvestor] = useState<string>('');
@@ -116,6 +98,7 @@ const CapitalTransactions: React.FC = () => {
     description: '',
     reference_number: ''
   });
+  const showInvestorSelect = formData.transaction_type !== 'return';
 
   const fetchTransactions = useCallback(async (page: number = 1) => {
     try {
@@ -175,45 +158,26 @@ const CapitalTransactions: React.FC = () => {
     }
   };
 
-  const fetchContractors = async () => {
-    try {
-      const response = await fetch('/api/admin/contractors');
-      const data = await response.json();
-      console.log('Contractors API response:', data);
-      if (response.ok && data.success) {
-        console.log('Setting contractors:', data.data.contractors);
-        setContractors(data.data.contractors || []);
-      } else {
-        console.error('Contractors API error:', data);
-      }
-    } catch (err) {
-      console.error('Failed to fetch contractors:', err);
+  const getRemainingAmount = useCallback((request?: FundingPurchaseRequest | null) => {
+    if (!request) return null;
+    if (typeof request.remaining_amount === 'number') {
+      return request.remaining_amount;
     }
-  };
-
-  const fetchProjects = async () => {
-    try {
-      const response = await fetch('/api/admin/projects');
-      const data = await response.json();
-      if (response.ok) {
-        setProjects(data.projects || []);
-      }
-    } catch (err) {
-      console.error('Failed to fetch projects:', err);
+    const estimatedTotal = Number(request.estimated_total ?? 0);
+    if (!estimatedTotal || estimatedTotal <= 0) {
+      return null;
     }
-  };
+    const fundedAmount = Number(request.funded_amount ?? 0);
+    return Math.max(estimatedTotal - fundedAmount, 0);
+  }, []);
 
-  const fetchPurchaseRequests = async () => {
+  const fetchPurchaseRequests = useCallback(async () => {
     try {
       setPurchaseRequestsLoading(true);
       const response = await fetch('/api/admin/purchase-requests?status=all&limit=200');
       const data = await response.json();
       if (response.ok && data.success) {
-        const allowedStatuses = ['submitted', 'approved', 'funded'];
-        const filtered = (data.data.requests || []).filter((request: FundingPurchaseRequest) =>
-          allowedStatuses.includes(request.status)
-        );
-        setPurchaseRequests(filtered);
+        setPurchaseRequests(data.data.requests || []);
       } else {
         console.error('Failed to fetch purchase requests for funding:', data.error || data);
       }
@@ -222,38 +186,26 @@ const CapitalTransactions: React.FC = () => {
     } finally {
       setPurchaseRequestsLoading(false);
     }
-  };
+  }, []);
 
-  // Handle contractor selection and filter projects
-  const handleContractorChange = (
-    contractorId: string,
-    options?: { projectId?: string; projectName?: string }
-  ) => {
-    const selectedContractor = contractors.find(c => c.id === contractorId);
-    
-    const contractorProjects = projects.filter(p => p.contractor_id === contractorId);
-    setFilteredProjects(contractorProjects);
-
-    setFormData(prev => ({
-      ...prev,
-      contractor_id: contractorId,
-      contractor_name: selectedContractor?.company_name || '',
-      project_id: options?.projectId ?? '',
-      project_name: options?.projectName ?? '',
-      purchase_request_id: options?.projectId ? prev.purchase_request_id : ''
-    }));
-  };
-
-  // Handle project selection
-  const handleProjectChange = (projectId: string) => {
-    const selectedProject = projects.find(p => p.id === projectId);
-    
-    setFormData(prev => ({
-      ...prev,
-      project_id: projectId,
-      project_name: selectedProject?.project_name || '',
-      purchase_request_id: ''
-    }));
+  const getEligiblePurchaseRequests = () => {
+    const statusesForDeployment = ['submitted', 'approved'];
+    const statusesForReturn = ['funded', 'po_generated', 'completed'];
+    if (formData.transaction_type === 'deployment') {
+      return purchaseRequests.filter((request) => {
+        if (!statusesForDeployment.includes(request.status)) {
+          return false;
+        }
+        const remaining = getRemainingAmount(request);
+        return remaining === null || remaining > 0;
+      });
+    }
+    if (formData.transaction_type === 'return') {
+      return purchaseRequests.filter((request) =>
+        statusesForReturn.includes(request.status)
+      );
+    }
+    return [];
   };
 
   const handlePurchaseRequestSelection = (purchaseRequestId: string) => {
@@ -269,22 +221,34 @@ const CapitalTransactions: React.FC = () => {
     const selectedRequest = purchaseRequests.find(pr => pr.id === purchaseRequestId);
     if (!selectedRequest) return;
 
-    if (selectedRequest.contractor_id) {
-      handleContractorChange(selectedRequest.contractor_id, {
-        projectId: selectedRequest.project_id,
-        projectName: selectedRequest.project?.name || ''
-      });
-    }
+    const remainingAmount = getRemainingAmount(selectedRequest);
+    const hasRemaining = typeof remainingAmount === 'number' && remainingAmount > 0;
+    const shouldAutoFillAmount = formData.transaction_type === 'deployment';
 
     setFormData(prev => ({
       ...prev,
       purchase_request_id: purchaseRequestId,
-      contractor_id: selectedRequest.contractor_id || prev.contractor_id,
-      contractor_name: selectedRequest.contractors?.company_name || prev.contractor_name,
-      project_id: selectedRequest.project_id || prev.project_id,
-      project_name: selectedRequest.project?.name || prev.project_name,
-      amount: selectedRequest.estimated_total ? selectedRequest.estimated_total.toString() : prev.amount || '',
-      description: prev.description || `Capital deployment for purchase request ${purchaseRequestId.slice(0, 8).toUpperCase()}`
+      contractor_id: selectedRequest.contractor_id || '',
+      contractor_name: selectedRequest.contractors?.company_name || '',
+      project_id: selectedRequest.project_id || '',
+      project_name: selectedRequest.project?.name || '',
+      amount: (() => {
+        if (!shouldAutoFillAmount) {
+          return prev.amount || '';
+        }
+        if (hasRemaining && remainingAmount !== null) {
+          return remainingAmount.toString();
+        }
+        if (selectedRequest.estimated_total) {
+          return selectedRequest.estimated_total.toString();
+        }
+        return prev.amount || '';
+      })(),
+      description:
+        prev.description ||
+        `${formData.transaction_type === 'return' ? 'Capital return' : 'Capital deployment'} for purchase request ${purchaseRequestId
+          .slice(0, 8)
+          .toUpperCase()}`
     }));
   };
 
@@ -293,13 +257,37 @@ const CapitalTransactions: React.FC = () => {
     setProcessing('create');
     
     try {
+      const amountValue = parseFloat(formData.amount);
+      if (!Number.isFinite(amountValue) || amountValue <= 0) {
+        throw new Error('Please enter a valid amount greater than zero.');
+      }
+
+      const payload: Record<string, unknown> = {
+        transaction_type: formData.transaction_type,
+        amount: amountValue,
+        description: formData.description.trim(),
+      };
+
+      if (formData.reference_number.trim()) {
+        payload.reference_number = formData.reference_number.trim();
+      }
+
+      if (formData.purchase_request_id) {
+        payload.purchase_request_id = formData.purchase_request_id;
+      }
+
+      if (showInvestorSelect) {
+        payload.investor_id = formData.investor_id;
+        payload.contractor_id = formData.contractor_id || undefined;
+        payload.contractor_name = formData.contractor_name || undefined;
+        payload.project_id = formData.project_id || undefined;
+        payload.project_name = formData.project_name || undefined;
+      }
+
       const response = await fetch('/api/admin/capital/transactions', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          ...formData,
-          amount: parseFloat(formData.amount)
-        })
+        body: JSON.stringify(payload)
       });
 
       const data = await response.json();
@@ -324,6 +312,7 @@ const CapitalTransactions: React.FC = () => {
       setShowAddForm(false);
       fetchTransactions(currentPage);
       fetchAccounts(); // Refresh account balances
+      fetchPurchaseRequests(); // Refresh purchase request list
 
     } catch (err) {
       setError(err instanceof Error ? err.message : 'An error occurred');
@@ -345,7 +334,6 @@ const CapitalTransactions: React.FC = () => {
       description: '',
       reference_number: ''
     });
-    setFilteredProjects([]);
     setShowAddForm(false);
   };
 
@@ -356,10 +344,11 @@ const CapitalTransactions: React.FC = () => {
   useEffect(() => {
     fetchInvestors();
     fetchAccounts();
-    fetchContractors();
-    fetchProjects();
-    fetchPurchaseRequests();
   }, []);
+
+  useEffect(() => {
+    fetchPurchaseRequests();
+  }, [fetchPurchaseRequests]);
 
   useEffect(() => {
     if (showAddForm) {
@@ -368,7 +357,11 @@ const CapitalTransactions: React.FC = () => {
   }, [showAddForm]);
 
   useEffect(() => {
-    if (formData.transaction_type !== 'deployment' && formData.purchase_request_id) {
+    if (
+      formData.purchase_request_id &&
+      formData.transaction_type !== 'deployment' &&
+      formData.transaction_type !== 'return'
+    ) {
       setFormData(prev => ({
         ...prev,
         purchase_request_id: ''
@@ -691,52 +684,54 @@ const CapitalTransactions: React.FC = () => {
             </div>
             
             <form onSubmit={handleSubmit} className="p-6 space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-primary mb-1">
-                  Investor *
-                </label>
-                <select
-                  required
-                  value={formData.investor_id}
-                  onChange={(e) => setFormData({ ...formData, investor_id: e.target.value })}
-                  className="w-full px-3 py-2 border border-neutral-medium rounded-md bg-neutral-darker text-primary focus:outline-none focus:ring-2 focus:ring-accent-orange"
-                >
-                  <option value="">Select Investor</option>
-                  {investors.filter(inv => inv.status === 'active').map(investor => {
-                    const account = getInvestorAccount(investor.id);
-                    const balanceLabel = accountsLoading
-                      ? 'Loading...'
-                      : account
-                        ? formatCurrency(Number(account.available_balance ?? 0))
-                        : '0 (No account yet)';
-                    return (
-                      <option key={investor.id} value={investor.id}>
-                        {investor.name} - Balance: {balanceLabel}
-                      </option>
-                    );
-                  })}
-                </select>
-                {formData.investor_id && (
-                  <div className="mt-2 text-xs text-secondary border border-neutral-medium rounded-md p-2 bg-neutral-darker/40">
-                    {(() => {
-                      const account = getInvestorAccount(formData.investor_id);
-                      if (accountsLoading) {
-                        return 'Fetching investor balance...';
-                      }
-                      if (!account) {
-                        return 'No investor account found yet. Record an inflow to establish the balance.';
-                      }
+              {showInvestorSelect && (
+                <div>
+                  <label className="block text-sm font-medium text-primary mb-1">
+                    Investor *
+                  </label>
+                  <select
+                    required={showInvestorSelect}
+                    value={formData.investor_id}
+                    onChange={(e) => setFormData({ ...formData, investor_id: e.target.value })}
+                    className="w-full px-3 py-2 border border-neutral-medium rounded-md bg-neutral-darker text-primary focus:outline-none focus:ring-2 focus:ring-accent-orange"
+                  >
+                    <option value="">Select Investor</option>
+                    {investors.filter(inv => inv.status === 'active').map(investor => {
+                      const account = getInvestorAccount(investor.id);
+                      const balanceLabel = accountsLoading
+                        ? 'Loading...'
+                        : account
+                          ? formatCurrency(Number(account.available_balance ?? 0))
+                          : '0 (No account yet)';
                       return (
-                        <>
-                          <div>Available Balance: {formatCurrency(Number(account.available_balance ?? 0))}</div>
-                          <div>Total Committed: {formatCurrency(Number(account.total_committed ?? 0))}</div>
-                          <div>Deployed Capital: {formatCurrency(Number(account.deployed_capital ?? 0))}</div>
-                        </>
+                        <option key={investor.id} value={investor.id}>
+                          {investor.name} - Balance: {balanceLabel}
+                        </option>
                       );
-                    })()}
-                  </div>
-                )}
-              </div>
+                    })}
+                  </select>
+                  {formData.investor_id && (
+                    <div className="mt-2 text-xs text-secondary border border-neutral-medium rounded-md p-2 bg-neutral-darker/40">
+                      {(() => {
+                        const account = getInvestorAccount(formData.investor_id);
+                        if (accountsLoading) {
+                          return 'Fetching investor balance...';
+                        }
+                        if (!account) {
+                          return 'No investor account found yet. Record an inflow to establish the balance.';
+                        }
+                        return (
+                          <>
+                            <div>Available Balance: {formatCurrency(Number(account.available_balance ?? 0))}</div>
+                            <div>Total Committed: {formatCurrency(Number(account.total_committed ?? 0))}</div>
+                            <div>Deployed Capital: {formatCurrency(Number(account.deployed_capital ?? 0))}</div>
+                          </>
+                        );
+                      })()}
+                    </div>
+                  )}
+                </div>
+              )}
 
               <div>
                 <label className="block text-sm font-medium text-primary mb-1">
@@ -755,26 +750,30 @@ const CapitalTransactions: React.FC = () => {
                 </select>
               </div>
 
-              <div>
-                <label className="block text-sm font-medium text-primary mb-1">
-                  Amount (₹) *
-                </label>
-                <input
-                  type="number"
-                  required
-                  min="0"
-                  step="0.01"
-                  value={formData.amount}
-                  onChange={(e) => setFormData({ ...formData, amount: e.target.value })}
-                  className="w-full px-3 py-2 border border-neutral-medium rounded-md bg-neutral-darker text-primary placeholder-secondary focus:outline-none focus:ring-2 focus:ring-accent-orange"
-                  placeholder="Enter amount"
-                />
-              </div>
+              {formData.transaction_type !== 'deployment' && (
+                <div>
+                  <label className="block text-sm font-medium text-primary mb-1">
+                    Amount (₹) *
+                  </label>
+                  <input
+                    type="number"
+                    required
+                    min="0"
+                    step="0.01"
+                    value={formData.amount}
+                    onChange={(e) => setFormData({ ...formData, amount: e.target.value })}
+                    className="w-full px-3 py-2 border border-neutral-medium rounded-md bg-neutral-darker text-primary placeholder-secondary focus:outline-none focus:ring-2 focus:ring-accent-orange"
+                    placeholder="Enter amount"
+                  />
+                </div>
+              )}
 
-              {formData.transaction_type === 'deployment' && (
-                <div className="space-y-2">
+              {(formData.transaction_type === 'deployment' || formData.transaction_type === 'return') && (
+                <div className="space-y-4">
                   <label className="block text-sm font-medium text-primary">
-                    Purchase Request to Fund
+                    {formData.transaction_type === 'return'
+                      ? 'Purchase Request to Record Return'
+                      : 'Purchase Request to Fund'}
                   </label>
                   <select
                     value={formData.purchase_request_id}
@@ -783,91 +782,89 @@ const CapitalTransactions: React.FC = () => {
                     disabled={purchaseRequestsLoading}
                   >
                     <option value="">
-                      {purchaseRequestsLoading ? 'Loading purchase requests...' : 'Select Purchase Request'}
-                    </option>
-                    {purchaseRequests.map((request) => (
-                      <option key={request.id} value={request.id}>
-                        {request.project?.name || 'Project'} • {request.contractors?.company_name || 'Contractor'} • ₹
-                        {(request.estimated_total || 0).toLocaleString()}
+                    {purchaseRequestsLoading ? 'Loading purchase requests...' : 'Select Purchase Request'}
+                  </option>
+                  {getEligiblePurchaseRequests().map((request) => {
+                    const contractorName = request.contractors?.company_name || 'Contractor';
+                    const projectName = request.project?.name || 'Project';
+                    const remainingAmount = getRemainingAmount(request);
+                    const requestedAmount = Number(request.estimated_total || 0);
+                    const fundedAmount = Number(request.funded_amount || 0);
+                    const formattedRemaining = remainingAmount !== null
+                      ? formatCurrency(remainingAmount)
+                      : 'N/A';
+
+                    return (
+                      <option
+                        key={request.id}
+                        value={request.id}
+                      >
+                        {projectName} • {contractorName} • Requested {formatCurrency(requestedAmount)} • Funded {formatCurrency(fundedAmount)} • Remaining {formattedRemaining}
                       </option>
-                    ))}
+                    );
+                  })}
                   </select>
                   {formData.purchase_request_id && (() => {
                     const request = purchaseRequests.find(pr => pr.id === formData.purchase_request_id);
                     if (!request) return null;
+                    const remainingAmount = getRemainingAmount(request);
+                    const fundedAmount = Number(request.funded_amount || 0);
+                    const requestedAmount = Number(request.estimated_total || 0);
+                    const contractorName = request.contractors?.company_name || 'N/A';
+                    const projectName = request.project?.name || request.project_id;
+                    const progressPercentage = remainingAmount === null || requestedAmount === 0
+                      ? null
+                      : Math.min(Math.round(((requestedAmount - remainingAmount) / requestedAmount) * 100), 100);
+
                     return (
                       <div className="text-xs text-secondary border border-accent-orange/40 rounded-md p-3 bg-accent-orange/5">
                         <div className="text-primary font-medium mb-1">
                           Request #{request.id.slice(0, 8).toUpperCase()}
                         </div>
-                        <div>Contractor: {request.contractors?.company_name || 'N/A'}</div>
-                        <div>Project: {request.project?.name || request.project_id}</div>
-                        <div>Funding Needed: ₹{(request.estimated_total || 0).toLocaleString()}</div>
+                        <div>Contractor: {contractorName}</div>
+                        <div>Project: {projectName}</div>
+                        <div>Requested: {formatCurrency(requestedAmount)}</div>
+                        <div>Funded: {formatCurrency(fundedAmount)}</div>
+                        <div>Remaining: {remainingAmount !== null ? formatCurrency(remainingAmount) : 'Awaiting vendor quotes'}</div>
+                        {progressPercentage !== null && (
+                          <div className="mt-2">
+                            <div className="w-full bg-neutral-medium rounded-full h-2">
+                              <div
+                                className="h-2 rounded-full bg-accent-orange"
+                                style={{ width: `${progressPercentage}%` }}
+                              ></div>
+                            </div>
+                            <div className="mt-1 text-[11px] text-primary font-semibold">
+                              {progressPercentage}% funded
+                            </div>
+                          </div>
+                        )}
                       </div>
                     );
                   })()}
+                  {formData.transaction_type === 'return' && (
+                    <p className="text-xs text-secondary">
+                      Repayments are automatically distributed to all investors who funded this purchase request, based on their share of deployed capital.
+                    </p>
+                  )}
+                  {formData.transaction_type === 'deployment' && (
+                    <div>
+                      <label className="block text-sm font-medium text-primary">
+                        Amount (₹) *
+                      </label>
+                      <input
+                        type="number"
+                        required
+                        min="0"
+                        step="0.01"
+                        value={formData.amount}
+                        onChange={(e) => setFormData({ ...formData, amount: e.target.value })}
+                        className="w-full px-3 py-2 border border-neutral-medium rounded-md bg-neutral-darker text-primary placeholder-secondary focus:outline-none focus:ring-2 focus:ring-accent-orange"
+                        placeholder="Enter amount"
+                      />
+                    </div>
+                  )}
                 </div>
-              )}
-
-              {((formData.transaction_type === 'deployment' && !formData.purchase_request_id) || formData.transaction_type === 'return') && (
-                <>
-                  <div>
-                    <label className="block text-sm font-medium text-primary mb-1">
-                      Contractor *
-                    </label>
-                    <select
-                      required={formData.transaction_type === 'return' || (formData.transaction_type === 'deployment' && !formData.purchase_request_id)}
-                      value={formData.contractor_id}
-                      onChange={(e) => handleContractorChange(e.target.value)}
-                      className="w-full px-3 py-2 border border-neutral-medium rounded-md bg-neutral-darker text-primary focus:outline-none focus:ring-2 focus:ring-accent-orange"
-                    >
-                      <option value="">Select Contractor</option>
-                      {(() => {
-                        const filteredContractors = contractors.filter(contractor => 
-                          contractor.verification_status === 'verified' || contractor.status === 'approved'
-                        );
-                        console.log('All contractors:', contractors);
-                        console.log('Filtered contractors:', filteredContractors);
-                        return filteredContractors.map(contractor => (
-                          <option key={contractor.id} value={contractor.id}>
-                            {contractor.company_name} - {contractor.contact_person}
-                          </option>
-                        ));
-                      })()}
-                    </select>
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-primary mb-1">
-                      Project *
-                    </label>
-                    <select
-                      required={formData.transaction_type === 'return' || (formData.transaction_type === 'deployment' && !formData.purchase_request_id)}
-                      value={formData.project_id}
-                      onChange={(e) => handleProjectChange(e.target.value)}
-                      disabled={!formData.contractor_id}
-                      className="w-full px-3 py-2 border border-neutral-medium rounded-md bg-neutral-darker text-primary focus:outline-none focus:ring-2 focus:ring-accent-orange disabled:opacity-50"
-                    >
-                      <option value="">
-                        {formData.contractor_id ? 'Select Project' : 'First select a contractor'}
-                      </option>
-                      {filteredProjects.map(project => (
-                        <option key={project.id} value={project.id}>
-                          {project.project_name} - {project.client_name} ({new Intl.NumberFormat('en-IN', {
-                            style: 'currency',
-                            currency: 'INR',
-                            minimumFractionDigits: 0,
-                          }).format(project.funding_required)})
-                        </option>
-                      ))}
-                    </select>
-                    {formData.contractor_id && filteredProjects.length === 0 && (
-                      <p className="text-xs text-secondary mt-1">
-                        No projects found for selected contractor
-                      </p>
-                    )}
-                  </div>
-                </>
               )}
 
               <div>

@@ -89,19 +89,8 @@ export async function GET() {
         reference_number,
         created_at,
         updated_at,
-        projects:project_id (
-          id,
-          project_name,
-          client_name,
-          project_status,
-          contractor_id,
-          expected_irr,
-          project_tenure
-        ),
-        contractors:contractor_id (
-          id,
-          company_name
-        )
+        projects:project_id (*),
+        contractors:contractor_id (*)
       `)
       .eq('investor_id', investor.id)
       .eq('transaction_type', 'deployment')
@@ -109,6 +98,30 @@ export async function GET() {
 
     if (capitalError) {
       console.error('❌ Error fetching capital transactions:', capitalError);
+    }
+
+    // Fetch capital inflows for this investor
+    console.log('🔄 Fetching investor capital inflows...');
+    const { data: inflowTransactions, error: inflowError } = await supabase
+      .from('capital_transactions')
+      .select('amount, status')
+      .eq('investor_id', investor.id)
+      .eq('transaction_type', 'inflow');
+
+    if (inflowError) {
+      console.error('❌ Error fetching capital inflows:', inflowError);
+    }
+
+    // Fetch capital returns for this investor
+    console.log('🔄 Fetching investor capital returns...');
+    const { data: returnTransactions, error: returnError } = await supabase
+      .from('capital_transactions')
+      .select('amount, status')
+      .eq('investor_id', investor.id)
+      .eq('transaction_type', 'return');
+
+    if (returnError) {
+      console.error('❌ Error fetching capital returns:', returnError);
     }
 
     const investments = (capitalTransactions || []).map((tx) => ({
@@ -130,8 +143,100 @@ export async function GET() {
     const totalInvested = investments.reduce((sum, inv) => sum + (inv.investmentAmount || 0), 0);
     const activeInvestments = investments.filter(inv => inv.status !== 'Completed').length;
     const completedInvestments = investments.filter(inv => inv.status === 'Completed').length;
+    const cleanSum = (transactions?: { amount: number; status?: string | null }[]) => {
+      return (transactions || []).reduce((sum, tx) => {
+        const amount = Number(tx.amount) || 0;
+        const status = typeof tx.status === 'string' ? tx.status.toLowerCase() : '';
+        if (status === 'failed' || status === 'rejected') {
+          return sum;
+        }
+        return sum + amount;
+      }, 0);
+    };
+
+    const totalCapitalInflow = cleanSum(inflowTransactions);
+    const totalCapitalReturns = cleanSum(returnTransactions);
+    const managementFee = totalInvested * 0.02;
+    const grossProfit = totalCapitalReturns - totalInvested;
+    const hurdleAmount = totalInvested * 0.12;
+    const performanceFeeBase = Math.max(grossProfit - hurdleAmount, 0);
+    const performanceFee = performanceFeeBase * 0.2;
+    const netCapitalReturns = Math.max(totalCapitalReturns - managementFee - performanceFee, 0);
+    const outstandingCapital = Math.max(totalInvested - totalCapitalReturns, 0);
+    const roi = totalInvested > 0 ? ((totalCapitalReturns - totalInvested) / totalInvested) * 100 : 0;
+    const netRoi = totalInvested > 0 ? ((netCapitalReturns - totalInvested) / totalInvested) * 100 : 0;
 
     console.log(`✅ Fetched ${allProjects?.length || 0} projects, ${allContractors?.length || 0} contractors, ${investments.length} capital deployments`);
+
+    const projectIds = (allProjects || []).map(project => project.id);
+    const projectProgressMap = new Map<string, number>();
+    const projectFundingMap = new Map<string, number>();
+
+    if (projectIds.length > 0) {
+      const { data: scheduleTasks, error: scheduleError } = await supabase
+        .from('schedule_tasks')
+        .select(`
+          progress,
+          schedules:project_schedules (
+            project_id
+          )
+        `)
+        .in('schedules.project_id', projectIds);
+
+      if (scheduleError) {
+        console.error('❌ Error fetching schedule tasks for progress:', scheduleError);
+      } else {
+        const progressBuckets: Record<string, number[]> = {};
+
+        scheduleTasks?.forEach(task => {
+          const projectId = task.schedules?.project_id;
+          if (!projectId) return;
+          if (!progressBuckets[projectId]) {
+            progressBuckets[projectId] = [];
+          }
+          progressBuckets[projectId].push(task.progress || 0);
+        });
+
+        Object.entries(progressBuckets).forEach(([projectId, progresses]) => {
+          if (progresses.length === 0) return;
+          const avgProgress = progresses.reduce((sum, value) => sum + value, 0) / progresses.length;
+          projectProgressMap.set(projectId, avgProgress);
+        });
+      }
+    }
+
+    if (projectIds.length > 0) {
+      const { data: purchaseRequestItems, error: purchaseRequestError } = await supabase
+        .from('purchase_request_items')
+        .select(`
+          requested_qty,
+          unit_rate,
+          purchase_requests!inner (
+            project_id
+          )
+        `)
+        .in('purchase_requests.project_id', projectIds);
+
+      if (purchaseRequestError) {
+        console.error('❌ Error fetching purchase request totals:', purchaseRequestError);
+      } else {
+        purchaseRequestItems?.forEach(item => {
+          const projectId = item.purchase_requests?.project_id;
+          if (!projectId) return;
+          const qty = Number(item.requested_qty) || 0;
+          const rate = Number(item.unit_rate) || 0;
+          const amount = rate > 0 ? qty * rate : qty;
+          const currentTotal = projectFundingMap.get(projectId) || 0;
+          projectFundingMap.set(projectId, currentTotal + amount);
+        });
+      }
+    }
+
+    const enhancedProjects = (allProjects || []).map(project => ({
+      ...project,
+      schedule_progress: projectProgressMap.get(project.id) ?? project.current_progress ?? 0,
+      purchase_request_total: projectFundingMap.get(project.id) ?? project.purchase_request_total ?? null
+    }));
 
     const investorProfile = {
       id: investor.id,
@@ -142,18 +247,24 @@ export async function GET() {
       status: investor.status,
       investments,
       returns: [],
-      allProjects: allProjects || [],
+      allProjects: enhancedProjects,
       allContractors: allContractors || [],
       relatedContractors: allContractors || [],
-      relatedProjects: allProjects || [],
+      relatedProjects: enhancedProjects,
       portfolioMetrics: {
         totalInvested,
-        totalReturns: 0,
-        currentValue: totalInvested,
-        roi: 0,
+        totalReturns: totalCapitalReturns,
+        currentValue: outstandingCapital,
+        roi,
+        netRoi,
         activeInvestments,
         completedInvestments,
-        totalInvestments: investments.length
+        totalInvestments: investments.length,
+        capitalInflow: totalCapitalInflow,
+        capitalReturns: totalCapitalReturns,
+        netCapitalReturns,
+        managementFees: managementFee,
+        performanceFees: performanceFee
       },
       availableOpportunities: allProjects || []
     };

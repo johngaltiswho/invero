@@ -15,10 +15,6 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children, acti
     { id: 'overview', label: 'Portfolio Overview', icon: '📊', href: '/dashboard/investor' },
     { id: 'opportunities', label: 'Investment Opportunities', icon: '🎯', href: '/dashboard/investor/opportunities' },
     { id: 'projects', label: 'Project Monitoring', icon: '📈', href: '/dashboard/investor/projects' },
-    { id: 'analytics', label: 'Performance Analytics', icon: '📉', href: '/dashboard/investor/analytics' },
-    { id: 'documents', label: 'Due Diligence', icon: '📋', href: '/dashboard/investor/documents' },
-    { id: 'transactions', label: 'Financial Management', icon: '💰', href: '/dashboard/investor/transactions' },
-    { id: 'insights', label: 'Market Intelligence', icon: '🌐', href: '/dashboard/investor/insights' },
   ];
 
   return (

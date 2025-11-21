@@ -2,7 +2,7 @@
 
 import React, { useState } from 'react';
 import { DashboardLayout } from '@/components/DashboardLayout';
-import { Button, LoadingSpinner } from '@/components';
+import { LoadingSpinner } from '@/components';
 import { useInvestor } from '@/contexts/InvestorContext';
 
 export default function ProjectMonitoring(): React.ReactElement {
@@ -17,21 +17,53 @@ export default function ProjectMonitoring(): React.ReactElement {
     }
 
     // Get project IDs that the investor has invested in
-    const investedProjectIds = [...new Set(investor.investments.map(inv => inv.projectId))];
+    const investedProjectIds = [
+      ...new Set(
+        investor.investments
+          .map(inv => inv.projectId || inv.project_id)
+          .filter(Boolean)
+      )
+    ];
     
     // Filter related projects to only show invested ones
     const investorProjects = investor.relatedProjects.filter(project => 
       investedProjectIds.includes(project.id)
     );
 
-    // Add investment data to each project
+    // Add normalized and investment data to each project
     return investorProjects.map(project => {
-      const projectInvestments = investor.investments.filter(inv => inv.projectId === project.id);
-      const totalInvestment = projectInvestments.reduce((sum, inv) => sum + inv.investmentAmount, 0);
-      const avgIRR = projectInvestments.reduce((sum, inv) => sum + inv.expectedReturn, 0) / projectInvestments.length;
+      const projectInvestments = investor.investments.filter(
+        inv => (inv.projectId || inv.project_id) === project.id
+      );
+      const totalInvestment = projectInvestments.reduce(
+        (sum, inv) => sum + (inv.investmentAmount || inv.investment_amount || 0),
+        0
+      );
+      const avgIRR =
+        projectInvestments.length > 0
+          ? projectInvestments.reduce(
+              (sum, inv) => sum + (inv.expectedReturn || inv.expected_return || 0),
+              0
+            ) / projectInvestments.length
+          : 0;
       
       return {
         ...project,
+        projectName: project.projectName || project.project_name || 'Unnamed Project',
+        clientName: project.clientName || project.client_name || 'Client TBD',
+        contractorId: project.contractorId || project.contractor_id || '',
+        status: project.status || project.project_status || 'Active',
+        riskRating: project.riskRating || project.risk_level || 'Medium',
+        currentProgress:
+          project.currentProgress ??
+          project.schedule_progress ??
+          project.current_progress ??
+          0,
+        projectValue:
+          project.projectValue ??
+          project.estimated_value ??
+          project.project_value ??
+          0,
         myInvestment: totalInvestment,
         myExpectedIRR: avgIRR,
         investmentCount: projectInvestments.length,
@@ -114,6 +146,7 @@ export default function ProjectMonitoring(): React.ReactElement {
         day: 'numeric'
       });
     } catch (error) {
+      console.error('Failed to format date', error);
       return 'Invalid date';
     }
   };
@@ -210,13 +243,14 @@ export default function ProjectMonitoring(): React.ReactElement {
                       <div className="text-4xl mb-4">📊</div>
                       <h3 className="text-lg font-semibold text-primary mb-2">No Projects Yet</h3>
                       <p className="text-secondary text-sm">
-                        You haven't invested in any projects yet. Visit the opportunities section to find projects to invest in.
+                        You haven&apos;t invested in any projects yet. Visit the opportunities section to find projects to invest in.
                       </p>
                     </div>
                   ) : (
                     investorProjects.map((project) => {
-                      const projectContractor = investor?.relatedContractors?.find(c => c.id === project.contractorId) ||
-                                                investor?.allContractors?.find(c => c.id === project.contractorId);
+                      const contractorId = project.contractorId || project.contractor_id;
+                      const projectContractor = investor?.relatedContractors?.find(c => c.id === contractorId) ||
+                                                investor?.allContractors?.find(c => c.id === contractorId);
                       return (
                         <div
                           key={project.id}
@@ -293,19 +327,16 @@ export default function ProjectMonitoring(): React.ReactElement {
 
                   {/* View Mode Tabs */}
                   <div className="flex space-x-4">
-                    {['overview', 'timeline', 'financials'].map((mode) => (
-                      <button
-                        key={mode}
-                        onClick={() => setViewMode(mode as any)}
-                        className={`px-4 py-2 text-sm font-medium rounded-lg transition-colors ${
-                          viewMode === mode
-                            ? 'bg-accent-amber text-primary'
-                            : 'text-secondary hover:text-primary'
-                        }`}
-                      >
-                        {mode.charAt(0).toUpperCase() + mode.slice(1)}
-                      </button>
-                    ))}
+                    <button
+                      onClick={() => setViewMode('overview')}
+                      className={`px-4 py-2 text-sm font-medium rounded-lg transition-colors ${
+                        viewMode === 'overview'
+                          ? 'bg-accent-amber text-primary'
+                          : 'text-secondary hover:text-primary'
+                      }`}
+                    >
+                      Overview
+                    </button>
                   </div>
                 </div>
 

@@ -1,26 +1,34 @@
 'use client';
 
-import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useEffect, ReactNode, useCallback } from 'react';
 import { useUser } from '@clerk/nextjs';
 import type { InvestorProfile, Investment, Return } from '@/lib/investor-transformers';
+
+type GenericRecord = Record<string, unknown>;
 
 interface PortfolioMetrics {
   totalInvested: number;
   totalReturns: number;
   currentValue: number;
   roi: number;
+  netRoi: number;
   activeInvestments: number;
   completedInvestments: number;
   totalInvestments: number;
+  capitalInflow: number;
+  capitalReturns: number;
+  netCapitalReturns: number;
+  managementFees: number;
+  performanceFees: number;
 }
 
 interface InvestorWithData extends InvestorProfile {
   investments: Investment[];
   returns: Return[];
-  relatedContractors: any[];
-  relatedProjects: any[];
+  relatedContractors: GenericRecord[];
+  relatedProjects: GenericRecord[];
   portfolioMetrics: PortfolioMetrics;
-  availableOpportunities: any[];
+  availableOpportunities: GenericRecord[];
 }
 
 interface InvestorContextType {
@@ -42,7 +50,7 @@ export function InvestorProvider({ children }: InvestorProviderProps) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const fetchInvestorData = async () => {
+  const fetchInvestorData = useCallback(async () => {
     if (!user || !isLoaded) {
       setInvestor(null);
       return;
@@ -85,7 +93,7 @@ export function InvestorProvider({ children }: InvestorProviderProps) {
     } finally {
       setLoading(false);
     }
-  };
+  }, [user, isLoaded, investor, error]);
 
   const refetch = async () => {
     setInvestor(null); // Clear existing data to force refetch
@@ -94,7 +102,7 @@ export function InvestorProvider({ children }: InvestorProviderProps) {
 
   useEffect(() => {
     fetchInvestorData();
-  }, [user, isLoaded]);
+  }, [fetchInvestorData]);
 
   const value: InvestorContextType = {
     investor,

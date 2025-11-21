@@ -226,9 +226,43 @@ async function fetchPurchaseRequests(options: FetchOptions = {}) {
     };
   });
 
+  const fundingTotals = new Map<string, number>();
+  if (requestIds.length > 0) {
+    const { data: fundingRows, error: fundingError } = await supabaseAdmin
+      .from('capital_transactions')
+      .select('purchase_request_id, amount')
+      .in('purchase_request_id', requestIds)
+      .eq('transaction_type', 'deployment')
+      .eq('status', 'completed');
+
+    if (fundingError) {
+      console.error('Failed to load funding totals for purchase requests:', fundingError);
+    } else {
+      fundingRows?.forEach((row) => {
+        if (!row.purchase_request_id) return;
+        const current = fundingTotals.get(row.purchase_request_id) || 0;
+        fundingTotals.set(row.purchase_request_id, current + (Number(row.amount) || 0));
+      });
+    }
+  }
+
+  const enrichedRequests = normalizedRequests.map((request) => {
+    const fundedAmount = fundingTotals.get(request.id) || 0;
+    const estimatedTotal = request.estimated_total || 0;
+    const remainingAmount = Math.max(estimatedTotal - fundedAmount, 0);
+    const fundingProgress = estimatedTotal > 0 ? Math.min(fundedAmount / estimatedTotal, 1) : null;
+
+    return {
+      ...request,
+      funded_amount: fundedAmount,
+      remaining_amount: remainingAmount,
+      funding_progress: fundingProgress
+    };
+  });
+
   return {
-    requests: normalizedRequests,
-    total: typeof count === 'number' ? count : normalizedRequests.length
+    requests: enrichedRequests,
+    total: typeof count === 'number' ? count : enrichedRequests.length
   };
 }
 
