@@ -2,6 +2,51 @@ import { NextRequest, NextResponse } from 'next/server';
 import { requireAdmin, getAdminUser } from '@/lib/admin-auth';
 import { createClient } from '@supabase/supabase-js';
 
+async function inviteInvestorToClerk(email: string, name: string) {
+  const clerkSecretKey = process.env.CLERK_SECRET_KEY || process.env.CLERK_API_KEY;
+  if (!clerkSecretKey) {
+    console.warn('[Investors] Missing CLERK_SECRET_KEY, skipping Clerk invite');
+    return;
+  }
+
+  try {
+    const response = await fetch('https://api.clerk.com/v1/invitations', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${clerkSecretKey}`
+      },
+      body: JSON.stringify({
+        email_address: email,
+        public_metadata: {
+          role: 'investor',
+          name
+        }
+      })
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      const isDuplicateInvite = (() => {
+        if (response.status === 409) return true;
+        if (response.status !== 400) return false;
+        try {
+          const parsed = JSON.parse(errorText);
+          return Array.isArray(parsed.errors) && parsed.errors.some((err: { code?: string }) => err?.code === 'duplicate_record');
+        } catch (parseError) {
+          return false;
+        }
+      })();
+
+      if (!isDuplicateInvite) {
+        console.error('[Investors] Failed to invite investor via Clerk:', response.status, errorText);
+      }
+    }
+  } catch (error) {
+    console.error('[Investors] Error inviting investor via Clerk:', error);
+  }
+}
+
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!
@@ -130,6 +175,8 @@ export async function POST(request: NextRequest) {
         { status: 500 }
       );
     }
+
+    inviteInvestorToClerk(data.email, data.name);
 
     return NextResponse.json({
       message: 'Investor created successfully',

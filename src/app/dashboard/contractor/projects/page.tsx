@@ -1649,8 +1649,8 @@ function ContractorProjectsContent(): React.ReactElement {
           <div className="border-b border-neutral-medium">
             <nav className="-mb-px flex space-x-8">
               {[
-                { id: 'boq-quoting', name: 'Tendering & Quotes', description: 'Create quotes and submit tenders' },
-                { id: 'awarded', name: 'Awarded Projects', description: 'Active & completed projects' }
+                { id: 'awarded', name: 'Awarded Projects', description: 'Active & completed projects' },
+                { id: 'boq-quoting', name: 'Tendering & Quotes', description: 'Create quotes and submit tenders' }
               ].map((tab) => (
                 <button
                   key={tab.id}

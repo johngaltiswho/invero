@@ -7,17 +7,67 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 );
 
+async function deleteInvestorFromClerk(email: string) {
+  const clerkSecretKey = process.env.CLERK_SECRET_KEY || process.env.CLERK_API_KEY;
+  if (!clerkSecretKey) {
+    console.warn('[Investors] Missing CLERK_SECRET_KEY, skipping Clerk deletion');
+    return;
+  }
+
+  try {
+    const lookupResponse = await fetch(
+      `https://api.clerk.com/v1/users?email_address=${encodeURIComponent(email)}`,
+      {
+        headers: {
+          Authorization: `Bearer ${clerkSecretKey}`
+        }
+      }
+    );
+
+    if (!lookupResponse.ok) {
+      const errorText = await lookupResponse.text();
+      console.error('[Investors] Failed to lookup Clerk user for deletion:', lookupResponse.status, errorText);
+      return;
+    }
+
+    const users = await lookupResponse.json();
+    if (!Array.isArray(users) || users.length === 0) {
+      return;
+    }
+
+    await Promise.all(
+      users.map(async (user: { id?: string }) => {
+        if (!user?.id) return;
+        const deleteResponse = await fetch(`https://api.clerk.com/v1/users/${user.id}`, {
+          method: 'DELETE',
+          headers: {
+            Authorization: `Bearer ${clerkSecretKey}`
+          }
+        });
+
+        if (!deleteResponse.ok && deleteResponse.status !== 404) {
+          const errorText = await deleteResponse.text();
+          console.error('[Investors] Failed to delete Clerk user:', deleteResponse.status, errorText);
+        }
+      })
+    );
+  } catch (error) {
+    console.error('[Investors] Error deleting investor from Clerk:', error);
+  }
+}
+
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     await requireAdmin();
+    const { id } = await params;
 
     const { data, error } = await supabase
       .from('investors')
       .select('*')
-      .eq('id', params.id)
+      .eq('id', id)
       .single();
 
     if (error) {
@@ -47,11 +97,12 @@ export async function GET(
 
 export async function PUT(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     await requireAdmin();
     const adminUser = await getAdminUser();
+    const { id } = await params;
 
     const body = await request.json();
     const { email, name, investor_type, phone, status, notes } = body;
@@ -107,7 +158,7 @@ export async function PUT(
     const { data, error } = await supabase
       .from('investors')
       .update(updateData)
-      .eq('id', params.id)
+      .eq('id', id)
       .select()
       .single();
 
@@ -147,15 +198,29 @@ export async function PUT(
 
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     await requireAdmin();
+    const { id } = await params;
+
+    const { data: investor, error: fetchError } = await supabase
+      .from('investors')
+      .select('id, email')
+      .eq('id', id)
+      .single();
+
+    if (fetchError || !investor) {
+      return NextResponse.json(
+        { error: 'Investor not found' },
+        { status: 404 }
+      );
+    }
 
     const { error } = await supabase
       .from('investors')
       .delete()
-      .eq('id', params.id);
+      .eq('id', id);
 
     if (error) {
       console.error('Error deleting investor:', error);
@@ -164,6 +229,8 @@ export async function DELETE(
         { status: 500 }
       );
     }
+
+    await deleteInvestorFromClerk(investor.email);
 
     return NextResponse.json({
       message: 'Investor deleted successfully'
