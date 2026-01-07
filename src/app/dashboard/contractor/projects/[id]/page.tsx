@@ -8,7 +8,7 @@ import { useRouter, useParams, useSearchParams } from 'next/navigation';
 import { ContractorDashboardLayout } from '@/components/ContractorDashboardLayout';
 import { LoadingSpinner, Button } from '@/components';
 import { useContractorV2 } from '@/contexts/ContractorContextV2';
-import EditableBOQTable from '@/components/EditableBOQTable';
+import EnhancedBOQTable from '@/components/EnhancedBOQTable';
 import EditableScheduleTable from '@/components/EditableScheduleTable';
 import BOQDisplay from '@/components/BOQDisplay';
 import ScheduleDisplay from '@/components/ScheduleDisplay';
@@ -951,9 +951,9 @@ function IndividualProjectContent(): React.ReactElement {
                       <span>Back to Overview</span>
                     </button>
                   </div>
-                  <EditableBOQTable
+                  <EnhancedBOQTable
                     projectId={project.id}
-                    contractorId={contractor?.id}
+                    contractorId={contractor?.id || ''}
                     onSaveSuccess={() => {
                       setRefreshKey(prev => prev + 1);
                       setShowBOQEntry(false);
@@ -1172,7 +1172,7 @@ function IndividualProjectContent(): React.ReactElement {
                                   {material.required_qty?.toLocaleString(undefined, { maximumFractionDigits: 2 }) || 0} {material.unit || 'units'}
                                 </td>
                                 <td className="p-3 text-secondary">
-                                  {material.available_qty !== undefined ? `${material.available_qty.toLocaleString(undefined, { maximumFractionDigits: 2 })} ${material.unit || 'units'}` : '—'}
+                                  {material.required_qty !== undefined ? `${Math.max((material.required_qty || 0) - (material.requested_qty || 0), 0).toLocaleString(undefined, { maximumFractionDigits: 2 })} ${material.unit || 'units'}` : '—'}
                                 </td>
                                 <td className="p-3 text-secondary">
                                   {requestedLabel}
@@ -1616,9 +1616,8 @@ function IndividualProjectContent(): React.ReactElement {
                             </h5>
                             <div className="text-xs text-secondary space-x-3 mt-1">
                               <span>Required: {material.required_qty || 0} {material.unit || 'units'}</span>
-                              <span>Available: {material.available_qty || 0}</span>
                               <span>Requested: {material.requested_qty || 0}</span>
-                              <span>Remaining: {material.max_requestable || material.required_qty || 0}</span>
+                              <span>Remaining: {Math.max((material.required_qty || 0) - (material.requested_qty || 0), 0)}</span>
                             </div>
                           </div>
                           
@@ -1635,8 +1634,8 @@ function IndividualProjectContent(): React.ReactElement {
                                   ...prev,
                                   [material.id]: e.target.value
                                 }))}
-                                placeholder={`Max ${material.max_requestable || material.available_qty || material.required_qty || 0}`}
-                                max={material.max_requestable || material.available_qty || material.required_qty || undefined}
+                                placeholder={`Max ${Math.max((material.required_qty || 0) - (material.requested_qty || 0), 0)}`}
+                                max={Math.max((material.required_qty || 0) - (material.requested_qty || 0), 0)}
                                 className="w-full px-2 py-1 bg-neutral-dark border border-neutral-medium rounded text-primary text-sm focus:border-accent-amber focus:outline-none"
                               />
                             </div>
@@ -1778,7 +1777,7 @@ function IndividualProjectContent(): React.ReactElement {
                     const invalidQuantities = Array.from(selectedMaterials).filter(materialId => {
                       const material = projectMaterials.find(m => m.id === materialId);
                       const requestedQty = parseFloat(purchaseQuantities[materialId] || '0');
-                      const remainingQty = material?.max_requestable ?? material?.required_qty ?? 0;
+                      const remainingQty = Math.max((material?.required_qty || 0) - (material?.requested_qty || 0), 0);
                       return requestedQty > remainingQty;
                     });
                     

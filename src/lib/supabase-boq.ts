@@ -54,8 +54,8 @@ export async function saveBOQToSupabase(boq: ProjectBOQ) {
       throw new Error(`Failed to insert BOQ: ${boqError.message} (Code: ${boqError.code})`);
     }
 
-    // Insert BOQ items
-    const boqItems = boq.items.map(item => {
+    // Insert BOQ items with proper ordering
+    const boqItems = boq.items.map((item, index) => {
       const quantityText = String(item.quantity || '');
       const quantityNumeric = typeof item.quantity === 'number' ? item.quantity : parseFloat(quantityText);
       
@@ -70,7 +70,8 @@ export async function saveBOQToSupabase(boq: ProjectBOQ) {
         quantity_numeric: isHeaderRow ? null : (isNaN(quantityNumeric) ? null : parseFloat(quantityNumeric.toFixed(2))),
         rate: isHeaderRow ? 0 : parseFloat(item.rate.toFixed(2)),
         amount: isHeaderRow ? 0 : parseFloat(item.amount.toFixed(2)),
-        category: isHeaderRow ? 'HEADER' : null
+        category: isHeaderRow ? 'HEADER' : null,
+        line_order: (index + 1) * 10  // Set proper line order (10, 20, 30, etc.)
       };
     });
 
@@ -118,6 +119,16 @@ export async function getBOQByProjectId(projectId: string) {
       .order('created_at', { ascending: false });
 
     if (error) throw error;
+
+    // Sort BOQ items by line_order to preserve row order
+    if (data) {
+      data.forEach(boq => {
+        if (boq.boq_items) {
+          boq.boq_items.sort((a: any, b: any) => (a.line_order || 0) - (b.line_order || 0));
+        }
+      });
+    }
+
     return data;
   } catch (error) {
     console.error('Error fetching BOQ:', error);

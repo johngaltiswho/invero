@@ -2,7 +2,6 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { saveBOQToSupabase, getBOQByProjectId } from '@/lib/supabase-boq';
-import { parseMultiSheetExcelFile, parseMultiSheetToBOQ } from '@/lib/excel-parser';
 import type { BOQItem, ProjectBOQ } from '@/types/boq';
 
 interface EditableBOQTableProps {
@@ -21,9 +20,7 @@ export default function EditableBOQTable({ projectId, contractorId, onSaveSucces
   const [items, setItems] = useState<EditableBOQItem[]>([]);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState('');
-  const [uploading, setUploading] = useState(false);
   const tableRef = useRef<HTMLTableElement>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Load existing data or initialize empty rows
   useEffect(() => {
@@ -178,35 +175,72 @@ export default function EditableBOQTable({ projectId, contractorId, onSaveSucces
     const pasteData = e.clipboardData.getData('text');
     const cleanedData = cleanPasteData(pasteData);
     
-    console.log('🔍 Raw paste data info:', {
-      totalCharacters: pasteData.length,
-      cleanedCharacters: cleanedData.length,
-      preview: cleanedData.substring(0, 200) + '...'
-    });
-    
-    // Simple, predictable parser - split by lines, then tabs
-    const parseClipboardData = (data: string): string[][] => {
+    // Pure Excel clipboard parser: parse exactly as Excel structures it
+    // Excel format: rows separated by \n, columns by \t, quoted content preserved
+    const parseExcelClipboard = (data: string): string[][] => {
+      const rows: string[][] = [];
       const lines = data.split('\n');
-      console.log(`📄 Split into ${lines.length} lines`);
       
-      const rows = lines
-        .filter(line => line.trim() !== '') // Only filter completely empty lines
-        .map((line, index) => {
-          const cols = line.split('\t').map(col => cleanPasteData(col || ''));
-          console.log(`Line ${index + 1}: ${cols.length} columns - [${cols.slice(0, 3).join(', ')}...]`);
-          return cols;
-        });
+      let currentRow: string[] = [];
+      let currentCell = '';
+      let inQuotes = false;
       
-      console.log(`📊 Final parsed: ${rows.length} rows from ${lines.length} original lines`);
+      for (const line of lines) {
+        if (!inQuotes && line.trim() === '') continue; // Skip empty lines
+        
+        const chars = line.split('');
+        let cellContent = '';
+        
+        for (let i = 0; i < chars.length; i++) {
+          const char = chars[i];
+          
+          if (char === '"') {
+            inQuotes = !inQuotes;
+          } else if (char === '\t' && !inQuotes) {
+            // End of cell
+            currentRow.push(currentCell + cellContent);
+            cellContent = '';
+            currentCell = '';
+          } else {
+            cellContent += char;
+          }
+        }
+        
+        if (inQuotes) {
+          // This line continues a multi-line cell
+          currentCell += (currentCell ? '\n' : '') + cellContent;
+        } else {
+          // End of row
+          currentRow.push(currentCell + cellContent);
+          if (currentRow.some(cell => cell.trim())) {
+            rows.push(currentRow);
+          }
+          currentRow = [];
+          currentCell = '';
+        }
+      }
+      
+      // Handle last row if not empty
+      if (currentRow.length > 0 || currentCell) {
+        if (currentCell) currentRow.push(currentCell);
+        if (currentRow.some(cell => cell.trim())) {
+          rows.push(currentRow);
+        }
+      }
+      
       return rows;
     };
     
-    const parsedRows = parseClipboardData(cleanedData);
+    const parsedRows = parseExcelClipboard(cleanedData);
+    const filteredRows = parsedRows.map(row => row.join('\t'));
     
-    if (parsedRows.length === 0) {
-      setMessage('No data found to paste');
-      return;
-    }
+    console.log('📊 Paste Debug Info:', {
+      originalRowCount: parsedRows.length,
+      filteredRowCount: filteredRows.length,
+      sampleRows: filteredRows.slice(0, 5)
+    });
+    
+    if (filteredRows.length === 0) return;
 
     // Find the first empty row to start pasting
     const firstEmptyRowIndex = items.findIndex(item => 
@@ -218,152 +252,90 @@ export default function EditableBOQTable({ projectId, contractorId, onSaveSucces
     const startIndex = firstEmptyRowIndex !== -1 ? firstEmptyRowIndex : items.length;
     const updatedItems = [...items];
     
-    console.log(`📍 Starting paste at index: ${startIndex}`);
+    let validRowIndex = 0;
+    let skippedEmptyRows = 0;
     
-    let processedRows = 0;
-    let skippedRows = 0;
-    
-    parsedRows.forEach((cols, rowIndex) => {
-      // Only skip if row has no meaningful content at all
-      const hasAnyContent = cols.some(col => col && col.trim() !== '');
+    filteredRows.forEach((row, rowIndex) => {
+      const cols = row.split('\t').map(col => cleanPasteData(col || '')); // Split by tabs only
       
-      if (!hasAnyContent) {
-        skippedRows++;
-        console.log(`⏭️ Skipping completely empty row ${rowIndex + 1}`);
+      // More lenient empty row detection - only skip if ALL columns are truly empty
+      const isEmptyRow = cols.length === 0 || cols.every(col => !col || col.trim() === '');
+      if (isEmptyRow) {
+        skippedEmptyRows++;
+        console.log(`⏭️ Skipping empty row ${rowIndex + 1}:`, cols);
         return;
       }
       
-      const targetIndex = startIndex + processedRows;
+      console.log(`✅ Processing row ${rowIndex + 1} (${cols.length} columns):`, cols.slice(0, 3));
       
-      // Extend array if needed
-      while (updatedItems.length <= targetIndex) {
-        updatedItems.push({
-          id: `item-${updatedItems.length}`,
-          description: '',
-          unit: 'Nos',
-          quantity: 0,
-          rate: 0,
-          amount: 0
-        });
-      }
+      // Handle both complete rows (5+ columns) and header rows (1-2 columns)
+      if (cols.length >= 1) {
+        const targetIndex = startIndex + validRowIndex;
+        
+        // Extend array if needed
+        while (updatedItems.length <= targetIndex) {
+          updatedItems.push({
+            id: `item-${updatedItems.length}`,
+            description: '',
+            unit: 'Nos',
+            quantity: 0,
+            rate: 0,
+            amount: 0
+          });
+        }
 
-      // Determine row type based on content
-      const description = cols[0] || '';
-      const unit = cols[1] || 'Nos';
-      const quantityText = cols[2] || '';
-      const rateText = cols[3] || '';
-      const amountText = cols[4] || '';
-      
-      // Parse values
-      const quantity = quantityText ? parseQuantity(quantityText) : 0;
-      const rate = rateText ? parseNumberWithCommas(rateText) : 0;
-      let amount = amountText ? parseNumberWithCommas(amountText) : 0;
-      
-      // Auto-calculate amount if not provided and quantity is numeric
-      if (!amountText && typeof quantity === 'number' && rate > 0) {
-        amount = quantity * rate;
+        // Check if this is a header row (only description, no quantity/rate)
+        if (cols.length >= 3 && cols[2] && cols[2].trim() !== '') {
+          // Complete BOQ item
+          const quantity = parseQuantity(cols[2] || '0');
+          const rate = parseNumberWithCommas(cols[3] || '0');
+          
+          // Calculate amount - if quantity is text (QRO), use provided amount or 0
+          let amount: number;
+          if (cols[4]) {
+            amount = parseNumberWithCommas(cols[4]);
+          } else if (typeof quantity === 'number') {
+            amount = quantity * rate;
+          } else {
+            amount = 0; // For QRO items, amount should be specified separately
+          }
+          
+          updatedItems[targetIndex] = {
+            id: `item-${targetIndex}`,
+            description: cols[0] || '',
+            unit: cols[1] || 'Nos',
+            quantity,
+            rate,
+            amount
+          };
+        } else {
+          // Header row - only description
+          updatedItems[targetIndex] = {
+            id: `item-${targetIndex}`,
+            description: cols[0] || '',
+            unit: cols[1] || 'N/A',
+            quantity: 0,
+            rate: 0,
+            amount: 0
+          };
+        }
+        
+        validRowIndex++;
       }
-      
-      updatedItems[targetIndex] = {
-        id: `item-${targetIndex}`,
-        description,
-        unit,
-        quantity,
-        rate,
-        amount
-      };
-      
-      console.log(`✅ Row ${rowIndex + 1} → Index ${targetIndex}:`, {
-        description: description.substring(0, 30) + '...',
-        unit,
-        quantity,
-        rate,
-        amount
-      });
-      
-      processedRows++;
     });
 
     // Auto-add more rows if needed
     const finalItems = autoAddRowsIfNeeded(updatedItems);
     setItems(finalItems);
     
-    console.log('📋 Final Paste Summary:', {
-      totalLinesInInput: parsedRows.length,
-      rowsProcessed: processedRows,
-      rowsSkipped: skippedRows,
-      finalItemCount: finalItems.length,
-      success: true
+    console.log('📋 Paste Summary:', {
+      totalParsedRows: filteredRows.length,
+      validRowsProcessed: validRowIndex,
+      skippedEmptyRows: skippedEmptyRows,
+      finalItemCount: finalItems.length
     });
     
-    setMessage(`✅ ${processedRows} rows pasted successfully! ${skippedRows} empty rows skipped. Review and save.`);
-  };
-
-  // Handle Excel file upload (multi-sheet support)
-  const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
-
-    // Validate file type
-    if (!file.name.match(/\.(xlsx|xls)$/)) {
-      setMessage('Please upload an Excel file (.xlsx or .xls)');
-      return;
-    }
-
-    setUploading(true);
-    setMessage('📚 Reading Excel workbook...');
-
-    try {
-      // Parse multi-sheet Excel file
-      const { sheets, totalSheets } = await parseMultiSheetExcelFile(file);
-      
-      console.log(`📊 Workbook Analysis:`, {
-        fileName: file.name,
-        totalSheets,
-        sheetNames: sheets.map(s => s.name)
-      });
-
-      if (sheets.length === 0) {
-        setMessage('No readable sheets found in the Excel file');
-        return;
-      }
-
-      // Convert to organized BOQ structure
-      setMessage(`🔄 Processing ${totalSheets} sheets...`);
-      const organizedBOQ = parseMultiSheetToBOQ(sheets, projectId, contractorId, file.name);
-      
-      // Convert BOQ items to EditableBOQItem format
-      const editableItems: EditableBOQItem[] = organizedBOQ.items.map((item, index) => ({
-        id: `item-${index}`,
-        ...item
-      }));
-
-      // Add some empty rows at the end for additional editing
-      const additionalRows: EditableBOQItem[] = Array.from({ length: 10 }, (_, index) => ({
-        id: `item-${editableItems.length + index}`,
-        description: '',
-        unit: 'Nos',
-        quantity: 0,
-        rate: 0,
-        amount: 0
-      }));
-
-      const finalItems = [...editableItems, ...additionalRows];
-      setItems(finalItems);
-      
-      setMessage(`✅ Excel uploaded: ${totalSheets} sheets, ${editableItems.length} items, ₹${organizedBOQ.totalAmount.toLocaleString()} total. Review and save!`);
-
-      // Reset file input
-      if (fileInputRef.current) {
-        fileInputRef.current.value = '';
-      }
-
-    } catch (error) {
-      console.error('Error uploading Excel file:', error);
-      setMessage(`Failed to upload Excel file: ${error instanceof Error ? error.message : 'Unknown error'}`);
-    } finally {
-      setUploading(false);
-    }
+    setMessage(`✅ ${validRowIndex} rows pasted successfully from ${filteredRows.length} parsed rows (${skippedEmptyRows} empty rows skipped)! Review and save.`);
   };
 
   // Save to Supabase
@@ -457,43 +429,9 @@ export default function EditableBOQTable({ projectId, contractorId, onSaveSucces
       </div>
 
       <div className="mb-4 p-3 bg-accent-amber/10 border border-accent-amber/20 rounded-lg text-sm text-accent-amber">
-        💡 <strong>Tip:</strong> Upload entire Excel workbook OR copy-paste data directly into the table (Ctrl+V). 
-        Multi-sheet workbooks are automatically organized with section headers!<br/>
-        Expected format: Serial# | Description | Unit | Quantity | Rate | Amount (Serial numbers are automatically ignored)
-      </div>
-
-      {/* Excel Upload Section */}
-      <div className="mb-6 p-4 bg-neutral-darker/50 border border-neutral-medium rounded-lg">
-        <div className="flex items-center justify-between mb-3">
-          <h4 className="text-primary font-medium">📄 Upload Excel Workbook (All Sheets)</h4>
-          <span className="text-xs text-secondary">Supports .xlsx, .xls</span>
-        </div>
-        
-        <div className="flex items-center space-x-4">
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept=".xlsx,.xls"
-            onChange={handleFileUpload}
-            disabled={uploading}
-            className="hidden"
-            id="excel-upload"
-          />
-          <label 
-            htmlFor="excel-upload" 
-            className={`cursor-pointer px-4 py-2 rounded border-2 border-dashed text-sm font-medium transition-colors ${
-              uploading 
-                ? 'border-gray-400 text-gray-400 cursor-not-allowed' 
-                : 'border-accent-amber/50 text-accent-amber hover:border-accent-amber hover:bg-accent-amber/10'
-            }`}
-          >
-            {uploading ? '📚 Processing...' : '📁 Choose Excel File'}
-          </label>
-          
-          <div className="text-xs text-secondary">
-            Automatically detects and organizes all sheets with section headers
-          </div>
-        </div>
+        💡 <strong>Tip:</strong> Copy data from Excel and paste directly into the table (Ctrl+V). 
+        Paste multiple sheets sequentially - more rows will be added automatically!<br/>
+        Expected format: Description | Unit | Quantity | Rate | Amount
       </div>
 
       <div className="overflow-x-auto" onPaste={handlePaste}>

@@ -39,22 +39,74 @@ export default clerkMiddleware(async (auth, req) => {
       const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
       const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-      // Check if contractor exists and has proper access using clerk_user_id
-      const { data: contractor, error } = await supabase
+      // Primary lookup: Check if contractor exists using clerk_user_id
+      let { data: contractor, error } = await supabase
         .from('contractors')
-        .select('id, status, verification_status, email')
+        .select('id, status, verification_status, email, clerk_user_id')
         .eq('clerk_user_id', userId)
         .single();
 
-      console.log('Middleware contractor check:', {
+      console.log('Primary contractor check (clerk_user_id):', {
         userId,
-        contractor,
-        error,
+        contractor: contractor ? { id: contractor.id, email: contractor.email } : null,
+        error: error?.message,
         hasContractor: !!contractor
       });
 
+      // Fallback lookup: If not found by clerk_user_id, try email lookup
       if (error || !contractor) {
-        console.log('No contractor found, redirecting to status page');
+        console.log('Primary lookup failed, attempting email fallback...');
+        
+        try {
+          // Get user details from Clerk to extract email
+          const clerkResponse = await fetch(`https://api.clerk.com/v1/users/${userId}`, {
+            headers: {
+              'Authorization': `Bearer ${process.env.CLERK_SECRET_KEY}`,
+              'Content-Type': 'application/json',
+            },
+          });
+          
+          if (clerkResponse.ok) {
+            const clerkUser = await clerkResponse.json();
+            const email = clerkUser.email_addresses?.find((e: any) => e.id === clerkUser.primary_email_address_id)?.email_address;
+            
+            if (email) {
+            console.log('Trying email lookup for:', email);
+            const { data: emailContractor, error: emailError } = await supabase
+              .from('contractors')
+              .select('id, status, verification_status, email, clerk_user_id')
+              .eq('email', email)
+              .single();
+
+            if (emailContractor && !emailError) {
+              contractor = emailContractor;
+              console.log('✅ Found contractor by email:', { id: contractor.id, email: contractor.email });
+              
+              // Auto-link clerk_user_id for future requests (if not already linked)
+              if (!contractor.clerk_user_id || contractor.clerk_user_id !== userId) {
+                console.log('Linking clerk_user_id for future optimization...');
+                await supabase
+                  .from('contractors')
+                  .update({ clerk_user_id: userId })
+                  .eq('id', contractor.id);
+                console.log('✅ Linked clerk_user_id successfully');
+              }
+            } else {
+              console.log('Email lookup also failed:', emailError?.message);
+            }
+            } else {
+              console.log('No email found in Clerk user data');
+            }
+          } else {
+            console.log('Failed to fetch user from Clerk API');
+          }
+        } catch (fallbackError) {
+          console.error('Email fallback lookup failed:', fallbackError);
+        }
+      }
+
+      if (!contractor) {
+        console.log('No contractor found via any method, redirecting to status page');
         const statusUrl = new URL('/contractors/status', req.url);
         return NextResponse.redirect(statusUrl);
       }
