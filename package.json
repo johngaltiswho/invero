@@ -15,7 +15,7 @@
     "autoprefixer": "^10.4.16",
     "googleapis": "^154.1.0",
     "jspdf": "^2.5.2",
-    "next": "^15.3.0",
+    "next": "^16.1.1",
     "openai": "^6.1.0",
     "postcss": "^8.4.32",
     "react": "^19.1.0",

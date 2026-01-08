@@ -43,7 +43,7 @@ export async function POST(request: NextRequest) {
       console.error('Database error:', error);
       return NextResponse.json({ 
         error: 'Failed to save analysis results',
-        details: error.message 
+        details: (error as any)?.message || 'Unknown error' 
       }, { status: 500 });
     }
 
@@ -96,7 +96,7 @@ export async function GET(request: NextRequest) {
       console.error('Database error:', error);
       return NextResponse.json({ 
         error: 'Failed to retrieve analysis results',
-        details: error.message 
+        details: (error as any)?.message || 'Unknown error' 
       }, { status: 500 });
     }
 

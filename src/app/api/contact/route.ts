@@ -60,7 +60,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Insert contact form submission
-    const { data: contact, error } = await supabase
+    const { data: contact, error } = await (supabase as any)
       .from('contacts')
       .insert({
         first_name: firstName.trim(),

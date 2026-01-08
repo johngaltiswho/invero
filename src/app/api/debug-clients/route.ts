@@ -33,23 +33,23 @@ export async function GET(request: NextRequest) {
     }
 
     // Get ALL clients (not filtered by status first)
-    const { data: allClients, error: allClientsError } = await supabase
+    const { data: allClients, error: allClientsError } = await (supabase as any)
       .from('clients')
       .select('*')
-      .eq('contractor_id', contractor.id);
+      .eq('contractor_id', (contractor as any)!.id);
 
     // Get active clients specifically
-    const { data: activeClients, error: activeClientsError } = await supabase
+    const { data: activeClients, error: activeClientsError } = await (supabase as any)
       .from('clients')
       .select('*')
-      .eq('contractor_id', contractor.id)
+      .eq('contractor_id', (contractor as any)!.id)
       .eq('status', 'active');
 
     // Get some projects to verify data exists
     const { data: projects, error: projectsError } = await supabase
       .from('projects')
       .select('id, project_name, client_name')
-      .eq('contractor_id', contractor.id)
+      .eq('contractor_id', (contractor as any)!.id)
       .limit(5);
 
     console.log('🔍 Debug: All clients:', allClients);
@@ -81,7 +81,7 @@ export async function GET(request: NextRequest) {
     console.error('Debug endpoint error:', error);
     return NextResponse.json({
       debug: 'Debug endpoint error',
-      error: error.message
+      error: (error as any)?.message || 'Unknown error'
     }, { status: 500 });
   }
 }

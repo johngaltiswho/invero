@@ -72,7 +72,8 @@ async function fetchPurchaseSummary(): Promise<PurchaseSummary> {
     return summary;
   }
 
-  data?.forEach((row) => {
+  data?.forEach((row: { status: string | null }) => {
+    if (!row.status) return;
     const key = row.status as keyof PurchaseSummary;
     if (key in summary) {
       summary[key] += 1;
@@ -126,7 +127,7 @@ async function fetchPurchaseRequests(options: FetchOptions = {}) {
     throw error;
   }
 
-  const requestIds = requestRows?.map((row) => row.id) ?? [];
+  const requestIds = requestRows?.map((row: { id: string }) => row.id) ?? [];
   const itemsByRequest = new Map<string, PurchaseRequestItemRow[]>();
 
   if (requestIds.length > 0) {
@@ -160,14 +161,14 @@ async function fetchPurchaseRequests(options: FetchOptions = {}) {
       throw itemsError;
     }
 
-    itemRows?.forEach((item) => {
+    itemRows?.forEach((item: PurchaseRequestItemRow) => {
       const list = itemsByRequest.get(item.purchase_request_id) || [];
       list.push(item);
       itemsByRequest.set(item.purchase_request_id, list);
     });
   }
 
-  const projectIds = Array.from(new Set((requestRows || []).map(row => row.project_id).filter(Boolean)));
+  const projectIds = Array.from(new Set((requestRows || []).map((row: { project_id: string }) => row.project_id).filter(Boolean)));
   const projectMap = new Map<string, { name?: string | null; location?: string | null }>();
 
   if (projectIds.length > 0) {
@@ -179,7 +180,7 @@ async function fetchPurchaseRequests(options: FetchOptions = {}) {
     if (projectError) {
       console.error('Failed to fetch project metadata:', projectError);
     } else {
-      projects?.forEach(project => {
+      projects?.forEach((project: { id: string; project_name?: string; location?: string }) => {
         projectMap.set(project.id, {
           name: (project as { project_name?: string }).project_name,
           location: project.location
@@ -188,7 +189,7 @@ async function fetchPurchaseRequests(options: FetchOptions = {}) {
     }
   }
 
-  const normalizedRequests = (requestRows || []).map((request) => {
+  const normalizedRequests = (requestRows || []).map((request: any) => {
     const items = (itemsByRequest.get(request.id) || []).map((item) => ({
       id: item.id,
       project_material_id: item.project_material_id,
@@ -238,7 +239,7 @@ async function fetchPurchaseRequests(options: FetchOptions = {}) {
     if (fundingError) {
       console.error('Failed to load funding totals for purchase requests:', fundingError);
     } else {
-      fundingRows?.forEach((row) => {
+      fundingRows?.forEach((row: { purchase_request_id: string; amount: number }) => {
         if (!row.purchase_request_id) return;
         const current = fundingTotals.get(row.purchase_request_id) || 0;
         fundingTotals.set(row.purchase_request_id, current + (Number(row.amount) || 0));
@@ -246,7 +247,7 @@ async function fetchPurchaseRequests(options: FetchOptions = {}) {
     }
   }
 
-  const enrichedRequests = normalizedRequests.map((request) => {
+  const enrichedRequests = normalizedRequests.map((request: any) => {
     const fundedAmount = fundingTotals.get(request.id) || 0;
     const estimatedTotal = request.estimated_total || 0;
     const remainingAmount = Math.max(estimatedTotal - fundedAmount, 0);
@@ -377,7 +378,7 @@ export async function PUT(request: NextRequest) {
 
     if (requestItems && requestItems.length > 0) {
       await Promise.all(
-        requestItems.map((item) => {
+        requestItems.map((item: { id: string; requested_qty: number }) => {
           const itemUpdate: PurchaseRequestItemUpdate = {
             status: itemStatus,
             updated_at: now

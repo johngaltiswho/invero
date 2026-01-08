@@ -223,7 +223,7 @@ function parseTextResponse(text: string) {
           breadth: 0,
           height: 0,
           unit: materialMatch[3],
-          quantity: parseFloat(materialMatch[2]) || 0,
+          quantity: parseFloat(materialMatch[2] || '0') || 0,
           confidence: "low"
         });
       }

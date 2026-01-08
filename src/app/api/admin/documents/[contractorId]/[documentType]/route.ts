@@ -4,13 +4,13 @@ import { requireAdmin } from '@/lib/admin-auth';
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { contractorId: string; documentType: string } }
+  { params }: { params: Promise<{ contractorId: string; documentType: string }> }
 ) {
   try {
     // Check admin authentication
     await requireAdmin();
 
-    const { contractorId, documentType } = params;
+    const { contractorId, documentType } = await params;
 
     // Get contractor documents
     const { data: contractor, error } = await supabaseAdmin

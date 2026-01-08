@@ -28,7 +28,7 @@ export async function GET(request: NextRequest) {
       .select('contractor_id')
       .not('contractor_id', 'is', null);
 
-    const uniqueProjectContractorIds = [...new Set(projectContractors?.map(p => p.contractor_id) || [])];
+    const uniqueProjectContractorIds = [...new Set(projectContractors?.map((p: any) => p.contractor_id) || [])];
 
     return NextResponse.json({
       current_user_id: user.id,
@@ -45,7 +45,7 @@ export async function GET(request: NextRequest) {
   } catch (error) {
     console.error('Debug contractors error:', error);
     return NextResponse.json({
-      error: error.message
+      error: (error as any)?.message || 'Unknown error'
     }, { status: 500 });
   }
 }
@@ -64,7 +64,7 @@ export async function POST(request: NextRequest) {
 
     if (contractor_id_to_link) {
       // Link existing contractor to current user
-      const { data: updatedContractor, error: updateError } = await supabase
+      const { data: updatedContractor, error: updateError } = await (supabase as any)
         .from('contractors')
         .update({ clerk_user_id: user.id })
         .eq('id', contractor_id_to_link)
@@ -82,7 +82,7 @@ export async function POST(request: NextRequest) {
       });
     } else {
       // Create new contractor
-      const { data: newContractor, error: createError } = await supabase
+      const { data: newContractor, error: createError } = await (supabase as any)
         .from('contractors')
         .insert({
           clerk_user_id: user.id,
@@ -108,7 +108,7 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     console.error('Create contractor error:', error);
     return NextResponse.json({
-      error: error.message
+      error: (error as any)?.message || 'Unknown error'
     }, { status: 500 });
   }
 }

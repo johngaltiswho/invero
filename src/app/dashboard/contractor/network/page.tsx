@@ -90,7 +90,7 @@ export default function NetworkPage() {
   const fetchVendors = async () => {
     try {
       setLoading(true);
-      const response = await fetch(`/api/vendors?contractor_id=${contractor.id}`);
+      const response = await fetch(`/api/vendors?contractor_id=${contractor?.id}`);
       if (response.ok) {
         const data = await response.json();
         setVendors(data.vendors || []);
@@ -153,7 +153,7 @@ export default function NetworkPage() {
       const method = editingVendor ? 'PUT' : 'POST';
       const body = editingVendor 
         ? { id: editingVendor.id, ...vendorForm }
-        : { contractor_id: contractor.id, ...vendorForm };
+        : { contractor_id: contractor?.id, ...vendorForm };
 
       const response = await fetch(url, {
         method,
@@ -237,7 +237,7 @@ export default function NetworkPage() {
       const method = editingClient ? 'PUT' : 'POST';
       const body = editingClient 
         ? { id: editingClient.id, ...clientForm }
-        : { ...clientForm, contractor_id: contractor.id };
+        : { ...clientForm, contractor_id: contractor?.id };
 
       const response = await fetch('/api/clients', {
         method,

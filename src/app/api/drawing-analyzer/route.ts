@@ -200,7 +200,7 @@ Please provide a clear, structured report that follows this cascading approach.`
           
           // Flatten zone data into items array
           const allZones = ['memberTable', 'planView', 'details'];
-          allZones.forEach(zone => {
+          allZones.forEach((zone: any) => {
             if (structuredData[zone] && Array.isArray(structuredData[zone])) {
               structuredData[zone].forEach((item: any) => {
                 extractedItems.push({

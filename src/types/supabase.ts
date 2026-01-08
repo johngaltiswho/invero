@@ -139,8 +139,11 @@ export interface Database {
           available_capacity?: number
           next_available_date?: string | null
           status?: 'pending' | 'approved' | 'rejected' | 'suspended'
+          verification_status?: 'documents_pending' | 'documents_uploaded' | 'under_verification' | 'verified' | 'rejected'
           application_date?: string
           approved_date?: string | null
+          verified_by?: string | null
+          rejection_reason?: string | null
         }
         Update: {
           id?: string
@@ -180,8 +183,11 @@ export interface Database {
           available_capacity?: number
           next_available_date?: string | null
           status?: 'pending' | 'approved' | 'rejected' | 'suspended'
+          verification_status?: 'documents_pending' | 'documents_uploaded' | 'under_verification' | 'verified' | 'rejected'
           application_date?: string
           approved_date?: string | null
+          verified_by?: string | null
+          rejection_reason?: string | null
           updated_at?: string
         }
       }

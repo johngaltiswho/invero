@@ -275,7 +275,7 @@ async function updateBOQTotal(boqId: string) {
       .select('amount')
       .eq('boq_id', boqId);
 
-    const total = items?.reduce((sum, item) => sum + (item.amount || 0), 0) || 0;
+    const total = items?.reduce((sum: number, item: any) => sum + (item.amount || 0), 0) || 0;
 
     // Update project_boqs total
     await supabaseAdmin

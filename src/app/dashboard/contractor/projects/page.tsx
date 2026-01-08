@@ -366,22 +366,22 @@ function ContractorProjectsContent(): React.ReactElement {
 
     // Header
     doc.setFontSize(20);
-    doc.setFont(undefined, 'bold');
+    doc.setFont('helvetica', 'bold');
     doc.text('REQUEST FOR QUOTATION (RFQ)', pageWidth / 2, yPosition, { align: 'center' });
     
     yPosition += 15;
     doc.setFontSize(10);
-    doc.setFont(undefined, 'normal');
+    doc.setFont('helvetica', 'normal');
     doc.text(`Generated on: ${new Date().toLocaleDateString()}`, pageWidth / 2, yPosition, { align: 'center' });
     
     yPosition += 20;
 
     // Company Info (Left Side)
     doc.setFontSize(12);
-    doc.setFont(undefined, 'bold');
+    doc.setFont('helvetica', 'bold');
     doc.text('FROM:', 20, yPosition);
     yPosition += 8;
-    doc.setFont(undefined, 'normal');
+    doc.setFont('helvetica', 'normal');
     doc.setFontSize(10);
     doc.text(`Company: ${contractor?.company_name || 'N/A'}`, 20, yPosition);
     yPosition += 6;
@@ -395,10 +395,10 @@ function ContractorProjectsContent(): React.ReactElement {
     const rightX = pageWidth / 2 + 10;
     yPosition -= 24; // Reset to same level as company info
     doc.setFontSize(12);
-    doc.setFont(undefined, 'bold');
+    doc.setFont('helvetica', 'bold');
     doc.text('TO:', rightX, yPosition);
     yPosition += 8;
-    doc.setFont(undefined, 'normal');
+    doc.setFont('helvetica', 'normal');
     doc.setFontSize(10);
     doc.text(`Vendor: ${selectedVendor.name}`, rightX, yPosition);
     yPosition += 6;
@@ -413,10 +413,10 @@ function ContractorProjectsContent(): React.ReactElement {
     // Project and delivery info
     if (rfqForm.deliveryDate || rfqForm.notes) {
       doc.setFontSize(12);
-      doc.setFont(undefined, 'bold');
+      doc.setFont('helvetica', 'bold');
       doc.text('REQUIREMENTS:', 20, yPosition);
       yPosition += 8;
-      doc.setFont(undefined, 'normal');
+      doc.setFont('helvetica', 'normal');
       doc.setFontSize(10);
       
       if (rfqForm.deliveryDate) {
@@ -437,13 +437,13 @@ function ContractorProjectsContent(): React.ReactElement {
 
     // Materials Table Header
     doc.setFontSize(12);
-    doc.setFont(undefined, 'bold');
+    doc.setFont('helvetica', 'bold');
     doc.text('MATERIALS REQUESTED:', 20, yPosition);
     yPosition += 10;
 
     // Table Header
     doc.setFontSize(9);
-    doc.setFont(undefined, 'bold');
+    doc.setFont('helvetica', 'bold');
     const tableHeaders = ['Material Name', 'Category', 'Quantity', 'Unit', 'Rate', 'Amount'];
     const colWidths = [60, 35, 25, 20, 25, 25];
     let xPos = 20;
@@ -458,7 +458,7 @@ function ContractorProjectsContent(): React.ReactElement {
     yPosition += 8;
 
     // Table Rows
-    doc.setFont(undefined, 'normal');
+    doc.setFont('helvetica', 'normal');
     selectedMaterialsList.forEach((material) => {
       xPos = 20;
       const rowData = [
@@ -484,10 +484,10 @@ function ContractorProjectsContent(): React.ReactElement {
 
     // Footer instructions
     doc.setFontSize(10);
-    doc.setFont(undefined, 'bold');
+    doc.setFont('helvetica', 'bold');
     doc.text('INSTRUCTIONS:', 20, yPosition);
     yPosition += 8;
-    doc.setFont(undefined, 'normal');
+    doc.setFont('helvetica', 'normal');
     doc.setFontSize(9);
     const instructions = [
       '1. Please provide your best quotation for the above materials',
@@ -586,22 +586,22 @@ function ContractorProjectsContent(): React.ReactElement {
 
     // Header
     doc.setFontSize(18);
-    doc.setFont(undefined, 'bold');
+    doc.setFont('helvetica', 'bold');
     doc.text('PURCHASE ORDER', pageWidth / 2, yPosition, { align: 'center' });
     
     yPosition += 12;
     doc.setFontSize(10);
-    doc.setFont(undefined, 'normal');
+    doc.setFont('helvetica', 'normal');
     doc.text(`Date: ${new Date().toLocaleDateString()}`, pageWidth / 2, yPosition, { align: 'center' });
     
     yPosition += 18;
 
     // Company Info
     doc.setFontSize(11);
-    doc.setFont(undefined, 'bold');
+    doc.setFont('helvetica', 'bold');
     doc.text('FROM:', 20, yPosition);
     yPosition += 6;
-    doc.setFont(undefined, 'normal');
+    doc.setFont('helvetica', 'normal');
     doc.setFontSize(9);
     doc.text(`${contractor?.company_name || 'Company Name'}`, 20, yPosition);
     yPosition += 5;
@@ -614,7 +614,7 @@ function ContractorProjectsContent(): React.ReactElement {
 
     // Materials Table Header
     doc.setFontSize(8);
-    doc.setFont(undefined, 'bold');
+    doc.setFont('helvetica', 'bold');
     const tableHeaders = ['Item', 'Qty', 'Unit', 'Rate', 'Tax%', 'Base Amt', 'Tax Amt', 'Total'];
     const colWidths = [35, 15, 15, 20, 15, 20, 20, 25];
     let xPos = 20;
@@ -629,7 +629,7 @@ function ContractorProjectsContent(): React.ReactElement {
     yPosition += 6;
 
     // Table Rows
-    doc.setFont(undefined, 'normal');
+    doc.setFont('helvetica', 'normal');
     let totalBaseAmount = 0;
     let totalTaxAmount = 0;
     let grandTotal = 0;
@@ -671,7 +671,7 @@ function ContractorProjectsContent(): React.ReactElement {
     yPosition += 8;
 
     // Totals Section
-    doc.setFont(undefined, 'normal');
+    doc.setFont('helvetica', 'normal');
     doc.setFontSize(9);
     const totalsXPos = pageWidth - 80;
     
@@ -679,13 +679,13 @@ function ContractorProjectsContent(): React.ReactElement {
     yPosition += 5;
     doc.text(`Tax Amount: ₹${totalTaxAmount.toFixed(2)}`, totalsXPos, yPosition);
     yPosition += 5;
-    doc.setFont(undefined, 'bold');
+    doc.setFont('helvetica', 'bold');
     doc.setFontSize(11);
     doc.text(`TOTAL: ₹${grandTotal.toFixed(2)}`, totalsXPos, yPosition);
 
     // Footer
     yPosition += 20;
-    doc.setFont(undefined, 'normal');
+    doc.setFont('helvetica', 'normal');
     doc.setFontSize(8);
     doc.text('Terms:', 20, yPosition);
     yPosition += 6;

@@ -4,10 +4,11 @@ import { supabaseAdmin } from '@/lib/supabase';
 // POST /api/boq-submissions/[id]/submit - Submit BOQ for verification
 export async function POST(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const submissionId = params.id;
+    const { id } = await params;
+    const submissionId = id;
 
     // Update submission status to under_review
     const { data: submission, error } = await supabaseAdmin
@@ -42,7 +43,7 @@ export async function POST(
       .eq('boq_submission_id', submissionId);
 
     if (!takeoffError && takeoffs) {
-      const totalValue = takeoffs.reduce((sum, takeoff) => sum + (takeoff.estimated_amount || 0), 0);
+      const totalValue = takeoffs.reduce((sum: number, takeoff: any) => sum + (takeoff.estimated_amount || 0), 0);
       const totalCount = takeoffs.length;
 
       // Update submission with calculated totals

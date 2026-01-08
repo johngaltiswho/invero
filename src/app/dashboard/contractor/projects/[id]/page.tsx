@@ -614,7 +614,7 @@ function IndividualProjectContent(): React.ReactElement {
     
     tableHeaders.forEach((header, index) => {
       doc.text(header, xPos, yPosition);
-      xPos += colWidths[index];
+      xPos += colWidths[index] || 0;
     });
     
     doc.line(20, yPosition + 1, pageWidth - 20, yPosition + 1);
@@ -634,9 +634,9 @@ function IndividualProjectContent(): React.ReactElement {
       ];
       
       rowData.forEach((data, colIndex) => {
-        const text = doc.splitTextToSize(data, colWidths[colIndex] - 2);
+        const text = doc.splitTextToSize(data, (colWidths[colIndex] || 0) - 2);
         doc.text(text, xPos, yPosition);
-        xPos += colWidths[colIndex];
+        xPos += (colWidths[colIndex] || 0);
       });
       yPosition += 6;
     });
@@ -1029,7 +1029,7 @@ function IndividualProjectContent(): React.ReactElement {
                   </div>
                   <EditableScheduleTable
                     projectId={project.id}
-                    contractorId={contractor?.id}
+                    contractorId={contractor?.id || ''}
                     onSaveSuccess={() => {
                       setRefreshKey(prev => prev + 1);
                       setShowScheduleEntry(false);
@@ -1040,7 +1040,7 @@ function IndividualProjectContent(): React.ReactElement {
               )}
               
               {/* Always show existing Schedule data if available */}
-              <ScheduleDisplay key={`schedule-${refreshKey}`} projectId={project.id} contractorId={contractor?.id} />
+              <ScheduleDisplay key={`schedule-${refreshKey}`} projectId={project.id} contractorId={contractor?.id || ''} />
             </div>
           )}
 

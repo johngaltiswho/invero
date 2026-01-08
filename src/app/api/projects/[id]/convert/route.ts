@@ -3,7 +3,7 @@ import { supabaseAdmin } from '@/lib/supabase';
 import { auth } from '@clerk/nextjs/server';
 
 // PUT - Convert project from draft to awarded
-export async function PUT(request: NextRequest, { params }: { params: { id: string } }) {
+export async function PUT(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     // Check authentication
     const { userId } = await auth();
@@ -14,7 +14,8 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
       }, { status: 401 });
     }
 
-    const projectId = params.id;
+    const { id } = await params;
+    const projectId = id;
     const body = await request.json();
     
     const {

@@ -45,7 +45,7 @@ export async function GET(request: NextRequest) {
       console.error('Failed to fetch materials:', error);
       return NextResponse.json({ 
         error: 'Failed to fetch materials',
-        details: error.message 
+        details: (error as any)?.message || 'Unknown error' 
       }, { status: 500 });
     }
 
@@ -130,8 +130,8 @@ export async function POST(request: NextRequest) {
     if (duplicates && duplicates.length > 0) {
       return NextResponse.json({ 
         error: 'A similar material already exists',
-        details: `Material "${name}" in category "${category}" already exists with status: ${duplicates[0].approval_status}`,
-        duplicate_id: duplicates[0].id
+        details: `Material "${name}" in category "${category}" already exists with status: ${duplicates[0]?.approval_status || 'unknown'}`,
+        duplicate_id: duplicates[0]?.id
       }, { status: 409 });
     }
 

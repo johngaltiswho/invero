@@ -160,7 +160,7 @@ export async function POST(request: NextRequest) {
     }
 
     // If PO was uploaded, save it to project_files table for Files section integration
-    if (poFileUrl && project) {
+    if (poFileUrl && project && poFile) {
       try {
         await supabaseAdmin
           .from('project_files')

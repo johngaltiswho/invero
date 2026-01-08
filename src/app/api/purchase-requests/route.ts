@@ -74,7 +74,7 @@ export async function GET(request: NextRequest) {
       console.error('Failed to fetch purchase requests:', error);
       return NextResponse.json({ 
         error: 'Failed to fetch purchase requests',
-        details: error.message 
+        details: (error as any)?.message || 'Unknown error' 
       }, { status: 500 });
     }
 

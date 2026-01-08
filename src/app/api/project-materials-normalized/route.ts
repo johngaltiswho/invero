@@ -32,7 +32,7 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    const materialIds = (materials || []).map(m => m.project_material_id);
+    const materialIds = (materials || []).map((m: any) => m.project_material_id);
     const materialMetaMap = new Map<string, { purchase_status: string | null; source_file_name: string | null }>();
     const requestHistoryMap = new Map<string, any[]>();
     if (materialIds.length > 0) {
@@ -43,7 +43,7 @@ export async function GET(request: NextRequest) {
       if (materialError) {
         console.error('Failed to fetch purchase material metadata:', materialError);
       } else {
-        materialRows?.forEach(row => {
+        materialRows?.forEach((row: any) => {
           materialMetaMap.set(row.id, {
             purchase_status: row.purchase_status,
             source_file_name: row.source_file_name || null
@@ -82,7 +82,7 @@ export async function GET(request: NextRequest) {
       if (requestError) {
         console.error('Failed to fetch request history:', requestError);
       } else {
-        requestItems?.forEach(item => {
+        requestItems?.forEach((item: any) => {
           const list = requestHistoryMap.get(item.project_material_id) || [];
           list.push({
             id: item.id,
@@ -102,7 +102,7 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    const materialsForUI: ProjectMaterialForUI[] = (materials || []).map(material => ({
+    const materialsForUI: ProjectMaterialForUI[] = (materials || []).map((material: any) => ({
       id: material.project_material_id,
       project_id: material.project_id,
       material_id: material.material_id,

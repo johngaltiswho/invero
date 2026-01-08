@@ -61,7 +61,7 @@ export async function GET(request: NextRequest) {
       console.error('Failed to fetch project materials:', error);
       return NextResponse.json({ 
         error: 'Failed to fetch project materials',
-        details: error.message 
+        details: (error as any)?.message || 'Unknown error' 
       }, { status: 500 });
     }
 

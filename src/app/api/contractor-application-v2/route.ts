@@ -107,6 +107,7 @@ export async function POST(request: NextRequest) {
     
     if (existingContractor || existingByClerkId) {
       const existing = existingByClerkId || existingContractor;
+      if (!existing) return NextResponse.json({ error: 'Unexpected error' }, { status: 500 });
       return NextResponse.json({
         success: false,
         error: 'A contractor application already exists for this account',

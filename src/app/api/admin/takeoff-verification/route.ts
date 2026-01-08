@@ -46,7 +46,7 @@ export async function GET(request: NextRequest) {
     };
 
     if (!statsError && stats) {
-      summary = stats.reduce((acc, item) => {
+      summary = stats.reduce((acc: any, item: any) => {
         acc[item.verification_status as keyof typeof acc] = (acc[item.verification_status as keyof typeof acc] || 0) + 1;
         return acc;
       }, summary);

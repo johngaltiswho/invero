@@ -52,7 +52,7 @@ export async function GET(request: NextRequest) {
       console.error('Failed to fetch material requests:', error);
       return NextResponse.json({ 
         error: 'Failed to fetch material requests',
-        details: error.message 
+        details: (error as any)?.message || 'Unknown error' 
       }, { status: 500 });
     }
 

@@ -5,10 +5,11 @@ import { supabaseAdmin } from '@/lib/supabase';
 // POST /api/materials/[id]/upload-pi - Upload Purchase Invoice file
 export async function POST(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const materialId = params.id;
+    const { id } = await params;
+    const materialId = id;
     
     // Get form data
     const formData = await request.formData();
@@ -95,10 +96,11 @@ export async function POST(
 // GET /api/materials/[id]/upload-pi - Get current PI file info
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const materialId = params.id;
+    const { id } = await params;
+    const materialId = id;
 
     const { data: material, error } = await supabaseAdmin
       .from('materials')

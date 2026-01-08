@@ -101,10 +101,10 @@ export async function POST(request: NextRequest) {
         contractors!inner(company_name)
       `);
 
-    const summaryByContractor = {};
+    const summaryByContractor: Record<string, number> = {};
     if (summary) {
       for (const client of summary) {
-        const contractorName = client.contractors.company_name;
+        const contractorName = (client as any).contractors.company_name;
         if (!summaryByContractor[contractorName]) {
           summaryByContractor[contractorName] = 0;
         }

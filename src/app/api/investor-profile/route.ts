@@ -124,7 +124,7 @@ export async function GET() {
       console.error('❌ Error fetching capital returns:', returnError);
     }
 
-    const investments = (capitalTransactions || []).map((tx) => ({
+    const investments = (capitalTransactions || []).map((tx: any) => ({
       id: tx.id,
       investorId: tx.investor_id,
       projectId: tx.project_id,
@@ -154,8 +154,8 @@ export async function GET() {
       }, 0);
     };
 
-    const totalCapitalInflow = cleanSum(inflowTransactions);
-    const totalCapitalReturns = cleanSum(returnTransactions);
+    const totalCapitalInflow = cleanSum(inflowTransactions || []);
+    const totalCapitalReturns = cleanSum(returnTransactions || []);
     const managementFee = totalInvested * 0.02;
     const grossProfit = totalCapitalReturns - totalInvested;
     const hurdleAmount = totalInvested * 0.12;
@@ -188,7 +188,7 @@ export async function GET() {
       } else {
         const progressBuckets: Record<string, number[]> = {};
 
-        scheduleTasks?.forEach(task => {
+        scheduleTasks?.forEach((task: any) => {
           const projectId = task.schedules?.project_id;
           if (!projectId) return;
           if (!progressBuckets[projectId]) {
@@ -220,7 +220,7 @@ export async function GET() {
       if (purchaseRequestError) {
         console.error('❌ Error fetching purchase request totals:', purchaseRequestError);
       } else {
-        purchaseRequestItems?.forEach(item => {
+        purchaseRequestItems?.forEach((item: any) => {
           const projectId = item.purchase_requests?.project_id;
           if (!projectId) return;
           const qty = Number(item.requested_qty) || 0;

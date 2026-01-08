@@ -6,7 +6,7 @@ const BUCKET = 'investor-documents';
 
 async function ensureBucket() {
   const { data: buckets } = await supabaseAdmin.storage.listBuckets();
-  const exists = buckets?.some((bucket) => bucket.name === BUCKET);
+  const exists = buckets?.some((bucket: any) => bucket.name === BUCKET);
   if (!exists) {
     await supabaseAdmin.storage.createBucket(BUCKET, {
       public: false,
@@ -76,10 +76,10 @@ export async function GET() {
       return NextResponse.json({ error: 'Failed to fetch documents' }, { status: 500 });
     }
 
-    const filteredFiles = (files || []).filter((file) => file.metadata?.size);
+    const filteredFiles = (files || []).filter((file: any) => file.metadata?.size);
 
     const documents = await Promise.all(
-      filteredFiles.map(async (file) => {
+      filteredFiles.map(async (file: any) => {
         const storagePath = `${investor.id}/${file.name}`;
         const { documentType, originalName, uploadedAt } = parseDocumentMetadata(file.name);
 

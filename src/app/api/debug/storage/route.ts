@@ -25,7 +25,7 @@ export async function GET() {
       .list();
 
     // Get bucket info specifically
-    const contractorBucket = buckets?.find(b => b.name === 'contractor-documents');
+    const contractorBucket = buckets?.find((b: any) => b.name === 'contractor-documents');
 
     // Test creating a public URL
     const testUrl = supabaseAdmin.storage
@@ -35,7 +35,7 @@ export async function GET() {
     return NextResponse.json({
       success: true,
       data: {
-        buckets: buckets?.map(b => ({
+        buckets: buckets?.map((b: any) => ({
           name: b.name,
           id: b.id,
           public: b.public,

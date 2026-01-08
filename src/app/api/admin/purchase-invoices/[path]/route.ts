@@ -2,10 +2,10 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getPurchaseInvoiceSignedUrl } from '@/lib/file-upload';
 import { isAdmin } from '@/lib/admin-auth';
 
-// GET /api/admin/purchase-invoices/[...path] - Get signed URL for PI file access from contractor-documents bucket
+// GET /api/admin/purchase-invoices/[path] - Get signed URL for PI file access from contractor-documents bucket
 export async function GET(
   request: NextRequest,
-  { params }: { params: { path: string[] } }
+  { params }: { params: Promise<{ path: string }> }
 ) {
   try {
     // Check admin authentication
@@ -17,8 +17,9 @@ export async function GET(
       );
     }
 
-    // Reconstruct file path from route params
-    const filePath = params.path.join('/');
+    // Get path from params
+    const { path } = await params;
+    const filePath = path;
     
     if (!filePath) {
       return NextResponse.json(

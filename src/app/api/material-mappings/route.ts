@@ -46,7 +46,7 @@ export async function GET(request: NextRequest) {
       console.error('Failed to fetch material mappings:', error);
       return NextResponse.json({ 
         error: 'Failed to fetch material mappings',
-        details: error.message 
+        details: (error as any)?.message || 'Unknown error' 
       }, { status: 500 });
     }
 
@@ -148,7 +148,7 @@ export async function POST(request: NextRequest) {
     if (error) {
       return NextResponse.json({ 
         error: 'Failed to create material mapping',
-        details: error.message 
+        details: (error as any)?.message || 'Unknown error' 
       }, { status: 500 });
     }
 
@@ -226,7 +226,7 @@ export async function PUT(request: NextRequest) {
     if (error) {
       return NextResponse.json({ 
         error: 'Failed to update material mapping',
-        details: error.message 
+        details: (error as any)?.message || 'Unknown error' 
       }, { status: 500 });
     }
 
@@ -278,7 +278,7 @@ export async function DELETE(request: NextRequest) {
     if (error) {
       return NextResponse.json({ 
         error: 'Failed to delete material mapping',
-        details: error.message 
+        details: (error as any)?.message || 'Unknown error' 
       }, { status: 500 });
     }
 
