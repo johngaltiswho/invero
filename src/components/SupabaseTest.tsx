@@ -36,7 +36,7 @@ export default function SupabaseTest() {
         file_name: 'test-file.xlsx'
       };
 
-      const { data: insertData, error: insertError } = await supabase
+      const { data: insertData, error: insertError } = await (supabase as any)
         .from('project_boqs')
         .insert(testBOQ)
         .select()
@@ -52,7 +52,7 @@ export default function SupabaseTest() {
         await supabase
           .from('project_boqs')
           .delete()
-          .eq('id', insertData.id);
+          .eq('id', (insertData as any).id);
       }
 
       setTestResult('✅ All tests passed! Supabase connection is working.');

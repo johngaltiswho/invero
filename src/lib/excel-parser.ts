@@ -189,7 +189,9 @@ export function parseMultiSheetToBOQ(
     uploadDate: new Date().toISOString(),
     items: allItems,
     totalAmount,
-    fileName: `${fileName} (${sheets.length} sheets)`
+    calculatedAmount: totalAmount,
+    fileName: `${fileName} (${sheets.length} sheets)`,
+    hasDiscrepancies: false
   };
 }
 
@@ -225,7 +227,9 @@ export function parseExcelToBOQ(
     uploadDate: new Date().toISOString(),
     items,
     totalAmount,
-    fileName
+    calculatedAmount: totalAmount,
+    fileName,
+    hasDiscrepancies: false
   };
 }
 

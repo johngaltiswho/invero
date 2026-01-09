@@ -26,6 +26,8 @@ interface MaterialRequest {
   approved_by?: string;
   approval_date?: string;
   rejection_reason?: string;
+  review_notes?: string;
+  supplier_name?: string;
   created_at: string;
   contractors?: {
     company_name: string;
@@ -68,6 +70,7 @@ interface BOQTakeoff {
   submitted_for_verification_at?: string;
   created_at: string;
   updated_at: string;
+  material_name?: string;
   contractors?: {
     company_name: string;
     contact_person: string;

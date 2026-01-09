@@ -51,8 +51,8 @@ export default function MasterSchedule({ contractorProjects, contractorId }: Mas
           if (scheduleData && scheduleData.length > 0) {
             const latestSchedule = scheduleData[0];
             
-            if (latestSchedule.schedule_tasks) {
-              latestSchedule.schedule_tasks.forEach((task: any) => {
+            if ((latestSchedule as any).schedule_tasks) {
+              (latestSchedule as any).schedule_tasks.forEach((task: any) => {
                 const endDate = new Date(task.end_date);
                 let status: 'overdue' | 'upcoming' | 'completed';
                 

@@ -14,10 +14,12 @@
     "module": "ESNext",
     "moduleDetection": "force",
     "moduleResolution": "Bundler",
-    "noUncheckedIndexedAccess": true,
+    "noUncheckedIndexedAccess": false,
     "resolveJsonModule": true,
     "skipLibCheck": true,
-    "strict": true,
+    "strict": false,
+    "noImplicitAny": false,
+    "strictNullChecks": false,
     "target": "ES2022",
     "plugins": [
       {

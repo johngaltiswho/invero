@@ -125,7 +125,8 @@ export default function InvestorDashboard(): React.ReactElement {
     const contractorTotal = contractorInvestments.reduce((sum, inv) => sum + inv.investmentAmount, 0);
     
     if (contractor.businessCategory) {
-      sectorData[contractor.businessCategory] = (sectorData[contractor.businessCategory] || 0) + contractorTotal;
+      const category = String(contractor.businessCategory);
+      sectorData[category] = (sectorData[category] || 0) + contractorTotal;
     }
   });
 
@@ -166,7 +167,7 @@ export default function InvestorDashboard(): React.ReactElement {
         // Handle DD/MM/YYYY format (common in Indian data)
         if (dateString.includes('/')) {
           const parts = dateString.split('/');
-          if (parts.length === 3) {
+          if (parts.length === 3 && parts[0] && parts[1] && parts[2]) {
             const day = parseInt(parts[0]);
             const month = parseInt(parts[1]) - 1; // Month is 0-indexed
             const year = parseInt(parts[2]);
@@ -217,7 +218,7 @@ export default function InvestorDashboard(): React.ReactElement {
         <div className="mb-8">
           <h1 className="text-3xl font-bold text-primary mb-2">Portfolio Overview</h1>
           <p className="text-secondary mb-4">
-            Welcome back, {investor?.investorName}! Real-time insights into your project financing investments
+            Welcome back, {(investor as any)?.investorName || (investor as any)?.name || 'Investor'}! Real-time insights into your project financing investments
           </p>
         </div>
 
@@ -301,8 +302,8 @@ export default function InvestorDashboard(): React.ReactElement {
                     const projectId = (getInvestmentValue(normalizedInvestment, ['projectId', 'project_id']) as string | undefined) || '';
                     const contractor = investor?.relatedContractors?.find(c => c.id === contractorId);
                     const project = investor?.relatedProjects?.find(p => p.id === projectId);
-                    const contractorName = contractor?.companyName || contractor?.company_name || (contractorId ? `Contractor ${contractorId}` : 'Unknown Contractor');
-                    const projectName = project?.projectName || project?.project_name || (projectId ? `Project ${projectId}` : 'Unknown Project');
+                    const contractorName = String(contractor?.companyName || contractor?.company_name || (contractorId ? `Contractor ${contractorId}` : 'Unknown Contractor'));
+                    const projectName = String(project?.projectName || project?.project_name || (projectId ? `Project ${projectId}` : 'Unknown Project'));
                     const investmentAmount = Number(getInvestmentValue(normalizedInvestment, ['investmentAmount', 'investment_amount', 'amount'], 0) ?? 0);
                     const expectedReturnRaw = getInvestmentValue(normalizedInvestment, ['expectedReturn', 'expected_returns', 'expected_return', 'expected_return_percent'], 0);
                     const expectedReturn = Number(expectedReturnRaw ?? 0);

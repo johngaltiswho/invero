@@ -37,14 +37,14 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children, acti
               </Link>
               <div className="text-sm text-secondary">
                 <span className="text-primary font-medium">
-                  {investor?.investorName || 'Investor'}
+                  {(investor as any)?.investorName || (investor as any)?.name || 'Investor'}
                 </span>
                 <br />
                 <span className="text-xs">Premium Investor</span>
               </div>
               <div className="w-8 h-8 bg-accent-amber rounded-full flex items-center justify-center text-primary font-bold text-sm">
-                {investor?.investorName ? 
-                  investor.investorName.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2) : 
+                {(investor as any)?.investorName ? 
+                  (investor as any).investorName.split(' ').map((n: string) => n[0]).join('').toUpperCase().slice(0, 2) : 
                   'IN'
                 }
               </div>

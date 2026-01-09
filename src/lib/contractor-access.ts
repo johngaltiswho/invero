@@ -1,5 +1,6 @@
 import { ContractorService } from './contractor-service';
 import { DocumentService } from './document-service';
+import type { Contractor } from '@/types/supabase';
 import type { ContractorAccessStatus, ContractorWithProgress } from '@/types/contractor-access';
 export type { ContractorAccessStatus, ContractorWithProgress };
 

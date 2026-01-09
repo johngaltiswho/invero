@@ -192,7 +192,9 @@ export default function BOQDisplay({ projectId, isEditable = false, onSaveSucces
           amount: item.amount
         })),
         totalAmount,
-        fileName: latestBOQ.file_name
+        calculatedAmount: totalAmount,
+        fileName: latestBOQ.file_name,
+        hasDiscrepancies: false
       };
       
       await saveBOQToSupabase(boqToSave);

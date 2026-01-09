@@ -93,8 +93,12 @@ export default function QuantityTakeoffViewer({ fileUrl, fileName, onError }: Qu
   // Takeoff state
   const [boqItems, setBOQItems] = useState<BOQItem[]>([]);
   const [availableMaterials, setAvailableMaterials] = useState<Material[]>([]);
+  const [materialItems, setMaterialItems] = useState<any[]>([]);
+  const [currentLocation, setCurrentLocation] = useState<any>(null);
+  const [showAddForm, setShowAddForm] = useState(false);
   const [isAddingItem, setIsAddingItem] = useState(false);
   const [selectedRowId, setSelectedRowId] = useState<string | null>(null);
+  const [selectedMaterialId, setSelectedMaterialId] = useState<string | null>(null);
 
   // Fetch available materials
   useEffect(() => {

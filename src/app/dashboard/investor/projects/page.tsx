@@ -27,7 +27,7 @@ export default function ProjectMonitoring(): React.ReactElement {
     
     // Filter related projects to only show invested ones
     const investorProjects = investor.relatedProjects.filter(project => 
-      investedProjectIds.includes(project.id)
+      investedProjectIds.includes(String(project.id))
     );
 
     // Add normalized and investment data to each project
@@ -49,21 +49,24 @@ export default function ProjectMonitoring(): React.ReactElement {
       
       return {
         ...project,
-        projectName: project.projectName || project.project_name || 'Unnamed Project',
-        clientName: project.clientName || project.client_name || 'Client TBD',
-        contractorId: project.contractorId || project.contractor_id || '',
-        status: project.status || project.project_status || 'Active',
-        riskRating: project.riskRating || project.risk_level || 'Medium',
-        currentProgress:
+        id: project.id,
+        projectName: String(project.projectName || project.project_name || 'Unnamed Project'),
+        clientName: String(project.clientName || project.client_name || 'Client TBD'),
+        contractorId: String(project.contractorId || project.contractor_id || ''),
+        status: String(project.status || project.project_status || 'Active'),
+        riskRating: String(project.riskRating || project.risk_level || 'Medium'),
+        currentProgress: Number(
           project.currentProgress ??
           project.schedule_progress ??
           project.current_progress ??
-          0,
-        projectValue:
+          0
+        ),
+        projectValue: Number(
           project.projectValue ??
           project.estimated_value ??
           project.project_value ??
-          0,
+          0
+        ),
         myInvestment: totalInvestment,
         myExpectedIRR: avgIRR,
         investmentCount: projectInvestments.length,
@@ -124,7 +127,7 @@ export default function ProjectMonitoring(): React.ReactElement {
       // Handle DD/MM/YYYY format (common in Indian data)
       if (dateString.includes('/')) {
         const parts = dateString.split('/');
-        if (parts.length === 3) {
+        if (parts.length === 3 && parts[0] && parts[1] && parts[2]) {
           const day = parseInt(parts[0]);
           const month = parseInt(parts[1]) - 1; // Month is 0-indexed
           const year = parseInt(parts[2]);
@@ -155,8 +158,8 @@ export default function ProjectMonitoring(): React.ReactElement {
   
   // Find contractor from investor data
   const contractor = selectedProjectData ? 
-    investor?.relatedContractors?.find(c => c.id === selectedProjectData.contractorId) ||
-    investor?.allContractors?.find(c => c.id === selectedProjectData.contractorId) : null;
+    investor?.relatedContractors?.find((c: any) => c.id === selectedProjectData.contractorId) ||
+    investor?.allContractors?.find((c: any) => c.id === selectedProjectData.contractorId) : null;
 
   if (loading) {
     return (
@@ -248,13 +251,13 @@ export default function ProjectMonitoring(): React.ReactElement {
                     </div>
                   ) : (
                     investorProjects.map((project) => {
-                      const contractorId = project.contractorId || project.contractor_id;
-                      const projectContractor = investor?.relatedContractors?.find(c => c.id === contractorId) ||
-                                                investor?.allContractors?.find(c => c.id === contractorId);
+                      const contractorId = project.contractorId;
+                      const projectContractor = investor?.relatedContractors?.find((c: any) => c.id === contractorId) ||
+                                                investor?.allContractors?.find((c: any) => c.id === contractorId);
                       return (
                         <div
-                          key={project.id}
-                          onClick={() => setSelectedProject(project.id)}
+                          key={String(project.id)}
+                          onClick={() => setSelectedProject(String(project.id))}
                           className={`p-4 rounded-lg border cursor-pointer transition-all ${
                             selectedProject === project.id
                               ? 'border-accent-amber bg-accent-amber/5'
@@ -263,14 +266,14 @@ export default function ProjectMonitoring(): React.ReactElement {
                         >
                           <div className="flex justify-between items-start mb-2">
                             <h3 className="font-semibold text-primary text-sm leading-tight">
-                              {project.projectName}
+                              {String(project.projectName)}
                             </h3>
                             <span className={`text-xs font-medium ${getStatusColor(project.status)}`}>
-                              {project.status}
+                              {String(project.status)}
                             </span>
                           </div>
                           <p className="text-xs text-secondary mb-2">
-                            Client: {project.clientName} • Contractor: {projectContractor?.companyName || 'Unknown'}
+                            Client: {String(project.clientName)} • Contractor: {String(projectContractor?.companyName || 'Unknown')}
                           </p>
                           <div className="flex justify-between text-xs mb-2">
                             <span className="text-secondary">My Investment</span>
@@ -303,12 +306,12 @@ export default function ProjectMonitoring(): React.ReactElement {
                   <div className="flex justify-between items-start mb-4">
                     <div>
                       <h2 className="text-xl font-bold text-primary mb-2">
-                        {selectedProjectData.projectName}
+                        {String(selectedProjectData.projectName)}
                       </h2>
                       <div className="flex items-center space-x-4 text-sm text-secondary">
-                        <span>Client: {selectedProjectData.clientName}</span>
+                        <span>Client: {String(selectedProjectData.clientName)}</span>
                         <span>•</span>
-                        <span>Contractor: {contractor?.companyName || 'Unknown'}</span>
+                        <span>Contractor: {String(contractor?.companyName || 'Unknown')}</span>
                       </div>
                     </div>
                     <div className="flex items-center space-x-3">
@@ -317,10 +320,10 @@ export default function ProjectMonitoring(): React.ReactElement {
                           ? 'bg-success/10 text-success'
                           : 'bg-accent-blue/10 text-accent-blue'
                       }`}>
-                        {selectedProjectData.status}
+                        {String(selectedProjectData.status)}
                       </span>
                       <span className={`text-sm font-semibold ${getRiskColor(selectedProjectData.riskRating)}`}>
-                        {selectedProjectData.riskRating} Risk
+                        {String(selectedProjectData.riskRating)} Risk
                       </span>
                     </div>
                   </div>
@@ -348,7 +351,7 @@ export default function ProjectMonitoring(): React.ReactElement {
                         <div>
                           <div className="text-xs text-secondary mb-1">Project Value</div>
                           <div className="text-lg font-bold text-primary">
-                            {formatCurrency(selectedProjectData.projectValue)}
+                            {formatCurrency(Number(selectedProjectData.projectValue))}
                           </div>
                         </div>
                         <div>
@@ -394,15 +397,15 @@ export default function ProjectMonitoring(): React.ReactElement {
                             </div>
                             <div className="flex justify-between">
                               <span className="text-secondary">Priority</span>
-                              <span className="text-primary">{selectedProjectData.priority}</span>
+                              <span className="text-primary">{String((selectedProjectData as any).priority || 'Medium')}</span>
                             </div>
                             <div className="flex justify-between">
                               <span className="text-secondary">Team Size</span>
-                              <span className="text-primary">{selectedProjectData.teamSize} members</span>
+                              <span className="text-primary">{String((selectedProjectData as any).teamSize || 'TBD')} members</span>
                             </div>
                             <div className="flex justify-between">
                               <span className="text-secondary">Next Milestone</span>
-                              <span className="text-primary">{selectedProjectData.nextMilestone || 'TBD'}</span>
+                              <span className="text-primary">{String((selectedProjectData as any).nextMilestone || 'TBD')}</span>
                             </div>
                           </div>
                         </div>
@@ -411,19 +414,19 @@ export default function ProjectMonitoring(): React.ReactElement {
                           <div className="space-y-2 text-sm">
                             <div className="flex justify-between">
                               <span className="text-secondary">Company</span>
-                              <span className="text-primary">{contractor?.companyName}</span>
+                              <span className="text-primary">{String((contractor as any)?.companyName || 'Unknown')}</span>
                             </div>
                             <div className="flex justify-between">
                               <span className="text-secondary">Experience</span>
-                              <span className="text-primary">{contractor?.yearsInBusiness} years</span>
+                              <span className="text-primary">{String((contractor as any)?.yearsInBusiness || 'Unknown')} years</span>
                             </div>
                             <div className="flex justify-between">
                               <span className="text-secondary">Success Rate</span>
-                              <span className="text-success">{contractor?.successRate}%</span>
+                              <span className="text-success">{String((contractor as any)?.successRate || 'Unknown')}%</span>
                             </div>
                             <div className="flex justify-between">
                               <span className="text-secondary">Credit Score</span>
-                              <span className="text-success">{contractor?.creditScore}</span>
+                              <span className="text-success">{String((contractor as any)?.creditScore || 'Unknown')}</span>
                             </div>
                           </div>
                         </div>
@@ -435,7 +438,7 @@ export default function ProjectMonitoring(): React.ReactElement {
                     <div className="space-y-6">
                       <h3 className="text-lg font-bold text-primary">Project Timeline & Milestones</h3>
                       <div className="space-y-4">
-                        {selectedProjectData.milestones.map((milestone, index) => (
+                        {((selectedProjectData as any).milestones || []).map((milestone: any, index: number) => (
                           <div key={milestone.id} className="flex items-start space-x-4">
                             <div className="flex flex-col items-center">
                               <div className={`w-4 h-4 rounded-full ${
@@ -443,7 +446,7 @@ export default function ProjectMonitoring(): React.ReactElement {
                                 milestone.status === 'In Progress' ? 'bg-accent-blue' :
                                 milestone.status === 'Delayed' ? 'bg-warning' : 'bg-neutral-medium'
                               }`}></div>
-                              {index < selectedProjectData.milestones.length - 1 && (
+                              {index < ((selectedProjectData as any).milestones || []).length - 1 && (
                                 <div className="w-0.5 h-12 bg-neutral-medium mt-2"></div>
                               )}
                             </div>
@@ -496,15 +499,15 @@ export default function ProjectMonitoring(): React.ReactElement {
                             </div>
                             <div className="flex justify-between">
                               <span className="text-secondary">Funding Required</span>
-                              <span className="text-primary">{formatCurrency(selectedProjectData.fundingRequired)}</span>
+                              <span className="text-primary">{formatCurrency(Number((selectedProjectData as any).fundingRequired || 0))}</span>
                             </div>
                             <div className="flex justify-between">
                               <span className="text-secondary">Funding Received</span>
-                              <span className="text-success">{formatCurrency(selectedProjectData.fundingReceived)}</span>
+                              <span className="text-success">{formatCurrency(Number((selectedProjectData as any).fundingReceived || 0))}</span>
                             </div>
                             <div className="flex justify-between">
                               <span className="text-secondary">Funding Gap</span>
-                              <span className="text-warning">{formatCurrency(selectedProjectData.fundingRequired - selectedProjectData.fundingReceived)}</span>
+                              <span className="text-warning">{formatCurrency(Number((selectedProjectData as any).fundingRequired || 0) - Number((selectedProjectData as any).fundingReceived || 0))}</span>
                             </div>
                           </div>
                         </div>
@@ -526,7 +529,7 @@ export default function ProjectMonitoring(): React.ReactElement {
                             </div>
                             <div className="flex justify-between">
                               <span className="text-secondary">Tenure</span>
-                              <span className="text-primary">{selectedProjectData.projectTenure || 'TBD'} months</span>
+                              <span className="text-primary">{String((selectedProjectData as any).projectTenure || 'TBD')} months</span>
                             </div>
                           </div>
                         </div>

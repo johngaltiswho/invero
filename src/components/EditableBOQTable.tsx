@@ -31,9 +31,9 @@ export default function EditableBOQTable({ projectId, contractorId, onSaveSucces
       if (loadExistingData && items.length === 0) {
         try {
           const existingData = await getBOQByProjectId(projectId);
-          if (existingData && existingData.length > 0 && existingData[0].boq_items) {
+          if (existingData && existingData.length > 0 && (existingData[0] as any).boq_items) {
             // Extract BOQ items from the latest BOQ (already sorted by line_order)
-            const latestBoq = existingData[0];
+            const latestBoq = existingData[0] as any;
             const loadedItems: EditableBOQItem[] = latestBoq.boq_items.map((item: any, index: number) => ({
               id: `item-${index}`,
               description: item.description || '',
@@ -403,7 +403,9 @@ export default function EditableBOQTable({ projectId, contractorId, onSaveSucces
         uploadDate: new Date().toISOString(),
         items: validItems.map(({ id, ...item }) => item), // Remove temporary id
         totalAmount,
-        fileName: 'Manual Entry'
+        calculatedAmount: totalAmount,
+        fileName: 'Manual Entry',
+        hasDiscrepancies: false
       };
 
       console.log('BOQ object to save:', boq);

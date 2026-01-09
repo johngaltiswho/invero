@@ -28,7 +28,7 @@ function ContractorProjectsContent(): React.ReactElement {
   const mainTab = pathname.includes('/tendering') ? 'boq-quoting' : 
                   pathname.includes('/active') ? 'awarded' : 'boq-quoting';
   const [selectedProject, setSelectedProject] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<'overview' | 'boq' | 'schedule' | 'materials' | 'files'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'boq' | 'schedule' | 'materials' | 'requested-materials' | 'files'>('overview');
   const [refreshKey, setRefreshKey] = useState(0);
   const [enhancedProjectData, setEnhancedProjectData] = useState<any>(null);
   const [metricsLoading, setMetricsLoading] = useState(false);
@@ -450,7 +450,7 @@ function ContractorProjectsContent(): React.ReactElement {
     
     tableHeaders.forEach((header, index) => {
       doc.text(header, xPos, yPosition);
-      xPos += colWidths[index];
+      xPos += colWidths?.[index] || 0;
     });
     
     // Draw header line
@@ -471,9 +471,9 @@ function ContractorProjectsContent(): React.ReactElement {
       ];
       
       rowData.forEach((data, index) => {
-        const text = doc.splitTextToSize(data, colWidths[index] - 2);
+        const text = doc.splitTextToSize(data, (colWidths?.[index] || 0) - 2);
         doc.text(text, xPos, yPosition);
-        xPos += colWidths[index];
+        xPos += colWidths?.[index] || 0;
       });
       yPosition += 8;
     });
@@ -573,7 +573,10 @@ function ContractorProjectsContent(): React.ReactElement {
     const selectedMaterialsList = projectMaterials.filter(m => selectedMaterials.has(m.id));
     
     // Validate that all materials have rates
-    const missingRates = selectedMaterialsList.filter(m => !poRates[m.id] || poRates[m.id] <= 0);
+    const missingRates = selectedMaterialsList.filter(m => {
+      const materialId = m.id || '';
+      return !poRates[materialId] || poRates[materialId] <= 0;
+    });
     if (missingRates.length > 0) {
       alert('Please enter rates for all materials');
       return;
@@ -621,7 +624,7 @@ function ContractorProjectsContent(): React.ReactElement {
     
     tableHeaders.forEach((header, index) => {
       doc.text(header, xPos, yPosition);
-      xPos += colWidths[index];
+      xPos += colWidths?.[index] || 0;
     });
     
     // Draw header line
@@ -659,9 +662,9 @@ function ContractorProjectsContent(): React.ReactElement {
       ];
       
       rowData.forEach((data, index) => {
-        const text = doc.splitTextToSize(data, colWidths[index] - 2);
+        const text = doc.splitTextToSize(data, (colWidths?.[index] || 0) - 2);
         doc.text(text, xPos, yPosition);
-        xPos += colWidths[index];
+        xPos += colWidths?.[index] || 0;
       });
       yPosition += 6;
     });
@@ -775,9 +778,9 @@ function ContractorProjectsContent(): React.ReactElement {
           const scheduleData = await getScheduleByProjectId(project.id);
           const hasSchedule = scheduleData && scheduleData.length > 0;
           
-          if (hasSchedule && scheduleData[0]?.schedule_tasks) {
+          if (hasSchedule && (scheduleData[0] as any)?.schedule_tasks) {
             // Calculate progress from schedule tasks
-            const tasks = scheduleData[0].schedule_tasks;
+            const tasks = (scheduleData[0] as any).schedule_tasks;
             if (tasks.length > 0) {
               const totalProgress = tasks.reduce((sum: number, task: any) => sum + (task.progress || 0), 0);
               currentProgress = Math.round(totalProgress / tasks.length);

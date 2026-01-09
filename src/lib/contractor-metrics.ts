@@ -37,7 +37,7 @@ export async function calculateProjectMetrics(projectId: string): Promise<Projec
       if (boqData && boqData.length > 0) {
         // Use latest BOQ total amount
         const latestBOQ = boqData[0]; // Assuming sorted by latest
-        metrics.projectValue = latestBOQ.total_amount;
+        metrics.projectValue = (latestBOQ as any).total_amount;
         console.log(`💰 Project value from BOQ: ${metrics.projectValue}`);
       } else {
         console.log(`💰 No BOQ data found for project ${projectId}`);
@@ -51,7 +51,7 @@ export async function calculateProjectMetrics(projectId: string): Promise<Projec
       const scheduleData = await getScheduleByProjectId(projectId);
       if (scheduleData && scheduleData.length > 0) {
         const latestSchedule = scheduleData[0]; // Assuming sorted by latest
-        const tasks = latestSchedule.schedule_tasks;
+        const tasks = (latestSchedule as any).schedule_tasks;
         
         if (tasks && tasks.length > 0) {
           // Calculate average progress across all tasks
@@ -73,7 +73,7 @@ export async function calculateProjectMetrics(projectId: string): Promise<Projec
       const scheduleData = await getScheduleByProjectId(projectId);
       if (scheduleData && scheduleData.length > 0) {
         const latestSchedule = scheduleData[0];
-        const tasks = latestSchedule.schedule_tasks;
+        const tasks = (latestSchedule as any).schedule_tasks;
         
         if (tasks && tasks.length > 0) {
           // Find the latest end date among all tasks

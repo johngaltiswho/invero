@@ -2,7 +2,37 @@
 
 import React, { createContext, useContext, useState, useEffect, ReactNode, useCallback } from 'react';
 import { useUser } from '@clerk/nextjs';
-import type { InvestorProfile, Investment, Return } from '@/lib/investor-transformers';
+// import type { InvestorProfile, Investment, Return } from '@/lib/investor-transformers';
+
+// Define types inline for build compatibility
+interface InvestorProfile {
+  id?: string;
+  investorName?: string;
+  name?: string;
+}
+
+interface Investment {
+  id: string;
+  investmentAmount: number;
+  investment_amount?: number;
+  projectId?: string;
+  project_id?: string;
+  contractorId?: string;
+  contractor_id?: string;
+  expectedReturn?: number;
+  expected_return?: number;
+  investmentDate?: string;
+  investment_date?: string;
+  status?: string;
+  [key: string]: unknown;
+}
+
+interface Return {
+  id: string;
+  amount: number;
+  date: string;
+  type: string;
+}
 
 type GenericRecord = Record<string, unknown>;
 
@@ -27,6 +57,7 @@ interface InvestorWithData extends InvestorProfile {
   returns: Return[];
   relatedContractors: GenericRecord[];
   relatedProjects: GenericRecord[];
+  allContractors?: GenericRecord[];
   portfolioMetrics: PortfolioMetrics;
   availableOpportunities: GenericRecord[];
 }

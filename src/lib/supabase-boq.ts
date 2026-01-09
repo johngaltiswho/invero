@@ -35,7 +35,7 @@ export async function saveBOQToSupabase(boq: ProjectBOQ) {
     }
     
     // Insert BOQ record
-    const { data: boqData, error: boqError } = await supabase
+    const { data: boqData, error: boqError } = await (supabase as any)
       .from('project_boqs')
       .insert({
         project_id: boq.projectId,
@@ -77,7 +77,7 @@ export async function saveBOQToSupabase(boq: ProjectBOQ) {
 
     console.log('BOQ items to insert:', JSON.stringify(boqItems, null, 2));
 
-    const { error: itemsError } = await supabase
+    const { error: itemsError } = await (supabase as any)
       .from('boq_items')
       .insert(boqItems);
 
@@ -123,8 +123,8 @@ export async function getBOQByProjectId(projectId: string) {
     // Sort BOQ items by line_order to preserve row order
     if (data) {
       data.forEach(boq => {
-        if (boq.boq_items) {
-          boq.boq_items.sort((a: any, b: any) => (a.line_order || 0) - (b.line_order || 0));
+        if ((boq as any).boq_items) {
+          (boq as any).boq_items.sort((a: any, b: any) => (a.line_order || 0) - (b.line_order || 0));
         }
       });
     }
@@ -140,7 +140,7 @@ export async function getBOQByProjectId(projectId: string) {
 export async function saveScheduleToSupabase(schedule: ProjectSchedule) {
   try {
     // Insert Schedule record
-    const { data: scheduleData, error: scheduleError } = await supabase
+    const { data: scheduleData, error: scheduleError } = await (supabase as any)
       .from('project_schedules')
       .insert({
         project_id: schedule.projectId,
@@ -166,7 +166,7 @@ export async function saveScheduleToSupabase(schedule: ProjectSchedule) {
       dependencies: null
     }));
 
-    const { error: tasksError } = await supabase
+    const { error: tasksError } = await (supabase as any)
       .from('schedule_tasks')
       .insert(scheduleTasks);
 
@@ -249,7 +249,7 @@ export async function deleteSchedule(scheduleId: string) {
 export async function updateScheduleInSupabase(scheduleId: string, schedule: ProjectSchedule) {
   try {
     // Update the main schedule record
-    const { error: scheduleError } = await supabase
+    const { error: scheduleError } = await (supabase as any)
       .from('project_schedules')
       .update({
         total_duration: schedule.totalDuration,
@@ -282,7 +282,7 @@ export async function updateScheduleInSupabase(scheduleId: string, schedule: Pro
         dependencies: null
       }));
 
-      const { error: tasksError } = await supabase
+      const { error: tasksError } = await (supabase as any)
         .from('schedule_tasks')
         .insert(scheduleTasks);
 

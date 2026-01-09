@@ -47,11 +47,11 @@ export default function ProjectHealthOverview({ projects }: ProjectHealthOvervie
           const scheduleData = await getScheduleByProjectId(project.id);
           if (scheduleData && scheduleData.length > 0) {
             hasSchedule = true;
-            lastUpdated = scheduleData[0].upload_date;
+            lastUpdated = (scheduleData[0] as any).upload_date;
             
             // Count overdue tasks
             const today = new Date();
-            scheduleData[0].schedule_tasks?.forEach((task: any) => {
+            (scheduleData[0] as any).schedule_tasks?.forEach((task: any) => {
               totalTasks++;
               const endDate = new Date(task.end_date);
               if (endDate < today && task.progress < 100) {
@@ -66,8 +66,8 @@ export default function ProjectHealthOverview({ projects }: ProjectHealthOvervie
           const boqData = await getBOQByProjectId(project.id);
           if (boqData && boqData.length > 0) {
             hasBOQ = true;
-            if (!lastUpdated || new Date(boqData[0].upload_date) > new Date(lastUpdated)) {
-              lastUpdated = boqData[0].upload_date;
+            if (!lastUpdated || new Date((boqData[0] as any).upload_date) > new Date(lastUpdated)) {
+              lastUpdated = (boqData[0] as any).upload_date;
             }
           } else {
             issues.push('Missing BOQ');

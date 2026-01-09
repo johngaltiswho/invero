@@ -106,8 +106,8 @@ export default function InvestmentOpportunities(): React.ReactElement {
     console.log('Current investments:', investor.investments?.length || 0, investor.investments);
 
     // Show ALL projects as opportunities (regardless of investment status)
-    const allProjects = investor.allProjects || investor.relatedProjects || [];
-    const allContractors = investor.allContractors || investor.relatedContractors || [];
+    const allProjects = investor.relatedProjects || [];
+    const allContractors = investor.relatedContractors || [];
     
     const allActiveProjects = allProjects.filter(project => 
       project.status !== 'Draft'
@@ -131,7 +131,7 @@ export default function InvestmentOpportunities(): React.ReactElement {
         return; // Skip projects without contractors
       }
 
-      const opportunity = createOpportunityFromProject(project, contractor, index);
+      const opportunity = createOpportunityFromProject(project as ProjectRecord, contractor as ContractorRecord, index);
       if (opportunity) {
         opportunities.push(opportunity);
       }
@@ -152,13 +152,13 @@ export default function InvestmentOpportunities(): React.ReactElement {
 
       const fundingNumeric = purchaseRequestTotal || project.funding_required || project.project_value || 0;
       const fundingRequired = new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', minimumFractionDigits: 0 }).format(fundingNumeric);
-      const projectValueNumeric = project.estimated_value || project.project_value || fundingNumeric;
+      const projectValueNumeric = Number(project.estimated_value || project.project_value || fundingNumeric);
       const projectValueDisplay = new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', minimumFractionDigits: 0 }).format(projectValueNumeric);
       const expectedIRRDisplay = '--';
       const tenureDisplay = '3-6 months';
       
       // Calculate real funding progress from actual investments
-      const allInvestments = investor.investments || [];
+      const allInvestments = investor!.investments || [];
       const projectInvestments = allInvestments.filter(inv => inv.project_id === project.id);
       const totalInvested = projectInvestments.reduce((sum, inv) => sum + inv.investment_amount, 0);
       const fundedPercentage = fundingNumeric > 0 ? Math.round((totalInvested / fundingNumeric) * 100) : 0;
@@ -222,7 +222,7 @@ export default function InvestmentOpportunities(): React.ReactElement {
       const opportunity: OpportunityCard = {
         id: `OPP-2025-${String(index + 150).padStart(3, '0')}`,
         projectName: projectName,
-        contractor: contractor.company_name,
+        contractor: contractor.company_name || 'Unknown Contractor',
         client: clientName,
         clientType: ['Tata', 'Mahindra', 'HCL', 'Infosys', 'TCS'].some(mnc => 
           clientName?.includes(mnc)) ? 'MNC' : 'Large Enterprise',

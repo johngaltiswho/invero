@@ -1088,7 +1088,7 @@ export default function BOQTakeoffViewer({ fileUrl, fileName, projectId, onError
                             'text-gray-600 bg-gray-100 border-gray-300'
                           }`}>
                             {(() => {
-                              switch (verificationStatus) {
+                              switch (verificationStatus as string) {
                                 case 'pending': return 'Verification Pending';
                                 case 'verified': return 'Verified ✅';
                                 case 'disputed': return 'Disputed ❌';
