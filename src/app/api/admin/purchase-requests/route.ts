@@ -281,7 +281,9 @@ async function fetchPurchaseRequests(options: FetchOptions = {}) {
     const platformFee = Math.min(fundedAmount * platformRate, platformCap);
     const lateFees = fundedAmount * lateFeeRate * daysOutstanding;
     const totalDue = fundedAmount + platformFee + lateFees;
+    const investorDue = fundedAmount + lateFees;
     const remainingDue = Math.max(totalDue - returnedAmount, 0);
+    const remainingInvestorDue = Math.max(investorDue - returnedAmount, 0);
 
     return {
       ...request,
@@ -293,6 +295,8 @@ async function fetchPurchaseRequests(options: FetchOptions = {}) {
       late_fees: lateFees,
       total_due: totalDue,
       remaining_due: remainingDue,
+      investor_due: investorDue,
+      remaining_investor_due: remainingInvestorDue,
       days_outstanding: daysOutstanding
     };
   });

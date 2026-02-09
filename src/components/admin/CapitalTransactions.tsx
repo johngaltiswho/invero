@@ -64,6 +64,8 @@ interface FundingPurchaseRequest {
   late_fees?: number;
   total_due?: number;
   remaining_due?: number;
+  investor_due?: number;
+  remaining_investor_due?: number;
   days_outstanding?: number;
   returned_amount?: number;
   contractors?: {
@@ -182,6 +184,9 @@ const CapitalTransactions: React.FC = () => {
 
   const getRemainingDue = useCallback((request?: FundingPurchaseRequest | null) => {
     if (!request) return null;
+    if (typeof request.remaining_investor_due === 'number') {
+      return request.remaining_investor_due;
+    }
     if (typeof request.remaining_due === 'number') {
       return request.remaining_due;
     }
@@ -191,7 +196,7 @@ const CapitalTransactions: React.FC = () => {
     }
     const platformFee = Number(request.platform_fee ?? 0);
     const lateFees = Number(request.late_fees ?? 0);
-    const totalDue = fundedAmount + platformFee + lateFees;
+    const totalDue = fundedAmount + lateFees;
     const returned = Number(request.returned_amount ?? 0);
     return Math.max(totalDue - returned, 0);
   }, []);
@@ -836,7 +841,7 @@ const CapitalTransactions: React.FC = () => {
                         key={request.id}
                         value={request.id}
                       >
-                        {projectName} • {contractorName} • Requested {formatCurrency(requestedAmount)} • Funded {formatCurrency(fundedAmount)} • Remaining {formattedRemaining} • Due {formattedRemainingDue}
+                        {projectName} • {contractorName} • Requested {formatCurrency(requestedAmount)} • Funded {formatCurrency(fundedAmount)} • Remaining {formattedRemaining} • Investor Due {formattedRemainingDue}
                       </option>
                     );
                   })}
@@ -850,7 +855,7 @@ const CapitalTransactions: React.FC = () => {
                     const requestedAmount = Number(request.estimated_total || 0);
                     const platformFee = Number(request.platform_fee || 0);
                     const lateFees = Number(request.late_fees || 0);
-                    const totalDue = Number(request.total_due || 0);
+                    const totalDue = Number(request.investor_due || request.total_due || 0);
                     const contractorName = request.contractors?.company_name || 'N/A';
                     const projectName = request.project?.name || request.project_id;
                     const progressPercentage = remainingAmount === null || requestedAmount === 0
@@ -871,8 +876,8 @@ const CapitalTransactions: React.FC = () => {
                           <>
                             <div>Platform Fees: {formatCurrency(platformFee)}</div>
                             <div>Late Fees: {formatCurrency(lateFees)}</div>
-                            <div>Total Due: {formatCurrency(totalDue)}</div>
-                            <div>Remaining Due: {remainingDue !== null ? formatCurrency(remainingDue) : 'N/A'}</div>
+                            <div>Investor Due: {formatCurrency(totalDue)}</div>
+                            <div>Remaining Investor Due: {remainingDue !== null ? formatCurrency(remainingDue) : 'N/A'}</div>
                           </>
                         )}
                         {progressPercentage !== null && (

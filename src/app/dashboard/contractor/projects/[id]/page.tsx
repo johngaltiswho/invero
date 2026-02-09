@@ -87,6 +87,14 @@ function IndividualProjectContent(): React.ReactElement {
   const [piFile, setPiFile] = useState<File | null>(null);
   const [rfqQuantities, setRfqQuantities] = useState<{[key: string]: string}>({});
   const [expandedMaterials, setExpandedMaterials] = useState<Set<string>>(new Set());
+  const [materialsCatalog, setMaterialsCatalog] = useState<Array<{
+    id: string;
+    name: string;
+    category?: string | null;
+    unit?: string | null;
+    description?: string | null;
+  }>>([]);
+  const [materialsCatalogLoading, setMaterialsCatalogLoading] = useState(false);
   
   // Generate PO state
   const [poRates, setPoRates] = useState<{[key: string]: number}>({});
@@ -97,15 +105,14 @@ function IndividualProjectContent(): React.ReactElement {
   
   // Material Form state
   const [materialForm, setMaterialForm] = useState({
-    material: '',
-    materialName: '',
+    materialId: '',
+    materialSearch: '',
     quantity: '',
     unit: 'bags',
-    description: '',
-    category: 'cement',
     notes: ''
   });
   const [showAddMaterial, setShowAddMaterial] = useState(false);
+  const [materialSubmitting, setMaterialSubmitting] = useState(false);
 
   // BOQ and Schedule data state
   const [boqData, setBOQData] = useState<any>(null);
@@ -136,6 +143,30 @@ function IndividualProjectContent(): React.ReactElement {
       fetchProjectData();
     }
   }, [isLoaded, projectId, contractor]);
+
+  useEffect(() => {
+    if (!showAddMaterial) return;
+    const fetchMaterialsCatalog = async () => {
+      setMaterialsCatalogLoading(true);
+      try {
+        const response = await fetch('/api/materials?limit=500');
+        const result = await response.json();
+        if (response.ok && result.success) {
+          setMaterialsCatalog(result.data || []);
+        } else {
+          console.error('Failed to fetch materials catalog:', result.error);
+          setMaterialsCatalog([]);
+        }
+      } catch (error) {
+        console.error('Error fetching materials catalog:', error);
+        setMaterialsCatalog([]);
+      } finally {
+        setMaterialsCatalogLoading(false);
+      }
+    };
+
+    fetchMaterialsCatalog();
+  }, [showAddMaterial]);
 
   const fetchProjectData = async () => {
     try {
@@ -233,6 +264,61 @@ function IndividualProjectContent(): React.ReactElement {
     } catch (error) {
       console.error('Error fetching project materials:', error);
       setProjectMaterials([]);
+    }
+  };
+
+  const handleManualMaterialSubmit = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!project?.id) {
+      alert('Project not loaded yet.');
+      return;
+    }
+
+    if (!materialForm.materialId || !materialForm.quantity.trim() || !materialForm.unit.trim()) {
+      alert('Material, quantity, and unit are required.');
+      return;
+    }
+
+    const quantityValue = Number(materialForm.quantity);
+    if (!Number.isFinite(quantityValue) || quantityValue <= 0) {
+      alert('Quantity must be a positive number.');
+      return;
+    }
+
+    setMaterialSubmitting(true);
+    try {
+      const response = await fetch('/api/project-materials', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          project_id: project.id,
+          material_id: materialForm.materialId,
+          quantity: quantityValue,
+          unit: materialForm.unit.trim(),
+          notes: materialForm.notes.trim() || undefined,
+          source_type: 'manual'
+        })
+      });
+
+      const result = await response.json();
+      if (!response.ok || !result.success) {
+        throw new Error(result.error || 'Failed to add material');
+      }
+
+      setMaterialForm({
+        materialId: '',
+        materialSearch: '',
+        quantity: '',
+        unit: 'bags',
+        notes: ''
+      });
+      setShowAddMaterial(false);
+      await fetchProjectMaterials(project.id);
+    } catch (error) {
+      console.error('Failed to add manual material:', error);
+      alert(error instanceof Error ? error.message : 'Failed to add material');
+    } finally {
+      setMaterialSubmitting(false);
     }
   };
 
@@ -1050,6 +1136,12 @@ function IndividualProjectContent(): React.ReactElement {
               <div className="flex items-center justify-between mb-6">
                 <h3 className="text-lg font-semibold text-primary">Project Materials</h3>
                 <div className="flex space-x-3">
+                  <Button
+                    onClick={() => setShowAddMaterial((prev) => !prev)}
+                    className="bg-neutral-medium hover:bg-neutral-medium/80 text-primary px-4 py-2 rounded-lg text-sm"
+                  >
+                    {showAddMaterial ? 'Close' : '+ Add Material'}
+                  </Button>
                   {selectedMaterials.size > 0 && (
                     <>
                       <Button
@@ -1068,6 +1160,142 @@ function IndividualProjectContent(): React.ReactElement {
                   )}
                 </div>
               </div>
+
+              {showAddMaterial && (
+                <form
+                  onSubmit={handleManualMaterialSubmit}
+                  className="mb-6 bg-neutral-darker border border-neutral-medium rounded-lg p-4"
+                >
+                  <div className="grid md:grid-cols-5 gap-4">
+                    <div className="md:col-span-3 relative">
+                      <label className="block text-xs text-secondary mb-1">Material *</label>
+                      <input
+                        type="text"
+                        value={materialForm.materialSearch}
+                        onChange={(e) => {
+                          const value = e.target.value;
+                          const exactMatch = materialsCatalog.find(
+                            (material) => material.name.toLowerCase() === value.trim().toLowerCase()
+                          );
+                          setMaterialForm((prev) => ({
+                            ...prev,
+                            materialSearch: value,
+                            materialId: exactMatch?.id || '',
+                            unit: exactMatch?.unit || prev.unit
+                          }));
+                        }}
+                        className="w-full px-3 py-2 rounded-lg border border-neutral-medium bg-neutral-dark text-primary focus:outline-none focus:ring-2 focus:ring-accent-amber"
+                        placeholder={materialsCatalogLoading ? 'Loading materials...' : 'Search materials'}
+                        required
+                      />
+                      {materialForm.materialSearch &&
+                        !materialsCatalog.some(
+                          (material) =>
+                            material.name.toLowerCase() === materialForm.materialSearch.trim().toLowerCase()
+                        ) && (
+                        <div className="absolute z-20 mt-2 w-full max-h-40 overflow-y-auto rounded-lg border border-neutral-medium bg-neutral-darker shadow-lg">
+                          {materialsCatalog
+                            .filter((material) => {
+                              const query = materialForm.materialSearch.trim().toLowerCase();
+                              if (!query) return false;
+                              return (
+                                material.name.toLowerCase().includes(query) ||
+                                (material.category || '').toLowerCase().includes(query)
+                              );
+                            })
+                            .slice(0, 8)
+                            .map((material) => (
+                              <button
+                                type="button"
+                                key={material.id}
+                                onClick={() =>
+                                  setMaterialForm((prev) => ({
+                                    ...prev,
+                                    materialId: material.id,
+                                    materialSearch: material.name,
+                                    unit: material.unit || prev.unit
+                                  }))
+                                }
+                                className="w-full text-left px-3 py-2 hover:bg-neutral-medium/40 text-primary text-sm border-b border-neutral-medium last:border-b-0"
+                              >
+                                <div className="font-medium">{material.name}</div>
+                                <div className="text-xs text-secondary">
+                                  {(material.category || 'Uncategorized')} • {material.unit || 'unit'}
+                                </div>
+                              </button>
+                            ))}
+                          {materialsCatalog.filter((material) => {
+                            const query = materialForm.materialSearch.trim().toLowerCase();
+                            if (!query) return false;
+                            return (
+                              material.name.toLowerCase().includes(query) ||
+                              (material.category || '').toLowerCase().includes(query)
+                            );
+                          }).length === 0 && (
+                            <div className="px-3 py-2 text-xs text-secondary">
+                              No materials found for "{materialForm.materialSearch}"
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                    <div>
+                      <label className="block text-xs text-secondary mb-1">Category</label>
+                      <input
+                        type="text"
+                        value={
+                          materialsCatalog.find((material) => material.id === materialForm.materialId)?.category || ''
+                        }
+                        readOnly
+                        className="w-full px-3 py-2 rounded-lg border border-neutral-medium bg-neutral-darker text-secondary"
+                        placeholder="Auto-filled"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs text-secondary mb-1">Quantity *</label>
+                      <input
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        value={materialForm.quantity}
+                        onChange={(e) => setMaterialForm((prev) => ({ ...prev, quantity: e.target.value }))}
+                        className="w-full px-3 py-2 rounded-lg border border-neutral-medium bg-neutral-dark text-primary focus:outline-none focus:ring-2 focus:ring-accent-amber"
+                        required
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs text-secondary mb-1">Unit *</label>
+                      <input
+                        type="text"
+                        value={materialForm.unit}
+                        onChange={(e) => setMaterialForm((prev) => ({ ...prev, unit: e.target.value }))}
+                        className="w-full px-3 py-2 rounded-lg border border-neutral-medium bg-neutral-dark text-primary focus:outline-none focus:ring-2 focus:ring-accent-amber"
+                        placeholder="bags / kg / m"
+                        required
+                      />
+                    </div>
+                    <div className="md:col-span-5">
+                      <label className="block text-xs text-secondary mb-1">Notes</label>
+                      <input
+                        type="text"
+                        value={materialForm.notes}
+                        onChange={(e) => setMaterialForm((prev) => ({ ...prev, notes: e.target.value }))}
+                        className="w-full px-3 py-2 rounded-lg border border-neutral-medium bg-neutral-dark text-primary focus:outline-none focus:ring-2 focus:ring-accent-amber"
+                        placeholder="Optional notes or context"
+                      />
+                    </div>
+                  </div>
+                  <div className="mt-4 flex justify-end">
+                    <Button
+                      type="submit"
+                      className="bg-accent-amber hover:bg-accent-amber/90 text-neutral-dark px-4 py-2 rounded-lg text-sm"
+                      disabled={materialSubmitting}
+                    >
+                      {materialSubmitting ? 'Adding...' : 'Add Material'}
+                    </Button>
+                  </div>
+                </form>
+              )}
 
               {projectMaterials.length === 0 ? (
                 <div className="text-center py-12 bg-neutral-darker rounded-lg border border-neutral-medium">

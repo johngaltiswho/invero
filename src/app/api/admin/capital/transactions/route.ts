@@ -336,6 +336,7 @@ export async function POST(request: NextRequest) {
       const platformFee = Math.min(totalDeployed * platformFeeRate, platformFeeCap);
       const lateFees = totalDeployed * lateFeeRate * daysOutstanding;
       const totalDue = totalDeployed + platformFee + lateFees;
+      const investorDue = totalDeployed + lateFees;
 
       const { data: existingReturns, error: existingReturnsError } = await supabase
         .from('capital_transactions')
@@ -379,7 +380,7 @@ export async function POST(request: NextRequest) {
       }
 
       const newReturnTotal = existingReturnTotal + numAmount;
-      if (totalDue > 0 && newReturnTotal >= totalDue && purchaseRequest.status !== 'completed') {
+      if (investorDue > 0 && newReturnTotal >= investorDue && purchaseRequest.status !== 'completed') {
         const { error: closeError } = await supabase
           .from('purchase_requests')
           .update({ status: 'completed', updated_at: new Date().toISOString() })

@@ -26,6 +26,7 @@ type ProjectRow = {
   id: string;
   project_name: string | null;
   location: string | null;
+  project_id_external?: string | null;
 };
 
 type ContractorRow = {
@@ -108,14 +109,20 @@ export async function GET() {
       }
     });
 
-    const projectIds = Array.from(new Set(requests.map((request) => request.project_id).filter(Boolean))) as string[];
+    const projectIds = Array.from(
+      new Set(
+        requests
+          .map((request) => (request.project_id ? request.project_id.trim() : null))
+          .filter(Boolean)
+      )
+    ) as string[];
     const contractorIds = Array.from(new Set(requests.map((request) => request.contractor_id).filter(Boolean))) as string[];
 
     const projectMap = new Map<string, ProjectRow>();
     if (projectIds.length > 0) {
       const { data: projects, error: projectsError } = await supabaseAdmin
         .from('projects')
-        .select('id, project_name, location')
+        .select('id, project_name, location, project_id_external')
         .in('id', projectIds);
 
       if (projectsError) {
@@ -123,7 +130,55 @@ export async function GET() {
       } else {
         (projects as ProjectRow[] | null)?.forEach((project) => {
           projectMap.set(project.id, project);
+          if (project.project_id_external) {
+            projectMap.set(project.project_id_external.trim(), project);
+          }
         });
+      }
+    }
+
+    if (projectIds.length > 0) {
+      const missingProjectIds = projectIds.filter((id) => !projectMap.has(id));
+      if (missingProjectIds.length > 0) {
+        const { data: projectsByExternal, error: projectsByExternalError } = await supabaseAdmin
+          .from('projects')
+          .select('id, project_name, location, project_id_external')
+          .in('project_id_external', missingProjectIds);
+
+        if (projectsByExternalError) {
+          console.error('Failed to load projects by external ID:', projectsByExternalError);
+        } else {
+          (projectsByExternal as ProjectRow[] | null)?.forEach((project) => {
+            projectMap.set(project.id, project);
+            if (project.project_id_external) {
+              projectMap.set(project.project_id_external, project);
+            }
+          });
+        }
+      }
+    }
+
+    if (projectIds.length > 0) {
+      const stillMissing = projectIds.filter((id) => !projectMap.has(id));
+      if (stillMissing.length > 0) {
+        const { data: projectsByName, error: projectsByNameError } = await supabaseAdmin
+          .from('projects')
+          .select('id, project_name, location, project_id_external')
+          .in('project_name', stillMissing);
+
+        if (projectsByNameError) {
+          console.error('Failed to load projects by name:', projectsByNameError);
+        } else {
+          (projectsByName as ProjectRow[] | null)?.forEach((project) => {
+            projectMap.set(project.id, project);
+            if (project.project_id_external) {
+              projectMap.set(project.project_id_external.trim(), project);
+            }
+            if (project.project_name) {
+              projectMap.set(project.project_name.trim(), project);
+            }
+          });
+        }
       }
     }
 
@@ -160,6 +215,7 @@ export async function GET() {
 
     requests.forEach((request) => {
       if (!request.project_id) return;
+      const normalizedProjectId = request.project_id.trim();
       const requestTotal = requestTotals.get(request.id) || 0;
       const funded = fundedTotals.get(request.id) || 0;
       const returns = returnTotals.get(request.id) || 0;
@@ -168,12 +224,12 @@ export async function GET() {
       totalFunded += funded;
       totalReturns += returns;
 
-      const existing = projectTotals.get(request.project_id);
-      const project = projectMap.get(request.project_id);
+      const existing = projectTotals.get(normalizedProjectId);
+      const project = projectMap.get(normalizedProjectId);
       const contractor = request.contractor_id ? contractorMap.get(request.contractor_id) : null;
       const base = existing || {
-        project_id: request.project_id,
-        project_name: project?.project_name ?? null,
+        project_id: normalizedProjectId,
+        project_name: project?.project_name ?? project?.project_id_external ?? normalizedProjectId,
         contractor_name: contractor?.company_name ?? null,
         total_requested: 0,
         total_funded: 0,
@@ -187,7 +243,7 @@ export async function GET() {
       base.total_returns += returns;
       base.total_outstanding = Math.max(base.total_funded - base.total_returns, 0);
       base.request_count += 1;
-      projectTotals.set(request.project_id, base);
+      projectTotals.set(normalizedProjectId, base);
     });
 
     const totalOutstanding = Math.max(totalFunded - totalReturns, 0);

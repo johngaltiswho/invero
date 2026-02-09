@@ -26,7 +26,7 @@ function ContractorProjectsContent(): React.ReactElement {
   
   // Determine main tab from URL
   const mainTab = pathname.includes('/tendering') ? 'boq-quoting' : 
-                  pathname.includes('/active') ? 'awarded' : 'boq-quoting';
+                  pathname.includes('/active') ? 'awarded' : 'awarded';
   const [selectedProject, setSelectedProject] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'overview' | 'boq' | 'schedule' | 'materials' | 'requested-materials' | 'files'>('overview');
   const [refreshKey, setRefreshKey] = useState(0);
