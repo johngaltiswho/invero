@@ -60,9 +60,18 @@ interface FundingPurchaseRequest {
   funded_amount?: number;
   remaining_amount?: number;
   funding_progress?: number | null;
+  platform_fee?: number;
+  late_fees?: number;
+  total_due?: number;
+  remaining_due?: number;
+  days_outstanding?: number;
+  returned_amount?: number;
   contractors?: {
     company_name: string;
     contact_person?: string;
+    platform_fee_rate?: number;
+    platform_fee_cap?: number;
+    interest_rate_daily?: number;
   };
   project?: {
     name?: string | null;
@@ -171,6 +180,22 @@ const CapitalTransactions: React.FC = () => {
     return Math.max(estimatedTotal - fundedAmount, 0);
   }, []);
 
+  const getRemainingDue = useCallback((request?: FundingPurchaseRequest | null) => {
+    if (!request) return null;
+    if (typeof request.remaining_due === 'number') {
+      return request.remaining_due;
+    }
+    const fundedAmount = Number(request.funded_amount ?? 0);
+    if (!fundedAmount) {
+      return null;
+    }
+    const platformFee = Number(request.platform_fee ?? 0);
+    const lateFees = Number(request.late_fees ?? 0);
+    const totalDue = fundedAmount + platformFee + lateFees;
+    const returned = Number(request.returned_amount ?? 0);
+    return Math.max(totalDue - returned, 0);
+  }, []);
+
   const fetchPurchaseRequests = useCallback(async () => {
     try {
       setPurchaseRequestsLoading(true);
@@ -201,9 +226,13 @@ const CapitalTransactions: React.FC = () => {
       });
     }
     if (formData.transaction_type === 'return') {
-      return purchaseRequests.filter((request) =>
-        statusesForReturn.includes(request.status)
-      );
+      return purchaseRequests.filter((request) => {
+        if (!statusesForReturn.includes(request.status)) {
+          return false;
+        }
+        const remainingDue = getRemainingDue(request);
+        return remainingDue === null || remainingDue > 0;
+      });
     }
     return [];
   };
@@ -223,7 +252,7 @@ const CapitalTransactions: React.FC = () => {
 
     const remainingAmount = getRemainingAmount(selectedRequest);
     const hasRemaining = typeof remainingAmount === 'number' && remainingAmount > 0;
-    const shouldAutoFillAmount = formData.transaction_type === 'deployment';
+    const shouldAutoFillAmount = formData.transaction_type === 'deployment' || formData.transaction_type === 'return';
 
     setFormData(prev => ({
       ...prev,
@@ -235,6 +264,10 @@ const CapitalTransactions: React.FC = () => {
       amount: (() => {
         if (!shouldAutoFillAmount) {
           return prev.amount || '';
+        }
+        if (formData.transaction_type === 'return') {
+          const remainingDue = getRemainingDue(selectedRequest);
+          return remainingDue !== null ? remainingDue.toString() : prev.amount || '';
         }
         if (hasRemaining && remainingAmount !== null) {
           return remainingAmount.toString();
@@ -788,10 +821,14 @@ const CapitalTransactions: React.FC = () => {
                     const contractorName = request.contractors?.company_name || 'Contractor';
                     const projectName = request.project?.name || 'Project';
                     const remainingAmount = getRemainingAmount(request);
+                    const remainingDue = getRemainingDue(request);
                     const requestedAmount = Number(request.estimated_total || 0);
                     const fundedAmount = Number(request.funded_amount || 0);
                     const formattedRemaining = remainingAmount !== null
                       ? formatCurrency(remainingAmount)
+                      : 'N/A';
+                    const formattedRemainingDue = remainingDue !== null
+                      ? formatCurrency(remainingDue)
                       : 'N/A';
 
                     return (
@@ -799,7 +836,7 @@ const CapitalTransactions: React.FC = () => {
                         key={request.id}
                         value={request.id}
                       >
-                        {projectName} • {contractorName} • Requested {formatCurrency(requestedAmount)} • Funded {formatCurrency(fundedAmount)} • Remaining {formattedRemaining}
+                        {projectName} • {contractorName} • Requested {formatCurrency(requestedAmount)} • Funded {formatCurrency(fundedAmount)} • Remaining {formattedRemaining} • Due {formattedRemainingDue}
                       </option>
                     );
                   })}
@@ -808,8 +845,12 @@ const CapitalTransactions: React.FC = () => {
                     const request = purchaseRequests.find(pr => pr.id === formData.purchase_request_id);
                     if (!request) return null;
                     const remainingAmount = getRemainingAmount(request);
+                    const remainingDue = getRemainingDue(request);
                     const fundedAmount = Number(request.funded_amount || 0);
                     const requestedAmount = Number(request.estimated_total || 0);
+                    const platformFee = Number(request.platform_fee || 0);
+                    const lateFees = Number(request.late_fees || 0);
+                    const totalDue = Number(request.total_due || 0);
                     const contractorName = request.contractors?.company_name || 'N/A';
                     const projectName = request.project?.name || request.project_id;
                     const progressPercentage = remainingAmount === null || requestedAmount === 0
@@ -826,6 +867,14 @@ const CapitalTransactions: React.FC = () => {
                         <div>Requested: {formatCurrency(requestedAmount)}</div>
                         <div>Funded: {formatCurrency(fundedAmount)}</div>
                         <div>Remaining: {remainingAmount !== null ? formatCurrency(remainingAmount) : 'Awaiting vendor quotes'}</div>
+                        {formData.transaction_type === 'return' && (
+                          <>
+                            <div>Platform Fees: {formatCurrency(platformFee)}</div>
+                            <div>Late Fees: {formatCurrency(lateFees)}</div>
+                            <div>Total Due: {formatCurrency(totalDue)}</div>
+                            <div>Remaining Due: {remainingDue !== null ? formatCurrency(remainingDue) : 'N/A'}</div>
+                          </>
+                        )}
                         {progressPercentage !== null && (
                           <div className="mt-2">
                             <div className="w-full bg-neutral-medium rounded-full h-2">

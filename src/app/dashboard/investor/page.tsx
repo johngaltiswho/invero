@@ -252,11 +252,11 @@ export default function InvestorDashboard(): React.ReactElement {
           </div>
           
           <div className="bg-neutral-dark p-6 rounded-lg border border-neutral-medium">
-            <div className="text-accent-amber text-sm font-mono mb-2">REALIZED ROI (IRR)</div>
+            <div className="text-accent-amber text-sm font-mono mb-2">REALIZED XIRR</div>
             <div className="text-2xl font-bold text-accent-amber mb-1">
               {Number.isFinite(portfolioMetrics.roi) ? portfolioMetrics.roi.toFixed(1) : '0.0'}%
             </div>
-            <div className="text-xs text-secondary">Calculated from capital returns</div>
+            <div className="text-xs text-secondary">Time-weighted from cashflows</div>
           </div>
           
           <div className="bg-neutral-dark p-6 rounded-lg border border-neutral-medium">
@@ -270,7 +270,7 @@ export default function InvestorDashboard(): React.ReactElement {
           </div>
           
           <div className="bg-neutral-dark p-6 rounded-lg border border-neutral-medium">
-            <div className="text-accent-amber text-sm font-mono mb-2">NET IRR (AFTER FEES)</div>
+            <div className="text-accent-amber text-sm font-mono mb-2">NET XIRR (AFTER FEES)</div>
             <div className="text-2xl font-bold text-accent-amber mb-1">
               {Number.isFinite(portfolioMetrics.netRoi) ? portfolioMetrics.netRoi.toFixed(1) : '0.0'}%
             </div>

@@ -105,7 +105,10 @@ async function fetchPurchaseRequests(options: FetchOptions = {}) {
         contractors:contractor_id (
           company_name,
           contact_person,
-          email
+          email,
+          platform_fee_rate,
+          platform_fee_cap,
+          interest_rate_daily
         )
       `,
       { count: 'exact' }
@@ -228,36 +231,69 @@ async function fetchPurchaseRequests(options: FetchOptions = {}) {
   });
 
   const fundingTotals = new Map<string, number>();
+  const returnTotals = new Map<string, number>();
+  const firstDeploymentAt = new Map<string, string>();
   if (requestIds.length > 0) {
     const { data: fundingRows, error: fundingError } = await supabaseAdmin
       .from('capital_transactions')
-      .select('purchase_request_id, amount')
+      .select('purchase_request_id, amount, transaction_type, created_at')
       .in('purchase_request_id', requestIds)
-      .eq('transaction_type', 'deployment')
+      .in('transaction_type', ['deployment', 'return'])
       .eq('status', 'completed');
 
     if (fundingError) {
       console.error('Failed to load funding totals for purchase requests:', fundingError);
     } else {
-      fundingRows?.forEach((row: { purchase_request_id: string; amount: number }) => {
+      fundingRows?.forEach((row: { purchase_request_id: string; amount: number; transaction_type: string; created_at?: string | null }) => {
         if (!row.purchase_request_id) return;
-        const current = fundingTotals.get(row.purchase_request_id) || 0;
-        fundingTotals.set(row.purchase_request_id, current + (Number(row.amount) || 0));
+        const amount = Number(row.amount) || 0;
+        if (row.transaction_type === 'deployment') {
+          const current = fundingTotals.get(row.purchase_request_id) || 0;
+          fundingTotals.set(row.purchase_request_id, current + amount);
+          if (row.created_at) {
+            const existing = firstDeploymentAt.get(row.purchase_request_id);
+            if (!existing || new Date(row.created_at).getTime() < new Date(existing).getTime()) {
+              firstDeploymentAt.set(row.purchase_request_id, row.created_at);
+            }
+          }
+        }
+        if (row.transaction_type === 'return') {
+          const current = returnTotals.get(row.purchase_request_id) || 0;
+          returnTotals.set(row.purchase_request_id, current + amount);
+        }
       });
     }
   }
 
   const enrichedRequests = normalizedRequests.map((request: any) => {
     const fundedAmount = fundingTotals.get(request.id) || 0;
+    const returnedAmount = returnTotals.get(request.id) || 0;
     const estimatedTotal = request.estimated_total || 0;
     const remainingAmount = Math.max(estimatedTotal - fundedAmount, 0);
     const fundingProgress = estimatedTotal > 0 ? Math.min(fundedAmount / estimatedTotal, 1) : null;
+    const platformRate = request.contractors?.platform_fee_rate ?? 0.0025;
+    const platformCap = request.contractors?.platform_fee_cap ?? 25000;
+    const lateFeeRate = request.contractors?.interest_rate_daily ?? 0.001;
+    const deployedAt = firstDeploymentAt.get(request.id);
+    const daysOutstanding = deployedAt
+      ? Math.max(0, Math.floor((Date.now() - new Date(deployedAt).getTime()) / (1000 * 60 * 60 * 24)))
+      : 0;
+    const platformFee = Math.min(fundedAmount * platformRate, platformCap);
+    const lateFees = fundedAmount * lateFeeRate * daysOutstanding;
+    const totalDue = fundedAmount + platformFee + lateFees;
+    const remainingDue = Math.max(totalDue - returnedAmount, 0);
 
     return {
       ...request,
       funded_amount: fundedAmount,
+      returned_amount: returnedAmount,
       remaining_amount: remainingAmount,
-      funding_progress: fundingProgress
+      funding_progress: fundingProgress,
+      platform_fee: platformFee,
+      late_fees: lateFees,
+      total_due: totalDue,
+      remaining_due: remainingDue,
+      days_outstanding: daysOutstanding
     };
   });
 

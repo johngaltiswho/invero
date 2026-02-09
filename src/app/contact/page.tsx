@@ -287,12 +287,46 @@ export default function ContactUs() {
                   <h3 className="text-lg font-medium text-primary">Office</h3>
                   <p className="text-secondary">Visit us at our headquarters</p>
                   <address className="text-secondary not-italic">
-                    Invero<br />
-                    403, 22nd Cross, 2nd Sector<br />
-                    HSR Layout, Bangalore, 560102
+                    Finverno Private Limited<br />
+                    403, 3rd Floor, 22nd Cross<br />
+                    2nd Sector, HSR Layout<br />
+                    Bengaluru – 560102, Karnataka
                   </address>
                 </div>
               </div>
+            </div>
+
+            <div className="bg-neutral-dark rounded-lg p-6 border border-neutral-medium">
+              <h3 className="text-lg font-semibold text-primary mb-4">Registered Company Details</h3>
+              <dl className="space-y-3 text-sm">
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between">
+                  <dt className="text-secondary">Company Name</dt>
+                  <dd className="text-primary font-medium">Finverno Private Limited</dd>
+                </div>
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between">
+                  <dt className="text-secondary">Incorporation Date</dt>
+                  <dd className="text-primary font-medium">17 December 2025</dd>
+                </div>
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between">
+                  <dt className="text-secondary">CIN</dt>
+                  <dd className="text-primary font-medium">U70200KA2025PTC212659</dd>
+                </div>
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between">
+                  <dt className="text-secondary">PAN</dt>
+                  <dd className="text-primary font-medium">AAGCF7643D</dd>
+                </div>
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between">
+                  <dt className="text-secondary">GSTIN</dt>
+                  <dd className="text-primary font-medium">29AAGCF7643D1ZI</dd>
+                </div>
+                <div>
+                  <dt className="text-secondary mb-1">Registered Office</dt>
+                  <dd className="text-primary">
+                    403, 3rd Floor, 22nd Cross, 2nd Sector, HSR Layout,<br className="hidden sm:block" />
+                    Bengaluru – 560102, Karnataka, India
+                  </dd>
+                </div>
+              </dl>
             </div>
 
             {/* Support Hours */}

@@ -389,9 +389,9 @@ export default function InvestmentOpportunities(): React.ReactElement {
               </select>
             </div>
             <div>
-              <label className="block text-sm font-medium text-primary mb-2">IRR Range</label>
+              <label className="block text-sm font-medium text-primary mb-2">XIRR Range</label>
               <select className="w-full px-3 py-2 bg-neutral-medium border border-neutral-light rounded text-primary text-sm">
-                <option value="all">All IRR Ranges</option>
+                <option value="all">All XIRR Ranges</option>
                 <option value="12-14">12-14%</option>
                 <option value="14-16">14-16%</option>
                 <option value="16+">16%+</option>
@@ -427,7 +427,7 @@ export default function InvestmentOpportunities(): React.ReactElement {
             </div>
           </div>
           <div className="bg-neutral-dark p-4 rounded-lg border border-neutral-medium">
-            <div className="text-accent-amber text-sm font-mono mb-1">AVG. IRR</div>
+            <div className="text-accent-amber text-sm font-mono mb-1">AVG. XIRR</div>
             <div className="text-2xl font-bold text-accent-amber">
               {avgIrrValue !== null ? `${avgIrrValue.toFixed(1)}%` : '--'}
             </div>
@@ -490,7 +490,7 @@ export default function InvestmentOpportunities(): React.ReactElement {
                     <div className="text-lg font-bold text-primary">{opportunity.fundingRequired}</div>
                   </div>
                   <div>
-                    <div className="text-xs text-secondary mb-1">Expected IRR</div>
+                    <div className="text-xs text-secondary mb-1">Expected XIRR</div>
                     <div className="text-lg font-bold text-accent-amber">{opportunity.expectedIRR}</div>
                   </div>
                   <div>

@@ -116,7 +116,7 @@ export async function GET() {
     console.log('🔄 Fetching investor capital returns...');
     const { data: returnTransactions, error: returnError } = await supabase
       .from('capital_transactions')
-      .select('amount, status')
+      .select('amount, status, created_at, transaction_type')
       .eq('investor_id', investor.id)
       .eq('transaction_type', 'return');
 
@@ -163,8 +163,72 @@ export async function GET() {
     const performanceFee = performanceFeeBase * 0.2;
     const netCapitalReturns = Math.max(totalCapitalReturns - managementFee - performanceFee, 0);
     const outstandingCapital = Math.max(totalInvested - totalCapitalReturns, 0);
-    const roi = totalInvested > 0 ? ((totalCapitalReturns - totalInvested) / totalInvested) * 100 : 0;
-    const netRoi = totalInvested > 0 ? ((netCapitalReturns - totalInvested) / totalInvested) * 100 : 0;
+
+    type CashflowPoint = { date: Date; amount: number };
+
+    const buildCashflows = (transactions: any[]) => {
+      return (transactions || [])
+        .filter((tx) => {
+          const status = typeof tx.status === 'string' ? tx.status.toLowerCase() : '';
+          return status !== 'failed' && status !== 'rejected';
+        })
+        .map((tx) => {
+          const amount = Number(tx.amount) || 0;
+          const date = tx.created_at ? new Date(tx.created_at) : new Date();
+          if (tx.transaction_type === 'deployment') {
+            return { date, amount: -Math.abs(amount) };
+          }
+          if (tx.transaction_type === 'return') {
+            return { date, amount: Math.abs(amount) };
+          }
+          return null;
+        })
+        .filter(Boolean) as CashflowPoint[];
+    };
+
+    const xirr = (cashflows: CashflowPoint[]) => {
+      if (!cashflows || cashflows.length < 2) return 0;
+      const sorted = [...cashflows].sort((a, b) => a.date.getTime() - b.date.getTime());
+      const t0 = sorted[0].date.getTime();
+      const hasPositive = sorted.some((cf) => cf.amount > 0);
+      const hasNegative = sorted.some((cf) => cf.amount < 0);
+      if (!hasPositive || !hasNegative) return 0;
+
+      let rate = 0.1;
+      for (let i = 0; i < 100; i += 1) {
+        let npv = 0;
+        let dNpv = 0;
+        for (const cf of sorted) {
+          const years = (cf.date.getTime() - t0) / (1000 * 60 * 60 * 24 * 365);
+          const denom = Math.pow(1 + rate, years);
+          npv += cf.amount / denom;
+          dNpv += (-years * cf.amount) / (denom * (1 + rate));
+        }
+        if (Math.abs(npv) < 1e-6) break;
+        if (Math.abs(dNpv) < 1e-10) break;
+        rate -= npv / dNpv;
+        if (rate <= -0.9999) {
+          rate = -0.9999;
+        }
+      }
+      return Number.isFinite(rate) ? rate * 100 : 0;
+    };
+
+    const baseCashflows = buildCashflows([...(capitalTransactions || []), ...(returnTransactions || [])]);
+    const roi = xirr(baseCashflows);
+
+    const latestCashflowDate = baseCashflows.length
+      ? new Date(Math.max(...baseCashflows.map((cf) => cf.date.getTime())))
+      : new Date();
+    const netCashflows = [...baseCashflows];
+    const totalFees = managementFee + performanceFee;
+    if (totalFees > 0) {
+      netCashflows.push({
+        date: latestCashflowDate,
+        amount: -Math.abs(totalFees)
+      });
+    }
+    const netRoi = xirr(netCashflows);
 
     console.log(`✅ Fetched ${allProjects?.length || 0} projects, ${allContractors?.length || 0} contractors, ${investments.length} capital deployments`);
 

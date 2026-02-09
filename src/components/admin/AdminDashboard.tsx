@@ -290,6 +290,40 @@ const AdminDashboard: React.FC = () => {
             </Link>
           </div>
         </div>
+
+        {/* Finance Dashboard */}
+        <div className="bg-neutral-dark rounded-lg border border-neutral-medium">
+          <div className="p-6 border-b border-neutral-medium">
+            <div className="flex items-center mb-4">
+              <div className="w-12 h-12 bg-accent-blue/10 rounded-lg flex items-center justify-center mr-4">
+                <span className="text-2xl">📉</span>
+              </div>
+              <div>
+                <h3 className="text-xl font-semibold text-primary">Finance Dashboard</h3>
+                <p className="text-sm text-secondary">Track funding, repayments, and exposure</p>
+              </div>
+            </div>
+          </div>
+
+          <div className="p-6">
+            <div className="space-y-3 mb-6 text-sm text-secondary">
+              <div className="flex justify-between">
+                <span>Total funding required:</span>
+                <span className="text-primary font-medium">See finance view</span>
+              </div>
+              <div className="flex justify-between">
+                <span>Outstanding exposure:</span>
+                <span className="text-primary font-medium">See finance view</span>
+              </div>
+            </div>
+
+            <Link href="/admin/finance">
+              <Button variant="primary" className="w-full">
+                Open Finance Dashboard
+              </Button>
+            </Link>
+          </div>
+        </div>
       </div>
 
       {/* Recent Activity */}
@@ -334,6 +368,15 @@ const AdminDashboard: React.FC = () => {
                   <div className="text-lg mb-2">✅</div>
                   <div className="text-sm font-medium text-primary group-hover:text-accent-orange">
                     Review Documents
+                  </div>
+                </div>
+              </Link>
+
+              <Link href="/admin/finance" className="group">
+                <div className="bg-neutral-medium/20 hover:bg-neutral-medium/40 p-4 rounded-lg transition-colors">
+                  <div className="text-lg mb-2">📈</div>
+                  <div className="text-sm font-medium text-primary group-hover:text-accent-orange">
+                    Finance Overview
                   </div>
                 </div>
               </Link>

@@ -201,7 +201,7 @@ export async function POST(request: NextRequest) {
 
       const { data: deployments, error: deploymentsError } = await supabase
         .from('capital_transactions')
-        .select('investor_id, amount, project_id, contractor_id')
+        .select('investor_id, amount, project_id, contractor_id, created_at')
         .eq('transaction_type', 'deployment')
         .eq('status', 'completed')
         .eq('purchase_request_id', normalizedPurchaseRequestId);
@@ -296,6 +296,63 @@ export async function POST(request: NextRequest) {
         );
       }
 
+      const { data: purchaseRequest, error: purchaseRequestError } = await supabase
+        .from('purchase_requests')
+        .select('id, status, contractor_id')
+        .eq('id', normalizedPurchaseRequestId)
+        .single();
+
+      if (purchaseRequestError || !purchaseRequest) {
+        console.error('Failed to load purchase request for return:', purchaseRequestError);
+        return NextResponse.json(
+          { error: 'Purchase request not found for return allocation' },
+          { status: 404 }
+        );
+      }
+
+      const { data: contractorTerms, error: contractorTermsError } = await supabase
+        .from('contractors')
+        .select('platform_fee_rate, platform_fee_cap, interest_rate_daily')
+        .eq('id', purchaseRequest.contractor_id)
+        .single();
+
+      if (contractorTermsError) {
+        console.error('Failed to load contractor terms for return allocation:', contractorTermsError);
+      }
+
+      const platformFeeRate = contractorTerms?.platform_fee_rate ?? 0.0025;
+      const platformFeeCap = contractorTerms?.platform_fee_cap ?? 25000;
+      const lateFeeRate = contractorTerms?.interest_rate_daily ?? 0.001;
+
+      const firstDeploymentAt = deployments
+        ?.filter((deployment) => deployment.created_at)
+        .map((deployment) => new Date(deployment.created_at as string).getTime())
+        .sort((a, b) => a - b)[0];
+
+      const daysOutstanding = firstDeploymentAt
+        ? Math.max(0, Math.floor((Date.now() - firstDeploymentAt) / (1000 * 60 * 60 * 24)))
+        : 0;
+
+      const platformFee = Math.min(totalDeployed * platformFeeRate, platformFeeCap);
+      const lateFees = totalDeployed * lateFeeRate * daysOutstanding;
+      const totalDue = totalDeployed + platformFee + lateFees;
+
+      const { data: existingReturns, error: existingReturnsError } = await supabase
+        .from('capital_transactions')
+        .select('amount')
+        .eq('transaction_type', 'return')
+        .eq('status', 'completed')
+        .eq('purchase_request_id', normalizedPurchaseRequestId);
+
+      if (existingReturnsError) {
+        console.error('Failed to load existing returns for purchase request:', existingReturnsError);
+      }
+
+      const existingReturnTotal = (existingReturns || []).reduce(
+        (sum, row) => sum + (Number(row.amount) || 0),
+        0
+      );
+
       const { data: insertedReturns, error: insertReturnsError } = await supabase
         .from('capital_transactions')
         .insert(transactionsToInsert)
@@ -319,6 +376,18 @@ export async function POST(request: NextRequest) {
           { error: 'Failed to record capital returns' },
           { status: 500 }
         );
+      }
+
+      const newReturnTotal = existingReturnTotal + numAmount;
+      if (totalDue > 0 && newReturnTotal >= totalDue && purchaseRequest.status !== 'completed') {
+        const { error: closeError } = await supabase
+          .from('purchase_requests')
+          .update({ status: 'completed', updated_at: new Date().toISOString() })
+          .eq('id', normalizedPurchaseRequestId);
+
+        if (closeError) {
+          console.error('Failed to close purchase request after return:', closeError);
+        }
       }
 
       return NextResponse.json({

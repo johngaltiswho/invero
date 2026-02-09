@@ -150,6 +150,12 @@ export default function AdminVerificationDashboard(): React.ReactElement {
   const [selectedPurchaseRequest, setSelectedPurchaseRequest] = useState<PurchaseRequest | null>(null);
   const [loading, setLoading] = useState(true);
   const [selectedContractor, setSelectedContractor] = useState<ContractorWithDocuments | null>(null);
+  const [termsForm, setTermsForm] = useState({
+    platformFeeRate: '0.25',
+    platformFeeCap: '25000',
+    interestRateDaily: '0.10'
+  });
+  const [termsSaving, setTermsSaving] = useState(false);
   const [selectedMaterialRequest, setSelectedMaterialRequest] = useState<MaterialRequest | null>(null);
   const [verifyingDoc, setVerifyingDoc] = useState<string | null>(null);
   const [reviewingMaterial, setReviewingMaterial] = useState<string | null>(null);
@@ -176,6 +182,19 @@ export default function AdminVerificationDashboard(): React.ReactElement {
     }
   }, [activeTab]);
 
+  useEffect(() => {
+    if (!selectedContractor) return;
+    const platformRate = selectedContractor.platform_fee_rate ?? 0.0025;
+    const interestDaily = selectedContractor.interest_rate_daily ?? 0.001;
+    const platformCap = selectedContractor.platform_fee_cap ?? 25000;
+
+    setTermsForm({
+      platformFeeRate: (platformRate * 100).toFixed(2),
+      platformFeeCap: String(Math.round(platformCap)),
+      interestRateDaily: (interestDaily * 100).toFixed(2)
+    });
+  }, [selectedContractor]);
+
   const loadContractors = async () => {
     try {
       // Load all contractors that need admin attention (not just documents_uploaded)
@@ -191,6 +210,63 @@ export default function AdminVerificationDashboard(): React.ReactElement {
       console.error('Error loading contractors:', error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleSaveTerms = async () => {
+    if (!selectedContractor) return;
+    const platformRatePercent = parseFloat(termsForm.platformFeeRate);
+    const interestDailyPercent = parseFloat(termsForm.interestRateDaily);
+    const platformCapValue = parseFloat(termsForm.platformFeeCap);
+
+    if (Number.isNaN(platformRatePercent) || Number.isNaN(interestDailyPercent) || Number.isNaN(platformCapValue)) {
+      alert('Please enter valid numbers for all finance terms.');
+      return;
+    }
+
+    setTermsSaving(true);
+    try {
+      const response = await fetch('/api/admin/contractors', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contractorId: selectedContractor.id,
+          action: 'update_finance_terms',
+          platform_fee_rate: platformRatePercent / 100,
+          platform_fee_cap: platformCapValue,
+          interest_rate_daily: interestDailyPercent / 100
+        })
+      });
+
+      const result = await response.json();
+      if (!response.ok || !result.success) {
+        throw new Error(result.error || 'Failed to update finance terms');
+      }
+
+      setSelectedContractor({
+        ...selectedContractor,
+        platform_fee_rate: platformRatePercent / 100,
+        platform_fee_cap: platformCapValue,
+        interest_rate_daily: interestDailyPercent / 100
+      });
+
+      setContractors((prev) =>
+        prev.map((contractor) =>
+          contractor.id === selectedContractor.id
+            ? {
+                ...contractor,
+                platform_fee_rate: platformRatePercent / 100,
+                platform_fee_cap: platformCapValue,
+                interest_rate_daily: interestDailyPercent / 100
+              }
+            : contractor
+        )
+      );
+    } catch (error) {
+      console.error('Failed to update finance terms:', error);
+      alert(error instanceof Error ? error.message : 'Failed to update finance terms');
+    } finally {
+      setTermsSaving(false);
     }
   };
 
@@ -716,6 +792,56 @@ export default function AdminVerificationDashboard(): React.ReactElement {
               </div>
 
               <div className="p-6">
+                <div className="bg-neutral-darker/60 border border-neutral-medium rounded-lg p-4 mb-6">
+                  <div className="flex items-center justify-between mb-4">
+                    <div>
+                      <h3 className="text-lg font-semibold text-primary">Finance Terms</h3>
+                      <p className="text-xs text-secondary">Set platform fee and daily late fees for this contractor</p>
+                    </div>
+                    <Button variant="primary" size="sm" onClick={handleSaveTerms} disabled={termsSaving}>
+                      {termsSaving ? 'Saving...' : 'Save Terms'}
+                    </Button>
+                  </div>
+                  <div className="grid md:grid-cols-3 gap-4 text-sm">
+                    <label className="block">
+                      <span className="text-secondary">Platform Fee (%)</span>
+                      <input
+                        type="number"
+                        step="0.01"
+                        value={termsForm.platformFeeRate}
+                        onChange={(event) =>
+                          setTermsForm((prev) => ({ ...prev, platformFeeRate: event.target.value }))
+                        }
+                        className="mt-2 w-full px-3 py-2 rounded-lg border border-neutral-medium bg-neutral-dark text-primary focus:outline-none focus:ring-2 focus:ring-accent-orange"
+                      />
+                    </label>
+                    <label className="block">
+                      <span className="text-secondary">Platform Fee Cap (INR)</span>
+                      <input
+                        type="number"
+                        step="1"
+                        value={termsForm.platformFeeCap}
+                        onChange={(event) =>
+                          setTermsForm((prev) => ({ ...prev, platformFeeCap: event.target.value }))
+                        }
+                        className="mt-2 w-full px-3 py-2 rounded-lg border border-neutral-medium bg-neutral-dark text-primary focus:outline-none focus:ring-2 focus:ring-accent-orange"
+                      />
+                    </label>
+                    <label className="block">
+                      <span className="text-secondary">Late Fees (Daily %)</span>
+                      <input
+                        type="number"
+                        step="0.01"
+                        value={termsForm.interestRateDaily}
+                        onChange={(event) =>
+                          setTermsForm((prev) => ({ ...prev, interestRateDaily: event.target.value }))
+                        }
+                        className="mt-2 w-full px-3 py-2 rounded-lg border border-neutral-medium bg-neutral-dark text-primary focus:outline-none focus:ring-2 focus:ring-accent-orange"
+                      />
+                    </label>
+                  </div>
+                </div>
+
                 <h3 className="text-lg font-semibold text-primary mb-4">KYC Documents</h3>
                 <div className="grid md:grid-cols-2 gap-4">
                   {Object.entries(selectedContractor.documents).map(([docType, docInfo]) => (

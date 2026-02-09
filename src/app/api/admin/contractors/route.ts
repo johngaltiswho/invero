@@ -105,7 +105,15 @@ export async function PUT(request: NextRequest) {
   try {
     // Check admin authentication
     await requireAdmin();
-    const { contractorId, action, documentType, rejectionReason } = await request.json();
+    const {
+      contractorId,
+      action,
+      documentType,
+      rejectionReason,
+      platform_fee_rate,
+      platform_fee_cap,
+      interest_rate_daily
+    } = await request.json();
 
     if (!contractorId || !action) {
       return NextResponse.json({
@@ -167,6 +175,41 @@ export async function PUT(request: NextRequest) {
         });
         result = { success: !!rejectResult };
         break;
+
+      case 'update_finance_terms': {
+        const rate = typeof platform_fee_rate === 'number' ? platform_fee_rate : null;
+        const cap = typeof platform_fee_cap === 'number' ? platform_fee_cap : null;
+        const interest = typeof interest_rate_daily === 'number' ? interest_rate_daily : null;
+
+        if (rate !== null && (rate < 0 || rate > 1)) {
+          return NextResponse.json({
+            success: false,
+            error: 'Platform fee rate must be between 0 and 1'
+          }, { status: 400 });
+        }
+
+        if (interest !== null && (interest < 0 || interest > 1)) {
+          return NextResponse.json({
+            success: false,
+            error: 'Daily interest rate must be between 0 and 1'
+          }, { status: 400 });
+        }
+
+        if (cap !== null && cap < 0) {
+          return NextResponse.json({
+            success: false,
+            error: 'Platform fee cap must be a positive number'
+          }, { status: 400 });
+        }
+
+        const updateResult = await ContractorService.updateContractor(contractorId, {
+          platform_fee_rate: rate,
+          platform_fee_cap: cap,
+          interest_rate_daily: interest
+        });
+        result = { success: !!updateResult };
+        break;
+      }
 
       default:
         return NextResponse.json({

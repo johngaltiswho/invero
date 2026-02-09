@@ -42,6 +42,13 @@ export function ContractorDashboardLayout({ children, activeTab }: ContractorDas
       description: 'Materials & requests'
     },
     {
+      id: 'finance',
+      name: 'Finance',
+      href: '/dashboard/contractor/finance',
+      icon: '💳',
+      description: 'Funding & repayments'
+    },
+    {
       id: 'network',
       name: 'Network',
       href: '/dashboard/contractor/network',

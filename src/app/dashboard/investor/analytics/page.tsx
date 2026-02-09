@@ -93,7 +93,7 @@ export default function PerformanceAnalytics(): React.ReactElement {
                 onChange={(e) => setSelectedMetric(e.target.value)}
                 className="w-full px-3 py-2 bg-neutral-medium border border-neutral-light rounded text-primary text-sm"
               >
-                <option value="irr">IRR Performance</option>
+                <option value="irr">XIRR Performance</option>
                 <option value="invested">Cumulative Investment</option>
                 <option value="returns">Returns Generated</option>
               </select>
@@ -112,7 +112,7 @@ export default function PerformanceAnalytics(): React.ReactElement {
         {/* Key Performance Metrics */}
         <div className="grid lg:grid-cols-5 md:grid-cols-3 gap-6 mb-8">
           <div className="bg-neutral-dark p-6 rounded-lg border border-neutral-medium">
-            <div className="text-accent-amber text-sm font-mono mb-2">CURRENT IRR</div>
+            <div className="text-accent-amber text-sm font-mono mb-2">CURRENT XIRR</div>
             <div className="text-2xl font-bold text-primary mb-1">13.7%</div>
             <div className="text-xs text-success">+0.3% vs last month</div>
           </div>
@@ -149,7 +149,7 @@ export default function PerformanceAnalytics(): React.ReactElement {
               <div className="p-6 border-b border-neutral-medium">
                 <h2 className="text-xl font-bold text-primary mb-2">Performance Trend</h2>
                 <p className="text-sm text-secondary">
-                  {selectedMetric === 'irr' ? 'IRR progression over time' : 
+                  {selectedMetric === 'irr' ? 'XIRR progression over time' : 
                    selectedMetric === 'invested' ? 'Cumulative investment amount' : 
                    'Returns generated over time'}
                 </p>
@@ -194,7 +194,7 @@ export default function PerformanceAnalytics(): React.ReactElement {
             <div className="bg-neutral-dark rounded-lg border border-neutral-medium">
               <div className="p-6 border-b border-neutral-medium">
                 <h2 className="text-xl font-bold text-primary">Sector Performance</h2>
-                <p className="text-sm text-secondary">IRR by sector allocation</p>
+                <p className="text-sm text-secondary">XIRR by sector allocation</p>
               </div>
               <div className="p-6">
                 <div className="space-y-4">
@@ -274,8 +274,8 @@ export default function PerformanceAnalytics(): React.ReactElement {
                   <th className="text-left p-4 text-sm font-medium text-primary">Project</th>
                   <th className="text-left p-4 text-sm font-medium text-primary">Sector</th>
                   <th className="text-right p-4 text-sm font-medium text-primary">Investment</th>
-                  <th className="text-right p-4 text-sm font-medium text-primary">Expected IRR</th>
-                  <th className="text-right p-4 text-sm font-medium text-primary">Current IRR</th>
+                  <th className="text-right p-4 text-sm font-medium text-primary">Expected XIRR</th>
+                  <th className="text-right p-4 text-sm font-medium text-primary">Current XIRR</th>
                   <th className="text-right p-4 text-sm font-medium text-primary">Returns</th>
                   <th className="text-center p-4 text-sm font-medium text-primary">Status</th>
                 </tr>

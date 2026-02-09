@@ -138,9 +138,22 @@ export default function TermsOfService() {
             <p className="mb-4">
               If you have any questions about these Terms of Service, please contact us at:
             </p>
-            <p className="mb-2">Email: <a href="mailto:legal@finverno.com" className="text-accent-orange hover:underline">legal@finverno.com</a></p>
-            <p className="mb-2">Phone: <a href="tel:+1-555-0123" className="text-accent-orange hover:underline">+1 (555) 012-3456</a></p>
-            <p className="mb-2">Address: Finverno Financial Intelligence, 123 Business Ave, Suite 100, City, State 12345</p>
+            <p className="mb-2">
+              Email:{' '}
+              <a href="mailto:legal@finverno.com" className="text-accent-orange hover:underline">
+                legal@finverno.com
+              </a>
+            </p>
+            <p className="mb-2">
+              Phone:{' '}
+              <a href="tel:+91-9972508604" className="text-accent-orange hover:underline">
+                +91 99725 08604
+              </a>
+            </p>
+            <p className="mb-2">
+              Address: Finverno Private Limited, 403, 3rd Floor, 22nd Cross, 2nd Sector, HSR Layout, Bengaluru – 560102,
+              Karnataka, India
+            </p>
           </section>
         </div>
       </div>
