@@ -213,18 +213,18 @@ export default function InvestorDashboard(): React.ReactElement {
 
   return (
     <DashboardLayout activeTab="overview">
-      <div className="p-6">
+      <div className="p-4 sm:p-6">
         {/* Header */}
         <div className="mb-8">
-          <h1 className="text-3xl font-bold text-primary mb-2">Portfolio Overview</h1>
+          <h1 className="text-2xl sm:text-3xl font-bold text-primary mb-2">Portfolio Overview</h1>
           <p className="text-secondary mb-4">
             Welcome back, {(investor as any)?.investorName || (investor as any)?.name || 'Investor'}! Real-time insights into your project financing investments
           </p>
         </div>
 
         {/* Key Metrics */}
-        <div className="grid xl:grid-cols-4 md:grid-cols-2 gap-6 mb-8">
-          <div className="bg-neutral-dark p-6 rounded-lg border border-neutral-medium">
+        <div className="grid gap-4 sm:gap-6 md:grid-cols-2 xl:grid-cols-4 mb-8">
+          <div className="bg-neutral-dark p-4 sm:p-6 rounded-lg border border-neutral-medium">
             <div className="text-accent-amber text-sm font-mono mb-2">CAPITAL INFLOW</div>
             <div className="text-2xl font-bold text-primary mb-1">{formatCurrency(portfolioMetrics.capitalInflow)}</div>
             <div className="text-xs text-secondary">
@@ -233,25 +233,25 @@ export default function InvestorDashboard(): React.ReactElement {
                 : 'Fully deployed'}
             </div>
           </div>
-          <div className="bg-neutral-dark p-6 rounded-lg border border-neutral-medium">
+          <div className="bg-neutral-dark p-4 sm:p-6 rounded-lg border border-neutral-medium">
             <div className="text-accent-amber text-sm font-mono mb-2">TOTAL INVESTED</div>
             <div className="text-2xl font-bold text-primary mb-1">{formatCurrency(portfolioMetrics.totalInvested)}</div>
             <div className="text-xs text-secondary">Across {portfolioMetrics.totalInvestments} investments</div>
           </div>
           
-          <div className="bg-neutral-dark p-6 rounded-lg border border-neutral-medium">
+          <div className="bg-neutral-dark p-4 sm:p-6 rounded-lg border border-neutral-medium">
             <div className="text-accent-amber text-sm font-mono mb-2">CAPITAL RETURNS</div>
             <div className="text-2xl font-bold text-primary mb-1">{formatCurrency(portfolioMetrics.capitalReturns)}</div>
             <div className="text-xs text-secondary">Realized cashflows from contractors</div>
           </div>
           
-          <div className="bg-neutral-dark p-6 rounded-lg border border-neutral-medium">
+          <div className="bg-neutral-dark p-4 sm:p-6 rounded-lg border border-neutral-medium">
             <div className="text-accent-amber text-sm font-mono mb-2">OUTSTANDING CAPITAL</div>
             <div className="text-2xl font-bold text-primary mb-1">{formatCurrency(portfolioMetrics.currentValue)}</div>
             <div className="text-xs text-success">+{formatCurrency(portfolioMetrics.totalReturns)} capital returned</div>
           </div>
           
-          <div className="bg-neutral-dark p-6 rounded-lg border border-neutral-medium">
+          <div className="bg-neutral-dark p-4 sm:p-6 rounded-lg border border-neutral-medium">
             <div className="text-accent-amber text-sm font-mono mb-2">REALIZED XIRR</div>
             <div className="text-2xl font-bold text-accent-amber mb-1">
               {Number.isFinite(portfolioMetrics.roi) ? portfolioMetrics.roi.toFixed(1) : '0.0'}%
@@ -259,7 +259,7 @@ export default function InvestorDashboard(): React.ReactElement {
             <div className="text-xs text-secondary">Time-weighted from cashflows</div>
           </div>
           
-          <div className="bg-neutral-dark p-6 rounded-lg border border-neutral-medium">
+          <div className="bg-neutral-dark p-4 sm:p-6 rounded-lg border border-neutral-medium">
             <div className="text-accent-amber text-sm font-mono mb-2">PLATFORM FEES (2 & 20)</div>
             <div className="text-2xl font-bold text-primary mb-1">
               {formatCurrency(portfolioMetrics.managementFees + portfolioMetrics.performanceFees)}
@@ -269,7 +269,7 @@ export default function InvestorDashboard(): React.ReactElement {
             </div>
           </div>
           
-          <div className="bg-neutral-dark p-6 rounded-lg border border-neutral-medium">
+          <div className="bg-neutral-dark p-4 sm:p-6 rounded-lg border border-neutral-medium">
             <div className="text-accent-amber text-sm font-mono mb-2">NET XIRR (AFTER FEES)</div>
             <div className="text-2xl font-bold text-accent-amber mb-1">
               {Number.isFinite(portfolioMetrics.netRoi) ? portfolioMetrics.netRoi.toFixed(1) : '0.0'}%
@@ -279,7 +279,7 @@ export default function InvestorDashboard(): React.ReactElement {
             </div>
           </div>
           
-          <div className="bg-neutral-dark p-6 rounded-lg border border-neutral-medium">
+          <div className="bg-neutral-dark p-4 sm:p-6 rounded-lg border border-neutral-medium">
             <div className="text-accent-amber text-sm font-mono mb-2">ACTIVE INVESTMENTS</div>
             <div className="text-2xl font-bold text-primary mb-1">{portfolioMetrics.activeInvestments}</div>
             <div className="text-xs text-secondary">{portfolioMetrics.completedInvestments} completed</div>
@@ -315,8 +315,8 @@ export default function InvestorDashboard(): React.ReactElement {
                     const investmentStatus = (getInvestmentValue(normalizedInvestment, ['status'], 'Active') as string) || 'Active';
                     
                     return (
-                    <div key={investment.id} className="border border-neutral-medium rounded-lg p-4">
-                      <div className="flex justify-between items-start mb-3">
+                    <div key={investment.id} className="border border-neutral-medium rounded-lg p-4 sm:p-5">
+                      <div className="flex flex-col gap-2 sm:flex-row sm:justify-between sm:items-start mb-3">
                         <div>
                           <h3 className="font-semibold text-primary mb-1">
                             {projectName}
@@ -336,7 +336,7 @@ export default function InvestorDashboard(): React.ReactElement {
                         </div>
                       </div>
                       
-                      <div className="grid grid-cols-3 gap-4 mb-3">
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-3">
                         <div>
                           <div className="text-xs text-secondary">Investment</div>
                           <div className="font-semibold text-primary">{formatCurrency(investmentAmount)}</div>
