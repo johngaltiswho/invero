@@ -43,7 +43,7 @@ export default function InvestorDashboard(): React.ReactElement {
           ] : [
             "Loading investor profile...",
             "Fetching portfolio data...",
-            "Synchronizing with Google Sheets..."
+            "Synchronizing portfolio insights..."
           ]}
         />
       </div>

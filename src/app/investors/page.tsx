@@ -8,7 +8,7 @@ export default function InvestorsPage() {
     <Layout>
       <div className="container mx-auto px-4 py-12 max-w-6xl">
         {/* Hero Section */}
-        <div className="text-center mb-20">
+        <div className="text-center mb-16">
           <h1 className="text-5xl font-bold text-primary mb-6">
             Infrastructure as an <span className="text-accent-orange">Asset Class</span>
           </h1>
@@ -261,6 +261,7 @@ export default function InvestorsPage() {
             </div>
           </div>
         </div>
+
 
         {/* Fund Terms */}
         <div className="mb-20">
