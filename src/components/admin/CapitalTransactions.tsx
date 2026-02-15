@@ -61,7 +61,7 @@ interface FundingPurchaseRequest {
   remaining_amount?: number;
   funding_progress?: number | null;
   platform_fee?: number;
-  late_fees?: number;
+  participation_fee?: number;
   total_due?: number;
   remaining_due?: number;
   investor_due?: number;
@@ -73,7 +73,7 @@ interface FundingPurchaseRequest {
     contact_person?: string;
     platform_fee_rate?: number;
     platform_fee_cap?: number;
-    interest_rate_daily?: number;
+    participation_fee_rate_daily?: number;
   };
   project?: {
     name?: string | null;
@@ -195,8 +195,8 @@ const CapitalTransactions: React.FC = () => {
       return null;
     }
     const platformFee = Number(request.platform_fee ?? 0);
-    const lateFees = Number(request.late_fees ?? 0);
-    const totalDue = fundedAmount + lateFees;
+    const participationFee = Number(request.participation_fee ?? 0);
+    const totalDue = fundedAmount + participationFee;
     const returned = Number(request.returned_amount ?? 0);
     return Math.max(totalDue - returned, 0);
   }, []);
@@ -854,7 +854,7 @@ const CapitalTransactions: React.FC = () => {
                     const fundedAmount = Number(request.funded_amount || 0);
                     const requestedAmount = Number(request.estimated_total || 0);
                     const platformFee = Number(request.platform_fee || 0);
-                    const lateFees = Number(request.late_fees || 0);
+                    const participationFee = Number(request.participation_fee || 0);
                     const totalDue = Number(request.investor_due || request.total_due || 0);
                     const contractorName = request.contractors?.company_name || 'N/A';
                     const projectName = request.project?.name || request.project_id;
@@ -875,7 +875,7 @@ const CapitalTransactions: React.FC = () => {
                         {formData.transaction_type === 'return' && (
                           <>
                             <div>Platform Fees: {formatCurrency(platformFee)}</div>
-                            <div>Late Fees: {formatCurrency(lateFees)}</div>
+                            <div>Project Participation Fee: {formatCurrency(participationFee)}</div>
                             <div>Investor Due: {formatCurrency(totalDue)}</div>
                             <div>Remaining Investor Due: {remainingDue !== null ? formatCurrency(remainingDue) : 'N/A'}</div>
                           </>

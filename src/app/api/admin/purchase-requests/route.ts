@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase';
+import { sendEmail, formatCurrency } from '@/lib/email';
 
 type PurchaseSummary = {
   draft: number;
@@ -102,13 +103,23 @@ async function fetchPurchaseRequests(options: FetchOptions = {}) {
         submitted_at,
         approved_at,
         funded_at,
+        vendor_id,
+        vendor_assigned_at,
+        delivery_status,
+        dispatched_at,
+        dispute_deadline,
+        dispute_raised_at,
+        dispute_reason,
+        delivered_at,
+        invoice_generated_at,
         contractors:contractor_id (
+          id,
           company_name,
           contact_person,
           email,
           platform_fee_rate,
           platform_fee_cap,
-          interest_rate_daily
+          participation_fee_rate_daily
         )
       `,
       { count: 'exact' }
@@ -171,6 +182,19 @@ async function fetchPurchaseRequests(options: FetchOptions = {}) {
     });
   }
 
+  // Fetch vendor names for PRs that have vendor_id set
+  const vendorIds = Array.from(
+    new Set((requestRows || []).map((r: any) => r.vendor_id).filter(Boolean))
+  ) as number[];
+  const vendorMap = new Map<number, { name: string; contact_person?: string | null }>();
+  if (vendorIds.length > 0) {
+    const { data: vendorRows } = await supabaseAdmin
+      .from('vendors')
+      .select('id, name, contact_person')
+      .in('id', vendorIds);
+    vendorRows?.forEach((v: any) => vendorMap.set(v.id, v));
+  }
+
   const projectIds = Array.from(new Set((requestRows || []).map((row: { project_id: string }) => row.project_id).filter(Boolean)));
   const projectMap = new Map<string, { name?: string | null; location?: string | null }>();
 
@@ -209,6 +233,7 @@ async function fetchPurchaseRequests(options: FetchOptions = {}) {
     const totalRequestedQty = items.reduce((sum, item) => sum + (item.requested_qty || 0), 0);
     const estimatedTotal = items.reduce((sum, item) => sum + (item.requested_qty || 0) * (item.unit_rate || 0), 0);
 
+    const vendor = request.vendor_id ? vendorMap.get(request.vendor_id) : null;
     return {
       id: request.id,
       project_id: request.project_id,
@@ -221,6 +246,17 @@ async function fetchPurchaseRequests(options: FetchOptions = {}) {
       submitted_at: request.submitted_at,
       approved_at: request.approved_at,
       funded_at: request.funded_at,
+      vendor_id: request.vendor_id || null,
+      vendor_assigned_at: request.vendor_assigned_at || null,
+      vendor_name: vendor?.name || null,
+      vendor_contact: vendor?.contact_person || null,
+      delivery_status: request.delivery_status || 'not_dispatched',
+      dispatched_at: request.dispatched_at || null,
+      dispute_deadline: request.dispute_deadline || null,
+      dispute_raised_at: request.dispute_raised_at || null,
+      dispute_reason: request.dispute_reason || null,
+      delivered_at: request.delivered_at || null,
+      invoice_generated_at: request.invoice_generated_at || null,
       contractors: request.contractors,
       project: projectMap.get(request.project_id) || null,
       purchase_request_items: items,
@@ -273,15 +309,15 @@ async function fetchPurchaseRequests(options: FetchOptions = {}) {
     const fundingProgress = estimatedTotal > 0 ? Math.min(fundedAmount / estimatedTotal, 1) : null;
     const platformRate = request.contractors?.platform_fee_rate ?? 0.0025;
     const platformCap = request.contractors?.platform_fee_cap ?? 25000;
-    const lateFeeRate = request.contractors?.interest_rate_daily ?? 0.001;
+    const participationFeeRate = request.contractors?.participation_fee_rate_daily ?? 0.001;
     const deployedAt = firstDeploymentAt.get(request.id);
     const daysOutstanding = deployedAt
       ? Math.max(0, Math.floor((Date.now() - new Date(deployedAt).getTime()) / (1000 * 60 * 60 * 24)))
       : 0;
     const platformFee = Math.min(fundedAmount * platformRate, platformCap);
-    const lateFees = fundedAmount * lateFeeRate * daysOutstanding;
-    const totalDue = fundedAmount + platformFee + lateFees;
-    const investorDue = fundedAmount + lateFees;
+    const participationFee = fundedAmount * participationFeeRate * daysOutstanding;
+    const totalDue = fundedAmount + platformFee + participationFee;
+    const investorDue = fundedAmount + participationFee;
     const remainingDue = Math.max(totalDue - returnedAmount, 0);
     const remainingInvestorDue = Math.max(investorDue - returnedAmount, 0);
 
@@ -292,7 +328,7 @@ async function fetchPurchaseRequests(options: FetchOptions = {}) {
       remaining_amount: remainingAmount,
       funding_progress: fundingProgress,
       platform_fee: platformFee,
-      late_fees: lateFees,
+      participation_fee: participationFee,
       total_due: totalDue,
       remaining_due: remainingDue,
       investor_due: investorDue,
@@ -348,6 +384,7 @@ export async function PUT(request: NextRequest) {
       action,
       admin_notes
     } = body;
+    // vendor_id read from body directly below when needed
 
     if (!purchase_request_id) {
       return NextResponse.json(
@@ -356,7 +393,7 @@ export async function PUT(request: NextRequest) {
       );
     }
 
-    const validActions = ['approve_for_purchase', 'approve_for_funding', 'reject'] as const;
+    const validActions = ['approve_for_purchase', 'approve_for_funding', 'reject', 'assign_vendor'] as const;
     if (!action || !validActions.includes(action)) {
       return NextResponse.json(
         { error: `Invalid action. Must be one of: ${validActions.join(', ')}` },
@@ -374,6 +411,39 @@ export async function PUT(request: NextRequest) {
       return NextResponse.json(
         { error: 'Purchase request not found' },
         { status: 404 }
+      );
+    }
+
+    // Handle vendor assignment separately — no item status change needed
+    if (action === 'assign_vendor') {
+      const { vendor_id } = body;
+      if (!vendor_id) {
+        return NextResponse.json({ error: 'vendor_id is required for assign_vendor' }, { status: 400 });
+      }
+      const { error: vendorError } = await supabaseAdmin
+        .from('purchase_requests')
+        .update({ vendor_id, vendor_assigned_at: new Date().toISOString(), updated_at: new Date().toISOString() })
+        .eq('id', purchase_request_id);
+
+      if (vendorError) {
+        console.error('Failed to assign vendor:', vendorError);
+        return NextResponse.json({ error: 'Failed to assign vendor. Run the add-vendor-to-purchase-requests migration first.', details: vendorError.message }, { status: 500 });
+      }
+      const { requests } = await fetchPurchaseRequests({ ids: [purchase_request_id] });
+      return NextResponse.json({ success: true, data: requests[0] || null, message: 'Vendor assigned successfully' });
+    }
+
+    // Gate approval behind vendor assignment (only if vendor column exists)
+    const { data: vendorCheck } = await supabaseAdmin
+      .from('purchase_requests')
+      .select('vendor_id')
+      .eq('id', purchase_request_id)
+      .single();
+
+    if (action === 'approve_for_purchase' && vendorCheck && !vendorCheck.vendor_id) {
+      return NextResponse.json(
+        { error: 'A vendor must be assigned before approving a purchase request' },
+        { status: 422 }
       );
     }
 
@@ -452,10 +522,38 @@ export async function PUT(request: NextRequest) {
     }
 
     const { requests } = await fetchPurchaseRequests({ ids: [purchase_request_id] });
+    const updatedRequest = requests[0] || null;
+
+    const contractorEmail = updatedRequest?.contractors?.email;
+    const contractorName = updatedRequest?.contractors?.contact_person || updatedRequest?.contractors?.company_name;
+    const projectName = updatedRequest?.project?.name || updatedRequest?.project_id;
+    const estimatedTotal = Number(updatedRequest?.estimated_total || 0);
+
+    if (contractorEmail && updatedRequest) {
+      const actionLabel =
+        action === 'approve_for_purchase'
+          ? 'approved'
+          : action === 'approve_for_funding'
+          ? 'funded'
+          : 'rejected';
+
+      await sendEmail({
+        to: contractorEmail,
+        subject: `Purchase request ${actionLabel} · ${projectName || 'Project'}`,
+        text: `Hi ${contractorName || 'there'},\n\nYour purchase request has been ${actionLabel}.\nProject: ${projectName || updatedRequest.project_id}\nEstimated value: ${formatCurrency(estimatedTotal)}\n\nPR ID: ${updatedRequest.id}`,
+        html: `
+          <p>Hi ${contractorName || 'there'},</p>
+          <p>Your purchase request has been <strong>${actionLabel}</strong>.</p>
+          <p><strong>Project:</strong> ${projectName || updatedRequest.project_id}<br/>
+          <strong>Estimated value:</strong> ${formatCurrency(estimatedTotal)}</p>
+          <p><strong>PR ID:</strong> ${updatedRequest.id}</p>
+        `
+      });
+    }
 
     return NextResponse.json({
       success: true,
-      data: requests[0] || null,
+      data: updatedRequest,
       message: `Purchase request ${action.replace(/_/g, ' ')}d successfully`
     });
   } catch (error) {

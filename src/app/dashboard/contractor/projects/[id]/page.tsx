@@ -30,7 +30,7 @@ function IndividualProjectContent(): React.ReactElement {
   const router = useRouter();
   const params = useParams();
   const projectId = params.id as string;
-  const { contractor, loading: contractorLoading } = useContractorV2();
+  const { contractor, loading: contractorLoading, canAccessFeature } = useContractorV2();
   
   // Project state
   const [project, setProject] = useState<any>(null);
@@ -112,6 +112,15 @@ function IndividualProjectContent(): React.ReactElement {
     notes: ''
   });
   const [showAddMaterial, setShowAddMaterial] = useState(false);
+  const [showMiniRequestDialog, setShowMiniRequestDialog] = useState(false);
+  const [miniRequestForm, setMiniRequestForm] = useState({ name: '', category: '', unit: '' });
+  const [miniRequestSubmitting, setMiniRequestSubmitting] = useState(false);
+  const [miniRequestSuccess, setMiniRequestSuccess] = useState(false);
+
+  const UNIT_OPTIONS = [
+    'bags', 'tons', 'cubic meters', 'square meters', 'meters', 'pieces',
+    'kilograms', 'liters', 'boxes', 'rolls', 'sheets', 'numbers', 'cubic feet', 'square feet', 'feet'
+  ];
   const [materialSubmitting, setMaterialSubmitting] = useState(false);
 
   // BOQ and Schedule data state
@@ -1144,18 +1153,30 @@ function IndividualProjectContent(): React.ReactElement {
                   </Button>
                   {selectedMaterials.size > 0 && (
                     <>
-                      <Button
-                        onClick={handleGenerateRFQ}
-                        className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm"
-                      >
-                        Generate RFQ ({selectedMaterials.size})
-                      </Button>
-                      <Button
-                        onClick={handleSubmitPurchaseRequest}
-                        className="bg-accent-amber hover:bg-accent-amber/90 text-neutral-dark px-4 py-2 rounded-lg text-sm"
-                      >
-                        Submit Purchase Request ({selectedMaterials.size})
-                      </Button>
+                      {canAccessFeature('rfq_generation') ? (
+                        <Button
+                          onClick={handleGenerateRFQ}
+                          className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm"
+                        >
+                          Generate RFQ ({selectedMaterials.size})
+                        </Button>
+                      ) : (
+                        <span className="px-4 py-2 rounded-lg text-xs bg-neutral-medium text-secondary border border-neutral-medium">
+                          Complete registration to generate RFQ
+                        </span>
+                      )}
+                      {canAccessFeature('purchase_request') ? (
+                        <Button
+                          onClick={handleSubmitPurchaseRequest}
+                          className="bg-accent-amber hover:bg-accent-amber/90 text-neutral-dark px-4 py-2 rounded-lg text-sm"
+                        >
+                          Submit Purchase Request ({selectedMaterials.size})
+                        </Button>
+                      ) : (
+                        <span className="px-4 py-2 rounded-lg text-xs bg-neutral-medium text-secondary border border-neutral-medium">
+                          Complete registration to submit purchase requests
+                        </span>
+                      )}
                     </>
                   )}
                 </div>
@@ -1232,8 +1253,21 @@ function IndividualProjectContent(): React.ReactElement {
                               (material.category || '').toLowerCase().includes(query)
                             );
                           }).length === 0 && (
-                            <div className="px-3 py-2 text-xs text-secondary">
-                              No materials found for "{materialForm.materialSearch}"
+                            <div className="px-3 py-2 border-t border-neutral-medium">
+                              <p className="text-xs text-secondary mb-1.5">
+                                No catalog match for "{materialForm.materialSearch}"
+                              </p>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setMiniRequestForm({ name: materialForm.materialSearch, category: '', unit: '' });
+                                  setMiniRequestSuccess(false);
+                                  setShowMiniRequestDialog(true);
+                                }}
+                                className="text-xs font-medium text-accent-amber hover:underline"
+                              >
+                                + Request this material
+                              </button>
                             </div>
                           )}
                         </div>
@@ -2138,6 +2172,10 @@ function IndividualProjectContent(): React.ReactElement {
                       alert('Failed to load drawing for takeoff. The file might be corrupted or not accessible.');
                       setShowPDFViewer(false);
                     }}
+                    onExportComplete={() => {
+                      fetchProjectMaterials(project.id);
+                      setActiveTab('materials');
+                    }}
                   />
                 ) : (
                   <SimplePDFViewer
@@ -2149,6 +2187,110 @@ function IndividualProjectContent(): React.ReactElement {
             </div>
           </div>
         )}
+      {/* Mini Material Request Dialog */}
+      {showMiniRequestDialog && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-neutral-dark border border-neutral-medium rounded-lg p-6 w-full max-w-sm">
+            {miniRequestSuccess ? (
+              <div className="text-center py-4">
+                <div className="text-3xl mb-3">✅</div>
+                <p className="text-sm font-semibold text-primary mb-1">Request submitted</p>
+                <p className="text-xs text-secondary mb-4">
+                  Our team will review and add it to the catalog within 24 hours.
+                </p>
+                <button
+                  onClick={() => setShowMiniRequestDialog(false)}
+                  className="px-4 py-2 text-sm font-medium bg-accent-amber text-neutral-darker rounded hover:bg-accent-amber/80"
+                >
+                  Close
+                </button>
+              </div>
+            ) : (
+              <>
+                <h3 className="text-base font-semibold text-primary mb-1">Request New Material</h3>
+                <p className="text-xs text-secondary mb-4">
+                  Our team reviews within 24 hours and adds it to the master catalog.
+                </p>
+                <div className="space-y-3">
+                  <div>
+                    <label className="block text-xs font-medium text-secondary mb-1">Material Name *</label>
+                    <input
+                      type="text"
+                      value={miniRequestForm.name}
+                      onChange={e => setMiniRequestForm(prev => ({ ...prev, name: e.target.value }))}
+                      className="w-full px-3 py-2 bg-neutral-darker border border-neutral-medium rounded-lg text-primary text-sm focus:border-accent-amber focus:outline-none"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-secondary mb-1">Category *</label>
+                    <input
+                      type="text"
+                      value={miniRequestForm.category}
+                      onChange={e => setMiniRequestForm(prev => ({ ...prev, category: e.target.value }))}
+                      placeholder="e.g., Cement, Steel, Electrical"
+                      className="w-full px-3 py-2 bg-neutral-darker border border-neutral-medium rounded-lg text-primary text-sm focus:border-accent-amber focus:outline-none"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-secondary mb-1">Unit *</label>
+                    <select
+                      value={miniRequestForm.unit}
+                      onChange={e => setMiniRequestForm(prev => ({ ...prev, unit: e.target.value }))}
+                      className="w-full px-3 py-2 bg-neutral-darker border border-neutral-medium rounded-lg text-primary text-sm focus:border-accent-amber focus:outline-none"
+                    >
+                      <option value="">Select unit</option>
+                      {UNIT_OPTIONS.map(u => <option key={u} value={u}>{u}</option>)}
+                    </select>
+                  </div>
+                  <div className="flex gap-3 pt-2 justify-end">
+                    <button
+                      type="button"
+                      onClick={() => setShowMiniRequestDialog(false)}
+                      className="px-3 py-2 text-sm text-secondary hover:text-primary"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="button"
+                      disabled={!miniRequestForm.name.trim() || !miniRequestForm.category.trim() || !miniRequestForm.unit || miniRequestSubmitting}
+                      onClick={async () => {
+                        setMiniRequestSubmitting(true);
+                        try {
+                          const res = await fetch('/api/materials', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                              name: miniRequestForm.name.trim(),
+                              category: miniRequestForm.category.trim(),
+                              unit: miniRequestForm.unit,
+                              approval_status: 'pending',
+                              project_context: project?.project_name,
+                            }),
+                          });
+                          if (res.ok) {
+                            setMiniRequestSuccess(true);
+                          } else {
+                            const err = await res.json();
+                            alert(err.error || 'Failed to submit request');
+                          }
+                        } catch {
+                          alert('Failed to submit request');
+                        } finally {
+                          setMiniRequestSubmitting(false);
+                        }
+                      }}
+                      className="px-4 py-2 text-sm font-medium bg-accent-amber text-neutral-darker rounded hover:bg-accent-amber/80 disabled:opacity-50"
+                    >
+                      {miniRequestSubmitting ? 'Submitting...' : 'Submit Request'}
+                    </button>
+                  </div>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      )}
+
       </div>
     </ContractorDashboardLayout>
   );

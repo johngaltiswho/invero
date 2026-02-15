@@ -60,7 +60,8 @@ export async function POST(request: NextRequest) {
           quantity_from_drawings,
           estimated_rate: estimated_rate || 0,
           estimated_amount: estimated_amount || 0,
-          verification_status: 'pending'
+          verification_status: 'verified',
+          is_funding_eligible: true
         }
       ])
       .select()

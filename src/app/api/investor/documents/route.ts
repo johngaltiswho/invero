@@ -120,12 +120,30 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'No file provided' }, { status: 400 });
     }
 
-    const arrayBuffer = await file.arrayBuffer();
-    const fileBuffer = Buffer.from(arrayBuffer);
     const sanitizedName = file.name.replace(/[^a-zA-Z0-9.\-_]/g, '-');
     const storageFileName = `${documentType}__${Date.now()}__${sanitizedName}`;
     const storagePath = `${investor.id}/${storageFileName}`;
 
+    if (documentType === 'pan') {
+      const { data: existingFiles } = await supabaseAdmin.storage
+        .from(BUCKET)
+        .list(investor.id, {
+          limit: 200,
+          offset: 0,
+          sortBy: { column: 'created_at', order: 'desc' }
+        });
+
+      const panFiles = (existingFiles || [])
+        .filter((fileItem: any) => fileItem.name?.startsWith('pan__'))
+        .map((fileItem: any) => `${investor.id}/${fileItem.name}`);
+
+      if (panFiles.length > 0) {
+        await supabaseAdmin.storage.from(BUCKET).remove(panFiles);
+      }
+    }
+
+    const arrayBuffer = await file.arrayBuffer();
+    const fileBuffer = Buffer.from(arrayBuffer);
     const { error } = await supabaseAdmin.storage
       .from(BUCKET)
       .upload(storagePath, fileBuffer, {

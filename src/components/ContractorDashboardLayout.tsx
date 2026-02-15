@@ -54,8 +54,14 @@ export function ContractorDashboardLayout({ children, activeTab }: ContractorDas
       href: '/dashboard/contractor/network',
       icon: '🌐',
       description: 'Vendors & suppliers'
+    },
+    {
+      id: 'documents',
+      name: 'Documents',
+      href: '/dashboard/contractor/documents',
+      icon: '📄',
+      description: 'BOQs, POs, Invoices & Forms'
     }
-    // Hidden: Progress Reports, Funding Requests, Documents, Payments
   ];
 
   const isActive = (itemId: string) => {

@@ -34,6 +34,52 @@ type ContractorRow = {
   company_name: string | null;
 };
 
+type InvestorRow = {
+  id: string;
+  name: string | null;
+  email: string | null;
+  investor_type: string | null;
+};
+
+type InvestorSummaryRow = {
+  investor_id: string;
+  investor_name: string | null;
+  investor_email: string | null;
+  investor_type: string | null;
+  total_inflow: number;
+  total_returns: number;
+  xirr: number;
+  net_xirr: number;
+};
+
+type CashflowPoint = { date: Date; amount: number };
+
+const computeXirr = (cashflows: CashflowPoint[]) => {
+  if (!cashflows || cashflows.length < 2) return 0;
+  const sorted = [...cashflows].sort((a, b) => a.date.getTime() - b.date.getTime());
+  const t0 = sorted[0].date.getTime();
+  const hasPositive = sorted.some((cf) => cf.amount > 0);
+  const hasNegative = sorted.some((cf) => cf.amount < 0);
+  if (!hasPositive || !hasNegative) return 0;
+
+  let rate = 0.1;
+  for (let i = 0; i < 100; i += 1) {
+    let npv = 0;
+    let dNpv = 0;
+    for (const cf of sorted) {
+      const years = (cf.date.getTime() - t0) / (1000 * 60 * 60 * 24 * 365);
+      const denom = Math.pow(1 + rate, years);
+      npv += cf.amount / denom;
+      dNpv += (-years * cf.amount) / (denom * (1 + rate));
+    }
+    if (Math.abs(npv) < 1e-6) break;
+    if (Math.abs(dNpv) < 1e-10) break;
+    rate -= npv / dNpv;
+    if (rate <= -0.9999) rate = -0.9999;
+  }
+  return Number.isFinite(rate) ? rate * 100 : 0;
+};
+
 export async function GET() {
   try {
     await requireAdmin();
@@ -50,6 +96,78 @@ export async function GET() {
     const requests = (purchaseRequests || []) as PurchaseRequestRow[];
     const requestIds = requests.map((request) => request.id);
 
+    const { data: investorTransactions, error: investorTxError } = await supabaseAdmin
+      .from('capital_transactions')
+      .select('investor_id, amount, transaction_type, status, created_at')
+      .in('transaction_type', ['inflow', 'return'])
+      .neq('status', 'cancelled');
+
+    if (investorTxError) {
+      console.error('Failed to load investor transactions:', investorTxError);
+    }
+
+    const investorIdsFromTx = Array.from(
+      new Set((investorTransactions || []).map((row: any) => row.investor_id).filter(Boolean))
+    ) as string[];
+
+    const { data: investors, error: investorsError } = await supabaseAdmin
+      .from('investors')
+      .select('id, name, email, investor_type, status')
+      .in('id', investorIdsFromTx.length > 0 ? investorIdsFromTx : ['00000000-0000-0000-0000-000000000000']);
+
+    if (investorsError) {
+      console.error('Failed to load investors:', investorsError);
+    }
+
+    const investorTransactionsById = new Map<string, { inflows: CashflowPoint[]; returns: CashflowPoint[] }>();
+    (investorTransactions || []).forEach((row: any) => {
+      if (!row.investor_id) return;
+      const entry = investorTransactionsById.get(row.investor_id) || { inflows: [], returns: [] };
+      const amount = Number(row.amount) || 0;
+      const date = row.created_at ? new Date(row.created_at) : new Date();
+      if (row.transaction_type === 'inflow' && row.status !== 'cancelled') {
+        entry.inflows.push({ date, amount: -Math.abs(amount) });
+      } else if (row.transaction_type === 'return' && row.status === 'completed') {
+        entry.returns.push({ date, amount: Math.abs(amount) });
+      }
+      investorTransactionsById.set(row.investor_id, entry);
+    });
+
+    const investorSummaries: InvestorSummaryRow[] = (investors as InvestorRow[] | null || []).map((investorRow) => {
+      const tx = investorTransactionsById.get(investorRow.id) || { inflows: [], returns: [] };
+      const inflowTotal = tx.inflows.reduce((sum, cf) => sum + Math.abs(cf.amount), 0);
+      const returnTotal = tx.returns.reduce((sum, cf) => sum + Math.abs(cf.amount), 0);
+      const grossCashflows = [...tx.inflows, ...tx.returns];
+      const grossXirr = computeXirr(grossCashflows);
+
+      const managementFee = inflowTotal * 0.02;
+      const grossProfit = returnTotal - inflowTotal;
+      const hurdleAmount = inflowTotal * 0.12;
+      const performanceFeeBase = Math.max(grossProfit - hurdleAmount, 0);
+      const performanceFee = performanceFeeBase * 0.2;
+      const totalFees = managementFee + performanceFee;
+
+      const latestDate = grossCashflows.length
+        ? new Date(Math.max(...grossCashflows.map((cf) => cf.date.getTime())))
+        : new Date();
+      const netCashflows = [...grossCashflows];
+      if (totalFees > 0) {
+        netCashflows.push({ date: latestDate, amount: -Math.abs(totalFees) });
+      }
+      const netXirr = computeXirr(netCashflows);
+
+      return {
+        investor_id: investorRow.id,
+        investor_name: investorRow.name ?? null,
+        investor_email: investorRow.email ?? null,
+        investor_type: investorRow.investor_type ?? null,
+        total_inflow: inflowTotal,
+        total_returns: returnTotal,
+        xirr: grossXirr,
+        net_xirr: netXirr
+      };
+    });
+
     if (requestIds.length === 0) {
       return NextResponse.json({
         summary: {
@@ -61,6 +179,7 @@ export async function GET() {
           total_projects: 0,
           total_contractors: 0
         },
+        investors: investorSummaries,
         projects: []
       });
     }
@@ -258,6 +377,7 @@ export async function GET() {
         total_projects: projectTotals.size,
         total_contractors: contractorIds.length
       },
+      investors: investorSummaries,
       projects: Array.from(projectTotals.values())
         .sort((a, b) => b.total_funded - a.total_funded)
     });

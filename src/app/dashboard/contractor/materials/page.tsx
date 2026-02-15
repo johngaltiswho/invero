@@ -52,6 +52,10 @@ export default function MaterialsPage() {
   const [showRequestDialog, setShowRequestDialog] = useState(false);
   const [categories, setCategories] = useState<string[]>([]);
   const [activeTab, setActiveTab] = useState('materials');
+  const [deliveryRequests, setDeliveryRequests] = useState<any[]>([]);
+  const [deliveryLoading, setDeliveryLoading] = useState(false);
+  const [disputeDialog, setDisputeDialog] = useState<{ open: boolean; prId: string }>({ open: false, prId: '' });
+  const [disputeReason, setDisputeReason] = useState('');
   const [sortField, setSortField] = useState<string>('name');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
   const [requestSortField, setRequestSortField] = useState<string>('created_at');
@@ -145,6 +149,24 @@ export default function MaterialsPage() {
     loadData();
   }, []);
 
+  // Load delivery tracker data when that tab is activated
+  useEffect(() => {
+    if (activeTab !== 'delivery') return;
+    const fetchDelivery = async () => {
+      setDeliveryLoading(true);
+      try {
+        const res = await fetch('/api/delivery-tracker');
+        const data = await res.json();
+        if (data.success) setDeliveryRequests(data.data || []);
+      } catch {
+        // Delivery tracker may not be available yet
+      } finally {
+        setDeliveryLoading(false);
+      }
+    };
+    fetchDelivery();
+  }, [activeTab]);
+
   // Sort function
   const handleSort = (field: string, isRequest = false) => {
     if (isRequest) {
@@ -164,10 +186,24 @@ export default function MaterialsPage() {
     }
   };
 
+  // Fuzzy scoring: count overlapping words between query and target
+  const fuzzyScore = (query: string, target: string): number => {
+    const qWords = query.toLowerCase().split(/\s+/).filter(Boolean);
+    const tWords = target.toLowerCase().split(/\s+/).filter(Boolean);
+    let score = 0;
+    for (const qw of qWords) {
+      for (const tw of tWords) {
+        if (tw.includes(qw) || qw.includes(tw)) score += 1;
+        else if (tw.startsWith(qw.slice(0, 3)) || qw.startsWith(tw.slice(0, 3))) score += 0.5;
+      }
+    }
+    return score;
+  };
+
   // Filter and sort materials
   const filteredMaterials = materials
     .filter(material => {
-      const matchesSearch = material.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      const matchesSearch = !searchTerm || material.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
                            material.description?.toLowerCase().includes(searchTerm.toLowerCase());
       const matchesCategory = !selectedCategory || material.category === selectedCategory;
       return matchesSearch && matchesCategory;
@@ -178,6 +214,16 @@ export default function MaterialsPage() {
       const comparison = aValue < bValue ? -1 : aValue > bValue ? 1 : 0;
       return sortDirection === 'asc' ? comparison : -comparison;
     });
+
+  // Fuzzy suggestions — only when search has text but no exact matches
+  const fuzzyMatches = (searchTerm.length >= 3 && filteredMaterials.length === 0)
+    ? materials
+        .map(m => ({ material: m, score: fuzzyScore(searchTerm, m.name + ' ' + (m.description || '')) }))
+        .filter(r => r.score > 0)
+        .sort((a, b) => b.score - a.score)
+        .slice(0, 5)
+        .map(r => r.material)
+    : [];
 
   // Filter and sort requests
   const sortedRequests = materialRequests.sort((a, b) => {
@@ -334,6 +380,21 @@ export default function MaterialsPage() {
             >
               Purchase Status
             </button>
+            <button
+              onClick={() => setActiveTab('delivery')}
+              className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+                activeTab === 'delivery'
+                  ? 'bg-neutral-dark text-primary shadow-sm'
+                  : 'text-secondary hover:text-primary'
+              }`}
+            >
+              Delivery Tracker
+              {deliveryRequests.filter(r => r.delivery_status === 'dispatched').length > 0 && (
+                <span className="ml-2 bg-accent-amber text-neutral-darker text-xs px-2 py-0.5 rounded-full">
+                  {deliveryRequests.filter(r => r.delivery_status === 'dispatched').length}
+                </span>
+              )}
+            </button>
           </div>
         </div>
 
@@ -416,16 +477,42 @@ export default function MaterialsPage() {
               </table>
 
               {filteredMaterials.length === 0 && (
-                <div className="p-8 text-center">
-                  <h3 className="text-lg font-medium text-primary mb-2">No materials found</h3>
-                  <p className="text-secondary mb-4">
-                    {searchTerm || selectedCategory 
-                      ? 'Try adjusting your search criteria.' 
-                      : 'No materials available in the database.'}
-                  </p>
-                  <Button onClick={() => setShowRequestDialog(true)}>
-                    Request New Material
-                  </Button>
+                <div className="p-6">
+                  {fuzzyMatches.length > 0 ? (
+                    <div>
+                      <p className="text-sm text-secondary mb-3">
+                        No exact match for <strong className="text-primary">"{searchTerm}"</strong>. Similar materials you might mean:
+                      </p>
+                      <div className="space-y-2 mb-4">
+                        {fuzzyMatches.map(m => (
+                          <div key={m.id} className="flex items-center justify-between bg-neutral-darker rounded px-3 py-2 border border-neutral-medium">
+                            <div>
+                              <span className="text-sm text-primary">{m.name}</span>
+                              <span className="ml-2 text-xs text-secondary">{m.category} · {m.unit}</span>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                      <p className="text-xs text-secondary mb-3">Not what you're looking for?</p>
+                      <Button onClick={() => { setNewRequest(prev => ({ ...prev, name: searchTerm })); setShowRequestDialog(true); }}>
+                        Request New Material
+                      </Button>
+                    </div>
+                  ) : (
+                    <div className="text-center py-4">
+                      <h3 className="text-lg font-medium text-primary mb-2">No materials found</h3>
+                      <p className="text-secondary mb-4">
+                        {searchTerm || selectedCategory
+                          ? 'Try adjusting your search criteria, or request this material to be added.'
+                          : 'No materials available in the database.'}
+                      </p>
+                      {(searchTerm || selectedCategory) && (
+                        <Button onClick={() => { setNewRequest(prev => ({ ...prev, name: searchTerm })); setShowRequestDialog(true); }}>
+                          Request New Material
+                        </Button>
+                      )}
+                    </div>
+                  )}
                 </div>
               )}
             </div>
@@ -547,7 +634,7 @@ export default function MaterialsPage() {
               </div>
             )}
           </div>
-        ) : (
+        ) : activeTab === 'purchase' ? (
           /* Purchase Status Tab */
           <div>
             <div className="mb-4 bg-blue-50 border border-blue-200 rounded-lg p-4">
@@ -616,109 +703,211 @@ export default function MaterialsPage() {
               )}
             </div>
           </div>
-        )}
+        ) : (
+          /* Delivery Tracker Tab */
+          <div>
+            <div className="mb-4 bg-accent-amber/10 border border-accent-amber/30 rounded-lg p-4">
+              <p className="text-sm font-semibold text-accent-amber mb-1">Deemed Delivery Policy</p>
+              <p className="text-xs text-secondary">
+                When Finverno dispatches your order, you have 48–72 hours to raise a dispute. If no dispute is raised within that window, the delivery is confirmed and an invoice is automatically generated.
+              </p>
+            </div>
 
-        {/* Request Dialog */}
-        {showRequestDialog && (
-          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-            <div className="bg-neutral-dark rounded-lg p-6 w-full max-w-2xl max-h-[90vh] overflow-y-auto border border-neutral-medium">
-              <h2 className="text-xl font-bold mb-4 text-primary">Request New Material</h2>
-              
-              <div className="space-y-4">
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm font-medium text-primary mb-1">
-                      Material Name *
-                    </label>
-                    <Input
-                      value={newRequest.name}
-                      onChange={(e) => setNewRequest(prev => ({ ...prev, name: e.target.value }))}
-                      placeholder="e.g., Ordinary Portland Cement 53 Grade"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-primary mb-1">
-                      Category *
-                    </label>
-                    <select
-                      value={newRequest.category}
-                      onChange={(e) => setNewRequest(prev => ({ ...prev, category: e.target.value }))}
-                      className="w-full px-3 py-2 bg-neutral-dark border border-neutral-medium rounded-md text-primary"
+            {deliveryLoading ? (
+              <div className="flex justify-center py-12 text-secondary text-sm">Loading...</div>
+            ) : deliveryRequests.length === 0 ? (
+              <div className="text-center py-16 text-secondary">
+                <div className="text-4xl mb-3">🚚</div>
+                <p className="font-medium text-primary mb-1">No deliveries in progress</p>
+                <p className="text-sm">Dispatched purchase requests will appear here with their delivery status.</p>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {deliveryRequests.map((pr: any) => {
+                  const deadline = pr.dispute_deadline ? new Date(pr.dispute_deadline) : null;
+                  const now = new Date();
+                  const hoursLeft = deadline ? Math.max(0, (deadline.getTime() - now.getTime()) / 3600000) : 0;
+                  const canDispute = pr.delivery_status === 'dispatched' && deadline && deadline > now;
+                  const statusColors: Record<string, string> = {
+                    dispatched: 'bg-accent-amber/10 text-accent-amber border-accent-amber/30',
+                    disputed: 'bg-red-900/10 text-red-400 border-red-400/30',
+                    delivered: 'bg-green-900/10 text-green-400 border-green-400/30',
+                  };
+                  const statusLabels: Record<string, string> = {
+                    dispatched: 'Awaiting Confirmation',
+                    disputed: 'Disputed',
+                    delivered: 'Delivered',
+                  };
+
+                  return (
+                    <div key={pr.id} className="bg-neutral-dark border border-neutral-medium rounded-lg p-4">
+                      <div className="flex items-start justify-between gap-4 flex-wrap">
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap mb-1">
+                            <span className={`text-xs px-2 py-0.5 rounded-full border font-medium ${statusColors[pr.delivery_status] || 'bg-neutral-medium text-secondary'}`}>
+                              {statusLabels[pr.delivery_status] || pr.delivery_status}
+                            </span>
+                            <span className="text-xs text-secondary font-mono">PR-{pr.id.slice(0, 8).toUpperCase()}</span>
+                          </div>
+                          {pr.dispatched_at && (
+                            <p className="text-xs text-secondary mt-1">
+                              Dispatched: {new Date(pr.dispatched_at).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}
+                            </p>
+                          )}
+                          {canDispute && (
+                            <p className={`text-xs mt-1 font-medium ${hoursLeft < 6 ? 'text-red-400' : 'text-accent-amber'}`}>
+                              Dispute window closes in {Math.floor(hoursLeft)}h {Math.round((hoursLeft % 1) * 60)}m
+                            </p>
+                          )}
+                          {pr.delivery_status === 'disputed' && pr.dispute_reason && (
+                            <p className="text-xs text-red-400 mt-1">Dispute: {pr.dispute_reason}</p>
+                          )}
+                          {/* Line items summary */}
+                          {pr.purchase_request_items?.length > 0 && (
+                            <p className="text-xs text-secondary mt-1">
+                              {pr.purchase_request_items.length} item{pr.purchase_request_items.length > 1 ? 's' : ''}
+                              {' — '}
+                              {pr.purchase_request_items.slice(0, 2).map((item: any) =>
+                                item.project_materials?.materials?.name
+                              ).filter(Boolean).join(', ')}
+                              {pr.purchase_request_items.length > 2 ? ` +${pr.purchase_request_items.length - 2} more` : ''}
+                            </p>
+                          )}
+                        </div>
+
+                        <div className="flex gap-2 shrink-0 flex-wrap">
+                          {canDispute && (
+                            <button
+                              onClick={() => { setDisputeDialog({ open: true, prId: pr.id }); setDisputeReason(''); }}
+                              className="px-3 py-1.5 text-xs font-medium bg-red-900/20 text-red-400 border border-red-400/30 rounded hover:bg-red-900/40 transition-colors"
+                            >
+                              Raise Dispute
+                            </button>
+                          )}
+                          {pr.invoice_url && (
+                            <a
+                              href={pr.invoice_url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="px-3 py-1.5 text-xs font-medium bg-accent-amber/10 text-accent-amber border border-accent-amber/30 rounded hover:bg-accent-amber/20 transition-colors"
+                            >
+                              Download Invoice
+                            </a>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
+            {/* Dispute Dialog */}
+            {disputeDialog.open && (
+              <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+                <div className="bg-neutral-dark border border-neutral-medium rounded-lg p-6 w-full max-w-md">
+                  <h3 className="text-base font-semibold text-primary mb-2">Raise Delivery Dispute</h3>
+                  <p className="text-xs text-secondary mb-4">Describe the issue with this delivery (damaged goods, wrong items, quantity mismatch, etc.)</p>
+                  <textarea
+                    value={disputeReason}
+                    onChange={e => setDisputeReason(e.target.value)}
+                    placeholder="Describe the issue..."
+                    rows={4}
+                    className="w-full px-3 py-2 bg-neutral-darker border border-neutral-medium rounded-lg text-primary text-sm placeholder-neutral-medium focus:border-accent-amber focus:outline-none resize-none mb-4"
+                  />
+                  <div className="flex gap-3 justify-end">
+                    <button
+                      onClick={() => setDisputeDialog({ open: false, prId: '' })}
+                      className="px-4 py-2 text-sm text-secondary hover:text-primary"
                     >
-                      <option value="">Select category</option>
-                      {categories.map(category => (
-                        <option key={category} value={category}>{category}</option>
-                      ))}
-                    </select>
+                      Cancel
+                    </button>
+                    <button
+                      disabled={!disputeReason.trim()}
+                      onClick={async () => {
+                        try {
+                          const res = await fetch('/api/delivery-tracker', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ purchase_request_id: disputeDialog.prId, dispute_reason: disputeReason }),
+                          });
+                          const data = await res.json();
+                          if (data.success) {
+                            setDeliveryRequests(prev => prev.map(r => r.id === disputeDialog.prId ? { ...r, delivery_status: 'disputed', dispute_reason: disputeReason } : r));
+                            setDisputeDialog({ open: false, prId: '' });
+                          } else {
+                            alert(data.error || 'Failed to raise dispute');
+                          }
+                        } catch {
+                          alert('Failed to raise dispute');
+                        }
+                      }}
+                      className="px-4 py-2 text-sm font-medium bg-red-600 hover:bg-red-700 text-white rounded disabled:opacity-50"
+                    >
+                      Submit Dispute
+                    </button>
                   </div>
                 </div>
+              </div>
+            )}
+          </div>
+        )}
 
+        {/* Request Dialog - Simplified to 3 fields */}
+        {showRequestDialog && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+            <div className="bg-neutral-dark rounded-lg p-6 w-full max-w-md border border-neutral-medium">
+              <h2 className="text-lg font-bold mb-1 text-primary">Request New Material</h2>
+              <p className="text-xs text-secondary mb-5">
+                Can't find it in the catalog? Request it — our team reviews within 24 hours and adds it to the master list.
+              </p>
+
+              <div className="space-y-4">
                 <div>
                   <label className="block text-sm font-medium text-primary mb-1">
-                    Description
+                    Material Name *
                   </label>
-                  <textarea
-                    value={newRequest.description}
-                    onChange={(e) => setNewRequest(prev => ({ ...prev, description: e.target.value }))}
-                    placeholder="Detailed description of the material"
-                    className="w-full px-3 py-2 bg-neutral-dark border border-neutral-medium rounded-md h-20 text-primary"
+                  <Input
+                    value={newRequest.name}
+                    onChange={(e) => setNewRequest(prev => ({ ...prev, name: e.target.value }))}
+                    placeholder="e.g., Ordinary Portland Cement 53 Grade"
                   />
                 </div>
 
-
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm font-medium text-primary mb-1">
-                      Unit *
-                    </label>
-                    <select
-                      value={newRequest.unit}
-                      onChange={(e) => setNewRequest(prev => ({ ...prev, unit: e.target.value }))}
-                      className="w-full px-3 py-2 bg-neutral-dark border border-neutral-medium rounded-md text-primary"
-                    >
-                      <option value="">Select unit</option>
-                      {unitOptions.map((unit) => (
-                        <option key={unit} value={unit}>{unit}</option>
-                      ))}
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-primary mb-1">
-                      Urgency
-                    </label>
-                    <select
-                      value={newRequest.urgency}
-                      onChange={(e) => setNewRequest(prev => ({ ...prev, urgency: e.target.value }))}
-                      className="w-full px-3 py-2 bg-neutral-dark border border-neutral-medium rounded-md text-primary"
-                    >
-                      <option value="low">Low</option>
-                      <option value="normal">Normal</option>
-                      <option value="high">High</option>
-                      <option value="urgent">Urgent</option>
-                    </select>
-                  </div>
+                <div>
+                  <label className="block text-sm font-medium text-primary mb-1">
+                    Category *
+                  </label>
+                  <select
+                    value={newRequest.category}
+                    onChange={(e) => setNewRequest(prev => ({ ...prev, category: e.target.value }))}
+                    className="w-full px-3 py-2 bg-neutral-darker border border-neutral-medium rounded-md text-primary focus:border-accent-amber focus:outline-none"
+                  >
+                    <option value="">Select category</option>
+                    {categories.map(category => (
+                      <option key={category} value={category}>{category}</option>
+                    ))}
+                    <option value="Other">Other</option>
+                  </select>
                 </div>
-
 
                 <div>
                   <label className="block text-sm font-medium text-primary mb-1">
-                    Project
+                    Unit *
                   </label>
                   <select
-                    value={newRequest.project_id}
-                    onChange={(e) => setNewRequest(prev => ({ ...prev, project_id: e.target.value }))}
-                    className="w-full px-3 py-2 bg-neutral-dark border border-neutral-medium rounded-md text-primary"
+                    value={newRequest.unit}
+                    onChange={(e) => setNewRequest(prev => ({ ...prev, unit: e.target.value }))}
+                    className="w-full px-3 py-2 bg-neutral-darker border border-neutral-medium rounded-md text-primary focus:border-accent-amber focus:outline-none"
                   >
-                    <option value="">Select project (optional)</option>
-                    {projects.map((project) => (
-                      <option key={project.id} value={project.id}>
-                        {project.project_name} - {project.client_name}
-                      </option>
+                    <option value="">Select unit</option>
+                    {unitOptions.map((unit) => (
+                      <option key={unit} value={unit}>{unit}</option>
                     ))}
                   </select>
                 </div>
 
-                <div className="flex justify-end space-x-2 pt-4">
+                <div className="flex justify-end gap-3 pt-2">
                   <Button variant="outline" onClick={() => setShowRequestDialog(false)}>
                     Cancel
                   </Button>

@@ -7,6 +7,7 @@ interface BOQTakeoffViewerProps {
   fileName?: string;
   projectId?: string;
   onError?: (error: Error) => void;
+  onExportComplete?: () => void;
 }
 
 interface Material {
@@ -37,7 +38,7 @@ interface BOQItem {
   notes?: string;
 }
 
-export default function BOQTakeoffViewer({ fileUrl, fileName, projectId, onError }: BOQTakeoffViewerProps) {
+export default function BOQTakeoffViewer({ fileUrl, fileName, projectId, onError, onExportComplete }: BOQTakeoffViewerProps) {
   
   // BOQ state
   const [boqItems, setBOQItems] = useState<BOQItem[]>([]);
@@ -554,6 +555,7 @@ export default function BOQTakeoffViewer({ fileUrl, fileName, projectId, onError
 
       if (successCount > 0) {
         alert(`✅ Successfully added ${successCount} materials to project!${errorCount > 0 ? ` (${errorCount} failed)` : ''}`);
+        onExportComplete?.();
       } else {
         alert('Failed to add any materials to project. Please try again.');
       }
@@ -1067,49 +1069,10 @@ export default function BOQTakeoffViewer({ fileUrl, fileName, projectId, onError
                     <h4 className="text-sm font-medium text-primary">Material Summary</h4>
                     {getMaterialSummary().length > 0 && (
                       <div className="flex gap-2">
-                        {/* Submit for Verification Button */}
-                        {verificationStatus === 'none' && (
-                          <button
-                            onClick={submitForVerification}
-                            disabled={isSubmittingForVerification}
-                            className="px-3 py-1.5 text-sm bg-accent-orange text-white rounded-lg hover:bg-accent-orange/80 transition-colors disabled:opacity-50"
-                          >
-                            {isSubmittingForVerification ? 'Submitting...' : 'Submit for Verification'}
-                          </button>
-                        )}
-                        
-                        {/* Verification Status Badge */}
-                        {verificationStatus !== 'none' && (
-                          <span className={`px-3 py-1.5 text-sm rounded-lg border ${
-                            verificationStatus === 'pending' ? 'text-yellow-600 bg-yellow-100 border-yellow-300' :
-                            verificationStatus === 'verified' ? 'text-green-600 bg-green-100 border-green-300' :
-                            verificationStatus === 'disputed' ? 'text-red-600 bg-red-100 border-red-300' :
-                            verificationStatus === 'revision_required' ? 'text-orange-600 bg-orange-100 border-orange-300' :
-                            'text-gray-600 bg-gray-100 border-gray-300'
-                          }`}>
-                            {(() => {
-                              switch (verificationStatus as string) {
-                                case 'pending': return 'Verification Pending';
-                                case 'verified': return 'Verified ✅';
-                                case 'disputed': return 'Disputed ❌';
-                                case 'revision_required': return 'Revision Required ⚠️';
-                                case 'none': return 'Not Submitted';
-                                default: return 'Unknown Status';
-                              }
-                            })()}
-                          </span>
-                        )}
-
-                        {/* Export to Project Button - Only enabled when verified */}
                         <button
                           onClick={exportSummaryToProject}
-                          disabled={verificationStatus !== 'verified'}
-                          className={`px-3 py-1.5 text-sm rounded-lg transition-colors ${
-                            verificationStatus === 'verified'
-                              ? 'bg-blue-600 text-white hover:bg-blue-700'
-                              : 'bg-gray-400 text-gray-200 cursor-not-allowed'
-                          }`}
-                          title={verificationStatus !== 'verified' ? 'Materials must be verified before export' : 'Export to Project'}
+                          className="px-3 py-1.5 text-sm rounded-lg transition-colors bg-blue-600 text-white hover:bg-blue-700"
+                          title="Export to Project"
                         >
                           Export to Project
                         </button>
@@ -1161,77 +1124,6 @@ export default function BOQTakeoffViewer({ fileUrl, fileName, projectId, onError
                     </table>
                   </div>
                   
-                  {/* Verification Info Notice */}
-                  {verificationStatus === 'none' && getMaterialSummary().length > 0 && (
-                    <div className="mt-3 p-3 bg-blue-50 border border-blue-200 rounded-lg">
-                      <div className="flex items-start">
-                        <div className="text-blue-500 mr-2">ℹ️</div>
-                        <div>
-                          <h5 className="text-sm font-medium text-blue-900 mb-1">Verification Required</h5>
-                          <p className="text-xs text-blue-800">
-                            Submit your quantity takeoff for admin verification before exporting to project materials. 
-                            This ensures accuracy and prevents overordering.
-                          </p>
-                        </div>
-                      </div>
-                    </div>
-                  )}
-                  
-                  {verificationStatus === 'pending' && (
-                    <div className="mt-3 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
-                      <div className="flex items-start">
-                        <div className="text-yellow-500 mr-2">⏳</div>
-                        <div>
-                          <h5 className="text-sm font-medium text-yellow-900 mb-1">Verification in Progress</h5>
-                          <p className="text-xs text-yellow-800">
-                            Your takeoff has been submitted for verification. You'll be notified once the admin team completes the review.
-                          </p>
-                        </div>
-                      </div>
-                    </div>
-                  )}
-                  
-                  {verificationStatus === 'disputed' && (
-                    <div className="mt-3 p-3 bg-red-50 border border-red-200 rounded-lg">
-                      <div className="flex items-start">
-                        <div className="text-red-500 mr-2">❌</div>
-                        <div>
-                          <h5 className="text-sm font-medium text-red-900 mb-1">Verification Disputed</h5>
-                          <p className="text-xs text-red-800">
-                            The admin team has disputed some quantities. Please review their notes and resubmit.
-                          </p>
-                        </div>
-                      </div>
-                    </div>
-                  )}
-                  
-                  {verificationStatus === 'revision_required' && (
-                    <div className="mt-3 p-3 bg-orange-50 border border-orange-200 rounded-lg">
-                      <div className="flex items-start">
-                        <div className="text-orange-500 mr-2">⚠️</div>
-                        <div>
-                          <h5 className="text-sm font-medium text-orange-900 mb-1">Revision Required</h5>
-                          <p className="text-xs text-orange-800">
-                            The admin team has requested revisions to your takeoff. Please review their feedback and update accordingly.
-                          </p>
-                        </div>
-                      </div>
-                    </div>
-                  )}
-                  
-                  {verificationStatus === 'verified' && (
-                    <div className="mt-3 p-3 bg-green-50 border border-green-200 rounded-lg">
-                      <div className="flex items-start">
-                        <div className="text-green-500 mr-2">✅</div>
-                        <div>
-                          <h5 className="text-sm font-medium text-green-900 mb-1">Verification Complete</h5>
-                          <p className="text-xs text-green-800">
-                            Your takeoff has been verified and approved by the admin team. You can now export to project materials.
-                          </p>
-                        </div>
-                      </div>
-                    </div>
-                  )}
                 </div>
               )}
             </div>

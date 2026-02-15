@@ -102,6 +102,7 @@ export default function InvestorDashboard(): React.ReactElement {
     currentValue: 0,
     roi: 0,
     netRoi: 0,
+    portfolioXirr: 0,
     activeInvestments: 0,
     completedInvestments: 0,
     totalInvestments: 0,
@@ -252,11 +253,19 @@ export default function InvestorDashboard(): React.ReactElement {
           </div>
           
           <div className="bg-neutral-dark p-4 sm:p-6 rounded-lg border border-neutral-medium">
-            <div className="text-accent-amber text-sm font-mono mb-2">REALIZED XIRR</div>
+            <div className="text-accent-amber text-sm font-mono mb-2">INVESTOR XIRR</div>
             <div className="text-2xl font-bold text-accent-amber mb-1">
               {Number.isFinite(portfolioMetrics.roi) ? portfolioMetrics.roi.toFixed(1) : '0.0'}%
             </div>
-            <div className="text-xs text-secondary">Time-weighted from cashflows</div>
+            <div className="text-xs text-secondary">Capital calls vs distributions</div>
+          </div>
+
+          <div className="bg-neutral-dark p-4 sm:p-6 rounded-lg border border-neutral-medium">
+            <div className="text-accent-amber text-sm font-mono mb-2">PORTFOLIO XIRR</div>
+            <div className="text-2xl font-bold text-accent-amber mb-1">
+              {Number.isFinite(portfolioMetrics.portfolioXirr) ? Number(portfolioMetrics.portfolioXirr).toFixed(1) : '0.0'}%
+            </div>
+            <div className="text-xs text-secondary">Deployment vs return timing</div>
           </div>
           
           <div className="bg-neutral-dark p-4 sm:p-6 rounded-lg border border-neutral-medium">

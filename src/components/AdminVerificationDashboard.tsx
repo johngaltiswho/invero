@@ -103,7 +103,19 @@ interface PurchaseRequest {
   submitted_at?: string;
   approved_at?: string;
   funded_at?: string;
+  vendor_id?: number | null;
+  vendor_name?: string | null;
+  vendor_contact?: string | null;
+  vendor_assigned_at?: string | null;
+  delivery_status?: 'not_dispatched' | 'dispatched' | 'disputed' | 'delivered' | null;
+  dispatched_at?: string | null;
+  dispute_deadline?: string | null;
+  dispute_raised_at?: string | null;
+  dispute_reason?: string | null;
+  delivered_at?: string | null;
+  invoice_generated_at?: string | null;
   contractors?: {
+    id?: string;
     company_name: string;
     contact_person?: string;
     email?: string;
@@ -116,6 +128,14 @@ interface PurchaseRequest {
   total_items: number;
   total_requested_qty: number;
   estimated_total: number;
+}
+
+interface VendorOption {
+  id: number;
+  name: string;
+  contact_person?: string | null;
+  email?: string | null;
+  phone?: string | null;
 }
 
 interface PurchaseSummary {
@@ -160,6 +180,16 @@ export default function AdminVerificationDashboard(): React.ReactElement {
   const [verifyingDoc, setVerifyingDoc] = useState<string | null>(null);
   const [reviewingMaterial, setReviewingMaterial] = useState<string | null>(null);
   const [reviewingTakeoff, setReviewingTakeoff] = useState<string | null>(null);
+  const [prStatusFilter, setPrStatusFilter] = useState<string>('all');
+  const [showAddContractor, setShowAddContractor] = useState(false);
+  const [addContractorForm, setAddContractorForm] = useState({ email: '', contact_person: '', company_name: '', phone: '' });
+  const [addContractorLoading, setAddContractorLoading] = useState(false);
+  const [vendors, setVendors] = useState<VendorOption[]>([]);
+  const [vendorsLoading, setVendorsLoading] = useState(false);
+  const [selectedVendorId, setSelectedVendorId] = useState<number | null>(null);
+  const [assigningVendor, setAssigningVendor] = useState(false);
+  const [dispatchLoading, setDispatchLoading] = useState(false);
+  const [disputeWindowHours, setDisputeWindowHours] = useState(48);
 
   const formatDate = (dateString?: string | null) => {
     if (!dateString) return 'N/A';
@@ -178,14 +208,33 @@ export default function AdminVerificationDashboard(): React.ReactElement {
     } else if (activeTab === 'takeoffs') {
       loadTakeoffItems();
     } else if (activeTab === 'purchases') {
-      loadPurchaseRequests();
+      loadPurchaseRequests(prStatusFilter);
     }
-  }, [activeTab]);
+  }, [activeTab, prStatusFilter]);
+
+  // Load all vendors once on mount
+  useEffect(() => {
+    setVendorsLoading(true);
+    fetch('/api/admin/vendors')
+      .then(r => r.json())
+      .then(result => {
+        if (result.success) setVendors(result.data || []);
+      })
+      .catch(err => console.error('Failed to load vendors:', err))
+      .finally(() => setVendorsLoading(false));
+  }, []);
+
+  // Pre-select the assigned vendor when switching selected PR
+  useEffect(() => {
+    setSelectedVendorId(selectedPurchaseRequest?.vendor_id ?? null);
+  }, [selectedPurchaseRequest?.id]);
 
   useEffect(() => {
     if (!selectedContractor) return;
     const platformRate = selectedContractor.platform_fee_rate ?? 0.0025;
-    const interestDaily = selectedContractor.interest_rate_daily ?? 0.001;
+    const interestDaily =
+      selectedContractor.participation_fee_rate_daily ??
+      0.001;
     const platformCap = selectedContractor.platform_fee_cap ?? 25000;
 
     setTermsForm({
@@ -234,7 +283,7 @@ export default function AdminVerificationDashboard(): React.ReactElement {
           action: 'update_finance_terms',
           platform_fee_rate: platformRatePercent / 100,
           platform_fee_cap: platformCapValue,
-          interest_rate_daily: interestDailyPercent / 100
+          participation_fee_rate_daily: interestDailyPercent / 100
         })
       });
 
@@ -247,7 +296,7 @@ export default function AdminVerificationDashboard(): React.ReactElement {
         ...selectedContractor,
         platform_fee_rate: platformRatePercent / 100,
         platform_fee_cap: platformCapValue,
-        interest_rate_daily: interestDailyPercent / 100
+        participation_fee_rate_daily: interestDailyPercent / 100
       });
 
       setContractors((prev) =>
@@ -257,7 +306,7 @@ export default function AdminVerificationDashboard(): React.ReactElement {
                 ...contractor,
                 platform_fee_rate: platformRatePercent / 100,
                 platform_fee_cap: platformCapValue,
-                interest_rate_daily: interestDailyPercent / 100
+                participation_fee_rate_daily: interestDailyPercent / 100
               }
             : contractor
         )
@@ -384,6 +433,64 @@ export default function AdminVerificationDashboard(): React.ReactElement {
     } catch (error) {
       console.error('Error processing purchase request:', error);
       alert('Error processing purchase request');
+    }
+  };
+
+  const handleAssignVendor = async () => {
+    if (!selectedPurchaseRequest || !selectedVendorId) return;
+    setAssigningVendor(true);
+    try {
+      const response = await fetch('/api/admin/purchase-requests', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          purchase_request_id: selectedPurchaseRequest.id,
+          action: 'assign_vendor',
+          vendor_id: selectedVendorId
+        })
+      });
+      const result = await response.json();
+      if (result.success) {
+        const refreshed = await loadPurchaseRequests();
+        const updated = (refreshed as PurchaseRequest[]).find(r => r.id === selectedPurchaseRequest.id) || null;
+        setSelectedPurchaseRequest(updated);
+      } else {
+        alert(result.error || 'Failed to assign vendor');
+      }
+    } catch (err) {
+      console.error('Error assigning vendor:', err);
+      alert('Error assigning vendor');
+    } finally {
+      setAssigningVendor(false);
+    }
+  };
+
+  const handleDispatch = async (disputeHours: number) => {
+    if (!selectedPurchaseRequest) return;
+    setDispatchLoading(true);
+    try {
+      const response = await fetch('/api/admin/delivery', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          purchase_request_id: selectedPurchaseRequest.id,
+          dispute_window_hours: disputeHours
+        })
+      });
+      const result = await response.json();
+      if (result.success) {
+        alert('Order marked as dispatched. Dispute window started.');
+        const refreshed = await loadPurchaseRequests();
+        const updated = (refreshed as PurchaseRequest[]).find(r => r.id === selectedPurchaseRequest.id) || null;
+        setSelectedPurchaseRequest(updated);
+      } else {
+        alert(result.error || 'Failed to mark as dispatched');
+      }
+    } catch (err) {
+      console.error('Error dispatching:', err);
+      alert('Error marking as dispatched');
+    } finally {
+      setDispatchLoading(false);
     }
   };
 
@@ -591,6 +698,30 @@ export default function AdminVerificationDashboard(): React.ReactElement {
     }
   };
 
+  const handleAddContractor = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setAddContractorLoading(true);
+    try {
+      const response = await fetch('/api/admin/contractors', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(addContractorForm)
+      });
+      const result = await response.json();
+      if (!response.ok || !result.success) {
+        throw new Error(result.error || 'Failed to add contractor');
+      }
+      alert(`Contractor added. Invitation sent to ${addContractorForm.email}`);
+      setShowAddContractor(false);
+      setAddContractorForm({ email: '', contact_person: '', company_name: '', phone: '' });
+      await loadContractors();
+    } catch (error) {
+      alert(error instanceof Error ? error.message : 'Failed to add contractor');
+    } finally {
+      setAddContractorLoading(false);
+    }
+  };
+
   const getStatusColor = (status: string) => {
     switch (status) {
       case 'verified': return 'text-success bg-success/10 border-success';
@@ -706,7 +837,7 @@ export default function AdminVerificationDashboard(): React.ReactElement {
                   : 'text-secondary hover:text-primary'
               }`}
             >
-              Purchase Requests
+              Procurement
               {purchaseSummary.submitted > 0 && (
                 <span className="ml-2 bg-accent-orange text-white text-xs px-2 py-1 rounded-full">
                   {purchaseSummary.submitted}
@@ -722,10 +853,18 @@ export default function AdminVerificationDashboard(): React.ReactElement {
         <div className="grid lg:grid-cols-3 gap-8">
           {/* Contractors List */}
           <div className="lg:col-span-1">
-            <div className="bg-neutral-dark rounded-lg border border-neutral-medium"></div>
-            <div className="p-4 border-b border-neutral-medium">
-              <h2 className="text-lg font-semibold text-primary">Pending Verification</h2>
-              <p className="text-sm text-secondary">Contractors awaiting document review</p>
+            <div className="bg-neutral-dark rounded-lg border border-neutral-medium">
+            <div className="p-4 border-b border-neutral-medium flex items-start justify-between">
+              <div>
+                <h2 className="text-lg font-semibold text-primary">Contractors</h2>
+                <p className="text-sm text-secondary">Manage contractor registrations</p>
+              </div>
+              <button
+                onClick={() => setShowAddContractor(true)}
+                className="px-3 py-1.5 text-sm rounded-lg bg-accent-orange text-white hover:bg-accent-orange/80 transition-colors whitespace-nowrap"
+              >
+                + Add
+              </button>
             </div>
             <div className="divide-y divide-neutral-medium max-h-96 overflow-y-auto">
               {contractors.length === 0 ? (
@@ -770,6 +909,7 @@ export default function AdminVerificationDashboard(): React.ReactElement {
                 ))
               )}
             </div>
+            </div>
           </div>
 
           {/* Document Verification Panel */}
@@ -796,7 +936,7 @@ export default function AdminVerificationDashboard(): React.ReactElement {
                   <div className="flex items-center justify-between mb-4">
                     <div>
                       <h3 className="text-lg font-semibold text-primary">Finance Terms</h3>
-                      <p className="text-xs text-secondary">Set platform fee and daily late fees for this contractor</p>
+                      <p className="text-xs text-secondary">Set platform fee and daily project participation fee for this contractor</p>
                     </div>
                     <Button variant="primary" size="sm" onClick={handleSaveTerms} disabled={termsSaving}>
                       {termsSaving ? 'Saving...' : 'Save Terms'}
@@ -828,7 +968,7 @@ export default function AdminVerificationDashboard(): React.ReactElement {
                       />
                     </label>
                     <label className="block">
-                      <span className="text-secondary">Late Fees (Daily %)</span>
+                      <span className="text-secondary">Project Participation Fee (Daily %)</span>
                       <input
                         type="number"
                         step="0.01"
@@ -1543,8 +1683,8 @@ export default function AdminVerificationDashboard(): React.ReactElement {
           <div className="lg:col-span-1">
             <div className="bg-neutral-dark rounded-lg border border-neutral-medium">
               <div className="p-4 border-b border-neutral-medium">
-                <h2 className="text-lg font-semibold text-primary">Purchase Requests</h2>
-                <p className="text-sm text-secondary">Contractor submissions awaiting admin review</p>
+                <h2 className="text-lg font-semibold text-primary">Procurement</h2>
+                <p className="text-sm text-secondary">Purchase requests, vendor allocation &amp; delivery tracking</p>
 
                 <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
                   <div className="bg-yellow-100 text-yellow-800 px-2 py-1 rounded">Submitted: {purchaseSummary.submitted}</div>
@@ -1552,6 +1692,21 @@ export default function AdminVerificationDashboard(): React.ReactElement {
                   <div className="bg-purple-100 text-purple-800 px-2 py-1 rounded">Funded: {purchaseSummary.funded}</div>
                   <div className="bg-green-100 text-green-800 px-2 py-1 rounded">Completed: {purchaseSummary.completed}</div>
                   <div className="bg-red-100 text-red-800 px-2 py-1 rounded col-span-2">Rejected: {purchaseSummary.rejected}</div>
+                </div>
+                <div className="mt-3 flex flex-wrap gap-1">
+                  {(['all', 'submitted', 'approved', 'funded', 'completed', 'rejected'] as const).map(s => (
+                    <button
+                      key={s}
+                      onClick={() => setPrStatusFilter(s)}
+                      className={`px-2 py-1 rounded text-xs font-medium transition-colors ${
+                        prStatusFilter === s
+                          ? 'bg-accent-amber text-neutral-dark'
+                          : 'bg-neutral-medium text-secondary hover:text-primary'
+                      }`}
+                    >
+                      {s.charAt(0).toUpperCase() + s.slice(1)}
+                    </button>
+                  ))}
                 </div>
               </div>
               <div className="divide-y divide-neutral-medium max-h-96 overflow-y-auto">
@@ -1582,10 +1737,23 @@ export default function AdminVerificationDashboard(): React.ReactElement {
                               {request.project?.name || 'Project'} • {request.contractors?.company_name || 'Unknown Contractor'}
                             </p>
                           </div>
-                          <span className={`text-xs px-2 py-1 rounded border ${statusMeta.classes}`}>{statusMeta.label}</span>
+                          <div className="flex flex-col items-end gap-1">
+                            <span className={`text-xs px-2 py-1 rounded border ${statusMeta.classes}`}>{statusMeta.label}</span>
+                            {request.delivery_status && request.delivery_status !== 'not_dispatched' && (
+                              <span className={`text-xs px-2 py-0.5 rounded ${
+                                request.delivery_status === 'dispatched' ? 'bg-blue-100 text-blue-700' :
+                                request.delivery_status === 'disputed' ? 'bg-red-100 text-red-700' :
+                                'bg-green-100 text-green-700'
+                              }`}>
+                                {request.delivery_status === 'dispatched' ? 'Dispatched' :
+                                 request.delivery_status === 'disputed' ? 'Disputed' : 'Delivered'}
+                              </span>
+                            )}
+                          </div>
                         </div>
                         <div className="text-xs text-secondary">
                           ₹{estimated.toLocaleString(undefined, { maximumFractionDigits: 2 })} • {request.total_items} items
+                          {request.vendor_name && <span className="ml-1 text-accent-amber">• {request.vendor_name}</span>}
                         </div>
                         <div className="text-xs text-secondary mt-1">
                           {formatDate(request.submitted_at || request.created_at)}
@@ -1658,6 +1826,59 @@ export default function AdminVerificationDashboard(): React.ReactElement {
                     </div>
                   </div>
 
+                  {/* Vendor Assignment */}
+                  <div className="bg-neutral-darker border border-neutral-medium rounded-lg p-4">
+                    <h3 className="text-base font-semibold text-primary mb-3">Vendor Assignment</h3>
+                    {selectedPurchaseRequest.vendor_id ? (
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <p className="text-sm font-medium text-primary">{selectedPurchaseRequest.vendor_name}</p>
+                          {selectedPurchaseRequest.vendor_contact && (
+                            <p className="text-xs text-secondary">{selectedPurchaseRequest.vendor_contact}</p>
+                          )}
+                          <p className="text-xs text-secondary mt-1">
+                            Assigned {formatDate(selectedPurchaseRequest.vendor_assigned_at)}
+                          </p>
+                        </div>
+                        <button
+                          className="text-xs text-accent-amber underline"
+                          onClick={() => setSelectedVendorId(null)}
+                        >
+                          Change
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="flex gap-2 items-end">
+                        <div className="flex-1">
+                          <label className="block text-xs font-medium text-secondary mb-1">Select Vendor</label>
+                          {vendorsLoading ? (
+                            <p className="text-xs text-secondary">Loading vendors...</p>
+                          ) : vendors.length === 0 ? (
+                            <p className="text-xs text-secondary italic">No vendors registered for this contractor yet.</p>
+                          ) : (
+                            <select
+                              value={selectedVendorId ?? ''}
+                              onChange={e => setSelectedVendorId(e.target.value ? Number(e.target.value) : null)}
+                              className="w-full px-3 py-2 bg-neutral-dark border border-neutral-medium rounded-md text-sm text-primary"
+                            >
+                              <option value="">-- Choose vendor --</option>
+                              {vendors.map(v => (
+                                <option key={v.id} value={v.id}>{v.name}{v.contact_person ? ` (${v.contact_person})` : ''}</option>
+                              ))}
+                            </select>
+                          )}
+                        </div>
+                        <button
+                          onClick={handleAssignVendor}
+                          disabled={!selectedVendorId || assigningVendor}
+                          className="px-4 py-2 bg-accent-amber text-neutral-dark rounded-md text-sm font-medium disabled:opacity-50 whitespace-nowrap"
+                        >
+                          {assigningVendor ? 'Assigning...' : 'Assign Vendor'}
+                        </button>
+                      </div>
+                    )}
+                  </div>
+
                   <div>
                     <h3 className="text-lg font-semibold text-primary mb-3">Requested Items</h3>
                     <div className="overflow-x-auto">
@@ -1716,6 +1937,11 @@ export default function AdminVerificationDashboard(): React.ReactElement {
                   {selectedPurchaseRequest.status === 'submitted' && (
                     <div className="bg-accent-amber/5 border border-accent-amber/20 rounded-lg p-6">
                       <h3 className="text-lg font-semibold text-primary mb-4">Review Purchase Request</h3>
+                      {!selectedPurchaseRequest.vendor_id && (
+                        <div className="mb-4 p-3 bg-yellow-50 border border-yellow-200 rounded-lg text-sm text-yellow-800">
+                          A vendor must be assigned before this request can be approved.
+                        </div>
+                      )}
                       <div className="mb-4">
                         <label className="block text-sm font-medium text-primary mb-2">Admin Notes</label>
                         <textarea
@@ -1729,11 +1955,15 @@ export default function AdminVerificationDashboard(): React.ReactElement {
                         <Button
                           variant="primary"
                           onClick={() => {
+                            if (!selectedPurchaseRequest.vendor_id) {
+                              alert('Please assign a vendor before approving.');
+                              return;
+                            }
                             const notes = (document.getElementById(`admin-notes-${selectedPurchaseRequest.id}`) as HTMLTextAreaElement)?.value;
                             handlePurchaseRequestAction(selectedPurchaseRequest.id, 'approve_for_purchase', notes || undefined);
                           }}
                         >
-                          Approve Request
+                          {selectedPurchaseRequest.vendor_id ? 'Approve Request' : 'Approve Request (assign vendor first)'}
                         </Button>
                         <Button
                           variant="outline"
@@ -1759,6 +1989,63 @@ export default function AdminVerificationDashboard(): React.ReactElement {
                     </div>
                   )}
 
+                  {/* Dispatch section — shown for approved/funded PRs not yet dispatched */}
+                  {(['approved', 'funded', 'po_generated'].includes(selectedPurchaseRequest.status)) &&
+                    (!selectedPurchaseRequest.delivery_status || selectedPurchaseRequest.delivery_status === 'not_dispatched') && (
+                    <div className="bg-blue-500/5 border border-blue-500/20 rounded-lg p-6">
+                      <h3 className="text-lg font-semibold text-primary mb-2">Mark as Dispatched</h3>
+                      <p className="text-sm text-secondary mb-4">
+                        Once you dispatch the order, the contractor has a window to raise a dispute. After the window closes, an invoice is auto-generated.
+                      </p>
+                      <div className="flex items-center gap-4">
+                        <div>
+                          <label className="block text-xs font-medium text-secondary mb-1">Dispute Window</label>
+                          <select
+                            value={disputeWindowHours}
+                            onChange={e => setDisputeWindowHours(Number(e.target.value))}
+                            className="px-3 py-2 bg-neutral-dark border border-neutral-medium rounded-md text-sm text-primary"
+                          >
+                            <option value={24}>24 hours</option>
+                            <option value={48}>48 hours</option>
+                            <option value={72}>72 hours</option>
+                          </select>
+                        </div>
+                        <button
+                          onClick={() => handleDispatch(disputeWindowHours)}
+                          disabled={dispatchLoading}
+                          className="px-5 py-2 bg-blue-600 text-white rounded-md text-sm font-medium hover:bg-blue-700 disabled:opacity-50 mt-4"
+                        >
+                          {dispatchLoading ? 'Processing...' : 'Mark as Dispatched'}
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Delivery status info when already dispatched */}
+                  {selectedPurchaseRequest.delivery_status === 'dispatched' && (
+                    <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg text-sm">
+                      <p className="font-medium text-blue-900">Order Dispatched</p>
+                      <p className="text-blue-800">Dispatched: {formatDate(selectedPurchaseRequest.dispatched_at)}</p>
+                      {selectedPurchaseRequest.dispute_deadline && (
+                        <p className="text-blue-800">Dispute deadline: {new Date(selectedPurchaseRequest.dispute_deadline).toLocaleString()}</p>
+                      )}
+                    </div>
+                  )}
+                  {selectedPurchaseRequest.delivery_status === 'disputed' && (
+                    <div className="p-4 bg-red-50 border border-red-200 rounded-lg text-sm">
+                      <p className="font-medium text-red-900">Dispute Raised by Contractor</p>
+                      {selectedPurchaseRequest.dispute_reason && (
+                        <p className="text-red-800 mt-1">Reason: {selectedPurchaseRequest.dispute_reason}</p>
+                      )}
+                    </div>
+                  )}
+                  {selectedPurchaseRequest.delivery_status === 'delivered' && selectedPurchaseRequest.invoice_generated_at && (
+                    <div className="p-4 bg-green-50 border border-green-200 rounded-lg text-sm">
+                      <p className="font-medium text-green-900">Delivered — Invoice Generated</p>
+                      <p className="text-green-800">Invoice date: {formatDate(selectedPurchaseRequest.invoice_generated_at)}</p>
+                    </div>
+                  )}
+
                   {selectedPurchaseRequest.approval_notes && selectedPurchaseRequest.status !== 'submitted' && (
                     <div className="mt-6 p-4 bg-neutral-darker border border-neutral-medium rounded-lg">
                       <h4 className="font-semibold text-primary mb-2">Latest Admin Notes</h4>
@@ -1777,6 +2064,78 @@ export default function AdminVerificationDashboard(): React.ReactElement {
           </div>
         </div>
       ) : null}
+
+      {/* Add Contractor Modal */}
+      {showAddContractor && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
+          <div className="bg-neutral-dark rounded-lg border border-neutral-medium max-w-md w-full">
+            <div className="p-6 border-b border-neutral-medium">
+              <h2 className="text-xl font-semibold text-primary">Add New Contractor</h2>
+              <p className="text-sm text-secondary mt-1">Pre-register a contractor and send them a Clerk invitation</p>
+            </div>
+            <form onSubmit={handleAddContractor} className="p-6 space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-primary mb-1">Email *</label>
+                <input
+                  type="email"
+                  required
+                  value={addContractorForm.email}
+                  onChange={(e) => setAddContractorForm({ ...addContractorForm, email: e.target.value })}
+                  className="w-full px-3 py-2 border border-neutral-medium rounded-md bg-neutral-darker text-primary placeholder-secondary focus:outline-none focus:ring-2 focus:ring-accent-orange"
+                  placeholder="contractor@company.com"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-primary mb-1">Contact Person *</label>
+                <input
+                  type="text"
+                  required
+                  value={addContractorForm.contact_person}
+                  onChange={(e) => setAddContractorForm({ ...addContractorForm, contact_person: e.target.value })}
+                  className="w-full px-3 py-2 border border-neutral-medium rounded-md bg-neutral-darker text-primary placeholder-secondary focus:outline-none focus:ring-2 focus:ring-accent-orange"
+                  placeholder="Full name"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-primary mb-1">Company Name *</label>
+                <input
+                  type="text"
+                  required
+                  value={addContractorForm.company_name}
+                  onChange={(e) => setAddContractorForm({ ...addContractorForm, company_name: e.target.value })}
+                  className="w-full px-3 py-2 border border-neutral-medium rounded-md bg-neutral-darker text-primary placeholder-secondary focus:outline-none focus:ring-2 focus:ring-accent-orange"
+                  placeholder="Company Ltd."
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-primary mb-1">Phone</label>
+                <input
+                  type="tel"
+                  value={addContractorForm.phone}
+                  onChange={(e) => setAddContractorForm({ ...addContractorForm, phone: e.target.value })}
+                  className="w-full px-3 py-2 border border-neutral-medium rounded-md bg-neutral-darker text-primary placeholder-secondary focus:outline-none focus:ring-2 focus:ring-accent-orange"
+                  placeholder="+91 98765 43210"
+                />
+              </div>
+              <div className="flex space-x-3 pt-2">
+                <Button type="submit" variant="primary" disabled={addContractorLoading}>
+                  {addContractorLoading ? 'Adding...' : 'Add Contractor'}
+                </Button>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  onClick={() => {
+                    setShowAddContractor(false);
+                    setAddContractorForm({ email: '', contact_person: '', company_name: '', phone: '' });
+                  }}
+                >
+                  Cancel
+                </Button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

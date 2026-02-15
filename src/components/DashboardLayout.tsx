@@ -19,6 +19,9 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children, acti
     { id: 'overview', label: 'Portfolio Overview', icon: '📊', href: '/dashboard/investor' },
     { id: 'opportunities', label: 'Investment Opportunities', icon: '🎯', href: '/dashboard/investor/opportunities' },
     { id: 'projects', label: 'Project Monitoring', icon: '📈', href: '/dashboard/investor/projects' },
+    { id: 'financials', label: 'Financials', icon: '💰', href: '/dashboard/investor/financials' },
+    { id: 'documents', label: 'Documents', icon: '📄', href: '/dashboard/investor/documents' },
+    { id: 'drawings', label: 'Drawings', icon: '🗺️', href: '/dashboard/investor/drawings' },
   ];
 
   return (
@@ -199,20 +202,7 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children, acti
               ))}
             </div>
 
-            {/* Quick Actions */}
-            <div className="mt-8 pt-8 border-t border-neutral-medium">
-              <h3 className="text-xs font-semibold text-secondary uppercase tracking-wide mb-4">
-                Quick Actions
-              </h3>
-              <div className="space-y-2">
-                <Button variant="primary" size="sm" className="w-full text-xs">
-                  Invest Now
-                </Button>
-                <Button variant="outline" size="sm" className="w-full text-xs">
-                  Generate Report
-                </Button>
-              </div>
-            </div>
+            {/* Quick Actions (hidden for now) */}
           </div>
         </aside>
 

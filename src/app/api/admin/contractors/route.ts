@@ -31,6 +31,7 @@ export async function GET(request: NextRequest) {
 
           return {
             ...contractor,
+            participation_fee_rate_daily: contractor.participation_fee_rate_daily,
             uploadProgress,
             verificationProgress,
             documentStatus
@@ -39,6 +40,7 @@ export async function GET(request: NextRequest) {
           console.error(`Error getting document status for contractor ${contractor.id}:`, error);
           return {
             ...contractor,
+            participation_fee_rate_daily: contractor.participation_fee_rate_daily,
             uploadProgress: 0,
             verificationProgress: 0,
             documentStatus: null
@@ -100,6 +102,79 @@ export async function GET(request: NextRequest) {
   }
 }
 
+// POST - Pre-register a contractor by email + name + company (admin invites them)
+export async function POST(request: NextRequest) {
+  try {
+    await requireAdmin();
+
+    const body = await request.json();
+    const { email, contact_person, company_name, phone } = body;
+
+    if (!email || !contact_person || !company_name) {
+      return NextResponse.json({
+        success: false,
+        error: 'Missing required fields: email, contact_person, company_name'
+      }, { status: 400 });
+    }
+
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      return NextResponse.json({ success: false, error: 'Invalid email address' }, { status: 400 });
+    }
+
+    // Check for duplicate email
+    const existing = await ContractorService.getContractorByEmail(email.toLowerCase().trim());
+    if (existing) {
+      return NextResponse.json({ success: false, error: 'A contractor with this email already exists' }, { status: 409 });
+    }
+
+    const contractor = await ContractorService.createContractor({
+      email: email.toLowerCase().trim(),
+      contact_person: contact_person.trim(),
+      company_name: company_name.trim(),
+      phone: phone?.trim() || null,
+      status: 'pending',
+      verification_status: 'documents_pending',
+      application_date: new Date().toISOString()
+    });
+
+    // Send Clerk invitation
+    const clerkSecretKey = process.env.CLERK_SECRET_KEY;
+    if (clerkSecretKey && contractor) {
+      try {
+        const inviteRes = await fetch('https://api.clerk.com/v1/invitations', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${clerkSecretKey}`
+          },
+          body: JSON.stringify({
+            email_address: email.toLowerCase().trim(),
+            public_metadata: { role: 'contractor', name: contact_person.trim() }
+          })
+        });
+        if (!inviteRes.ok) {
+          const err = await inviteRes.json().catch(() => ({}));
+          // 409/duplicate is fine — user already has a Clerk account
+          if (inviteRes.status !== 409 && !(err as any)?.errors?.[0]?.code?.includes('duplicate')) {
+            console.warn('Clerk invitation warning:', err);
+          }
+        }
+      } catch (inviteErr) {
+        console.warn('Failed to send Clerk invite (non-fatal):', inviteErr);
+      }
+    }
+
+    return NextResponse.json({ success: true, data: contractor });
+  } catch (error) {
+    console.error('Error creating contractor:', error);
+    if (error instanceof Error && (error.message === 'Authentication required' || error.message === 'Admin access required')) {
+      return NextResponse.json({ success: false, error: error.message }, { status: 401 });
+    }
+    return NextResponse.json({ success: false, error: 'Failed to create contractor' }, { status: 500 });
+  }
+}
+
 // PUT - Update contractor verification status
 export async function PUT(request: NextRequest) {
   try {
@@ -112,7 +187,7 @@ export async function PUT(request: NextRequest) {
       rejectionReason,
       platform_fee_rate,
       platform_fee_cap,
-      interest_rate_daily
+      participation_fee_rate_daily
     } = await request.json();
 
     if (!contractorId || !action) {
@@ -179,7 +254,7 @@ export async function PUT(request: NextRequest) {
       case 'update_finance_terms': {
         const rate = typeof platform_fee_rate === 'number' ? platform_fee_rate : null;
         const cap = typeof platform_fee_cap === 'number' ? platform_fee_cap : null;
-        const interest = typeof interest_rate_daily === 'number' ? interest_rate_daily : null;
+        const interest = typeof participation_fee_rate_daily === 'number' ? participation_fee_rate_daily : null;
 
         if (rate !== null && (rate < 0 || rate > 1)) {
           return NextResponse.json({
@@ -205,7 +280,7 @@ export async function PUT(request: NextRequest) {
         const updateResult = await ContractorService.updateContractor(contractorId, {
           platform_fee_rate: rate,
           platform_fee_cap: cap,
-          interest_rate_daily: interest
+          participation_fee_rate_daily: interest
         });
         result = { success: !!updateResult };
         break;

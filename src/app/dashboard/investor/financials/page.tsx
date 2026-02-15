@@ -1,137 +1,72 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { DashboardLayout } from '@/components/DashboardLayout';
 import { Button } from '@/components';
-import { mockInvestments, mockProjects, getProjectById } from '@/data/mockData';
+import { useInvestor } from '@/contexts/InvestorContext';
 
 export default function FinancialManagement(): React.ReactElement {
   const [selectedTab, setSelectedTab] = useState<'overview' | 'transactions' | 'payouts' | 'tax'>('overview');
-  const [selectedTimeframe, setSelectedTimeframe] = useState('12months');
-
-  // Mock financial data for current investor (INV_001)
-  const financialData = {
-    totalInvested: 24500000,
-    currentValue: 27850000,
-    totalReturns: 3350000,
-    unrealizedGains: 2100000,
-    realizedGains: 1250000,
-    taxableincome: 875000,
-    tdsDeducted: 131250,
-    netReceivable: 743750
+  const [bankForm, setBankForm] = useState({
+    accountHolder: '',
+    bankName: '',
+    accountNumber: '',
+    ifscCode: '',
+    branchName: ''
+  });
+  const [chequeFileName, setChequeFileName] = useState('');
+  const [chequeFile, setChequeFile] = useState<File | null>(null);
+  const [bankSaving, setBankSaving] = useState(false);
+  const [bankMessage, setBankMessage] = useState<string | null>(null);
+  const [panFile, setPanFile] = useState<File | null>(null);
+  const [panFileName, setPanFileName] = useState('');
+  const [panUploading, setPanUploading] = useState(false);
+  const [panMessage, setPanMessage] = useState<string | null>(null);
+  const [panDocument, setPanDocument] = useState<{ name: string; signedUrl: string | null; createdAt: string | null } | null>(null);
+  const { investor } = useInvestor();
+  const portfolioMetrics = investor?.portfolioMetrics || {
+    totalInvested: 0,
+    totalReturns: 0,
+    currentValue: 0,
+    roi: 0,
+    netRoi: 0,
+    activeInvestments: 0,
+    completedInvestments: 0,
+    totalInvestments: 0,
+    capitalInflow: 0,
+    capitalReturns: 0,
+    netCapitalReturns: 0,
+    managementFees: 0,
+    performanceFees: 0
   };
 
-  const transactions = [
-    {
-      id: 'TXN_2024_089',
-      date: '2024-12-01',
-      type: 'Interest Payment',
-      projectName: 'Smart Manufacturing - Tata Motors',
-      amount: 150000,
-      status: 'Completed',
-      reference: 'INT_PROJ_156_NOV24',
-      description: 'Monthly interest payment - Milestone 2 completion'
-    },
-    {
-      id: 'TXN_2024_088',
-      date: '2024-11-30',
-      type: 'Investment',
-      projectName: 'Digital Infrastructure - HCL Tech',
-      amount: -2500000,
-      status: 'Completed',
-      reference: 'INV_PROJ_148',
-      description: 'Initial investment in project financing'
-    },
-    {
-      id: 'TXN_2024_087',
-      date: '2024-11-01',
-      type: 'Interest Payment',
-      projectName: 'Smart Manufacturing - Tata Motors',
-      amount: 150000,
-      status: 'Completed',
-      reference: 'INT_PROJ_156_OCT24',
-      description: 'Monthly interest payment - Milestone 1 completion'
-    },
-    {
-      id: 'TXN_2024_086',
-      date: '2024-10-15',
-      type: 'Principal Repayment',
-      projectName: 'IT Infrastructure - Bosch',
-      amount: 3850000,
-      status: 'Completed',
-      reference: 'PRIN_PROJ_063_FINAL',
-      description: 'Final principal repayment with returns'
-    },
-    {
-      id: 'TXN_2024_085',
-      date: '2024-10-01',
-      type: 'Investment',
-      projectName: 'Smart Manufacturing - Tata Motors',
-      amount: -5000000,
-      status: 'Completed',
-      reference: 'INV_PROJ_156',
-      description: 'Initial investment in project financing'
-    }
-  ];
+  const transactions = useMemo(() => {
+    const allTx = (investor?.transactions || []) as any[];
+    return allTx.map((tx) => {
+      const type = String(tx.transaction_type || '').toLowerCase();
+      const projectName = tx.projects?.project_name || 'Project';
+      const amount = Number(tx.amount) || 0;
+      const isOutflow = type === 'deployment' || type === 'withdrawal';
+      const rawStatus = tx.status ? String(tx.status) : 'completed';
+      const prettyStatus = rawStatus.charAt(0).toUpperCase() + rawStatus.slice(1);
+      return {
+        id: tx.id,
+        date: tx.created_at,
+        type: type ? type[0].toUpperCase() + type.slice(1) : 'Transaction',
+        projectName,
+        amount: isOutflow ? -Math.abs(amount) : Math.abs(amount),
+        status: prettyStatus,
+        reference: tx.reference_number || '',
+        description: tx.description || ''
+      };
+    });
+  }, [investor?.transactions]);
 
-  const upcomingPayouts = [
-    {
-      id: 'PAYOUT_001',
-      date: '2024-12-31',
-      projectName: 'Smart Manufacturing - Tata Motors',
-      type: 'Interest Payment',
-      amount: 150000,
-      status: 'Scheduled',
-      description: 'Monthly interest - December 2024'
-    },
-    {
-      id: 'PAYOUT_002',
-      date: '2025-01-31',
-      projectName: 'Digital Infrastructure - HCL Tech',
-      type: 'Interest Payment',
-      amount: 135000,
-      status: 'Scheduled',
-      description: 'Monthly interest - January 2025'
-    },
-    {
-      id: 'PAYOUT_003',
-      date: '2025-01-31',
-      projectName: 'Smart Manufacturing - Tata Motors',
-      type: 'Interest Payment',
-      amount: 150000,
-      status: 'Scheduled',
-      description: 'Monthly interest - January 2025'
-    },
-    {
-      id: 'PAYOUT_004',
-      date: '2025-05-15',
-      projectName: 'Digital Infrastructure - HCL Tech',
-      type: 'Principal + Interest',
-      amount: 2905000,
-      status: 'Projected',
-      description: 'Final payment on project completion'
-    },
-    {
-      id: 'PAYOUT_005',
-      date: '2025-06-30',
-      projectName: 'Smart Manufacturing - Tata Motors',
-      type: 'Principal + Interest',
-      amount: 5740000,
-      status: 'Projected',
-      description: 'Final payment on project completion'
-    }
-  ];
-
-  const taxSummary = {
-    currentFY: '2024-25',
-    interestIncome: 485000,
-    capitalGains: 390000,
-    totalTaxableIncome: 875000,
-    tdsDeducted: 131250,
-    applicableTaxRate: '30%',
-    estimatedTaxLiability: 262500,
-    netTaxPayable: 131250
-  };
+  const completedReturns = useMemo(() => {
+    return transactions.filter(
+      (tx) => String(tx.type).toLowerCase() === 'return' && String(tx.status).toLowerCase() === 'completed'
+    );
+  }, [transactions]);
 
   const formatCurrency = (amount: number) => {
     const absAmount = Math.abs(amount);
@@ -139,6 +74,7 @@ export default function FinancialManagement(): React.ReactElement {
   };
 
   const formatDate = (dateString: string) => {
+    if (!dateString) return '—';
     return new Date(dateString).toLocaleDateString('en-IN', {
       year: 'numeric',
       month: 'short',
@@ -148,21 +84,158 @@ export default function FinancialManagement(): React.ReactElement {
 
   const getTransactionColor = (type: string, amount: number) => {
     if (amount < 0) return 'text-warning'; // Outgoing
-    switch (type) {
-      case 'Interest Payment': return 'text-success';
-      case 'Principal Repayment': return 'text-accent-amber';
-      case 'Dividend': return 'text-accent-blue';
-      default: return 'text-primary';
+    if (type.toLowerCase() === 'return' || type.toLowerCase() === 'inflow') {
+      return 'text-success';
     }
+    return 'text-primary';
   };
 
   const getStatusColor = (status: string) => {
     switch (status) {
       case 'Completed': return 'bg-success/10 text-success';
-      case 'Scheduled': return 'bg-accent-blue/10 text-accent-blue';
-      case 'Projected': return 'bg-accent-amber/10 text-accent-amber';
       case 'Pending': return 'bg-warning/10 text-warning';
       default: return 'bg-neutral-medium text-secondary';
+    }
+  };
+
+  const handleBankFieldChange = (field: keyof typeof bankForm, value: string) => {
+    setBankForm((prev) => ({ ...prev, [field]: value }));
+  };
+
+  useEffect(() => {
+    const loadBankDetails = async () => {
+      try {
+        const response = await fetch('/api/investor/bank-details');
+        const result = await response.json();
+        if (response.ok && result?.success && result?.data) {
+          setBankForm({
+            accountHolder: result.data.bank_account_holder || '',
+            bankName: result.data.bank_name || '',
+            accountNumber: result.data.bank_account_number || '',
+            ifscCode: result.data.bank_ifsc || '',
+            branchName: result.data.bank_branch || ''
+          });
+          if (result.data.cancelled_cheque_path) {
+            setChequeFileName('cancelled-cheque');
+          }
+        }
+      } catch (error) {
+        console.warn('Failed to load bank details', error);
+      }
+    };
+
+    const loadPanDocument = async () => {
+      try {
+        const response = await fetch('/api/investor/documents');
+        const result = await response.json();
+        if (response.ok && result?.success) {
+          const panDoc = (result.documents || []).find((doc: any) => doc.documentType === 'pan');
+          if (panDoc) {
+            setPanDocument({
+              name: panDoc.name,
+              signedUrl: panDoc.signedUrl || null,
+              createdAt: panDoc.createdAt || null
+            });
+          } else {
+            setPanDocument(null);
+          }
+        }
+      } catch (error) {
+        console.warn('Failed to load PAN document', error);
+      }
+    };
+
+    loadBankDetails();
+    loadPanDocument();
+  }, []);
+
+  const handleSaveBankDetails = async () => {
+    setBankSaving(true);
+    setBankMessage(null);
+    try {
+      let cancelledChequePath = '';
+
+      if (chequeFile) {
+        const formData = new FormData();
+        formData.append('file', chequeFile);
+        formData.append('documentType', 'cancelled-cheque');
+
+        const uploadResponse = await fetch('/api/investor/documents', {
+          method: 'POST',
+          body: formData
+        });
+
+        const uploadResult = await uploadResponse.json();
+        if (!uploadResponse.ok) {
+          throw new Error(uploadResult?.error || 'Failed to upload cheque');
+        }
+
+        cancelledChequePath = uploadResult?.document?.path || '';
+      }
+
+      const saveResponse = await fetch('/api/investor/bank-details', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          bank_account_holder: bankForm.accountHolder,
+          bank_name: bankForm.bankName,
+          bank_account_number: bankForm.accountNumber,
+          bank_ifsc: bankForm.ifscCode,
+          bank_branch: bankForm.branchName,
+          cancelled_cheque_path: cancelledChequePath || undefined
+        })
+      });
+
+      const saveResult = await saveResponse.json();
+      if (!saveResponse.ok) {
+        throw new Error(saveResult?.error || 'Failed to save bank details');
+      }
+
+      setChequeFile(null);
+      setBankMessage('Bank details saved. We will verify and enable payouts.');
+    } catch (error) {
+      console.error('Failed to save bank details:', error);
+      setBankMessage(error instanceof Error ? error.message : 'Failed to save bank details');
+    } finally {
+      setBankSaving(false);
+    }
+  };
+
+  const handleUploadPan = async () => {
+    if (!panFile) {
+      setPanMessage('Please select a PAN file first.');
+      return;
+    }
+
+    setPanUploading(true);
+    setPanMessage(null);
+    try {
+      const formData = new FormData();
+      formData.append('file', panFile);
+      formData.append('documentType', 'pan');
+
+      const response = await fetch('/api/investor/documents', {
+        method: 'POST',
+        body: formData
+      });
+
+      const result = await response.json();
+      if (!response.ok) {
+        throw new Error(result?.error || 'Failed to upload PAN');
+      }
+
+      setPanMessage('PAN uploaded successfully.');
+      setPanFile(null);
+      setPanDocument({
+        name: result?.document?.name || panFileName || 'PAN',
+        signedUrl: null,
+        createdAt: new Date().toISOString()
+      });
+    } catch (error) {
+      console.error('Failed to upload PAN:', error);
+      setPanMessage(error instanceof Error ? error.message : 'Failed to upload PAN');
+    } finally {
+      setPanUploading(false);
     }
   };
 
@@ -210,79 +283,195 @@ export default function FinancialManagement(): React.ReactElement {
             <div className="grid lg:grid-cols-4 md:grid-cols-2 gap-6">
               <div className="bg-neutral-dark p-6 rounded-lg border border-neutral-medium">
                 <div className="text-accent-amber text-sm font-mono mb-2">TOTAL INVESTED</div>
-                <div className="text-2xl font-bold text-primary mb-1">{formatCurrency(financialData.totalInvested)}</div>
+                <div className="text-2xl font-bold text-primary mb-1">{formatCurrency(portfolioMetrics.totalInvested)}</div>
                 <div className="text-xs text-secondary">Principal amount</div>
               </div>
               
               <div className="bg-neutral-dark p-6 rounded-lg border border-neutral-medium">
                 <div className="text-accent-amber text-sm font-mono mb-2">CURRENT VALUE</div>
-                <div className="text-2xl font-bold text-primary mb-1">{formatCurrency(financialData.currentValue)}</div>
-                <div className="text-xs text-success">+{((financialData.currentValue - financialData.totalInvested) / financialData.totalInvested * 100).toFixed(1)}%</div>
+                <div className="text-2xl font-bold text-primary mb-1">{formatCurrency(portfolioMetrics.currentValue)}</div>
+                <div className="text-xs text-success">
+                  {portfolioMetrics.totalInvested > 0
+                    ? `+${((portfolioMetrics.currentValue - portfolioMetrics.totalInvested) / portfolioMetrics.totalInvested * 100).toFixed(1)}%`
+                    : '—'}
+                </div>
               </div>
               
               <div className="bg-neutral-dark p-6 rounded-lg border border-neutral-medium">
                 <div className="text-accent-amber text-sm font-mono mb-2">TOTAL RETURNS</div>
-                <div className="text-2xl font-bold text-success mb-1">{formatCurrency(financialData.totalReturns)}</div>
-                <div className="text-xs text-secondary">All-time gains</div>
+                <div className="text-2xl font-bold text-success mb-1">{formatCurrency(portfolioMetrics.totalReturns)}</div>
+                <div className="text-xs text-secondary">Capital returned</div>
               </div>
               
               <div className="bg-neutral-dark p-6 rounded-lg border border-neutral-medium">
-                <div className="text-accent-amber text-sm font-mono mb-2">NET RECEIVABLE</div>
-                <div className="text-2xl font-bold text-primary mb-1">{formatCurrency(financialData.netReceivable)}</div>
-                <div className="text-xs text-secondary">After tax deductions</div>
+                <div className="text-accent-amber text-sm font-mono mb-2">NET RETURNS</div>
+                <div className="text-2xl font-bold text-primary mb-1">{formatCurrency(portfolioMetrics.netCapitalReturns)}</div>
+                <div className="text-xs text-secondary">After fees</div>
               </div>
             </div>
 
-            {/* Detailed Breakdown */}
-            <div className="grid lg:grid-cols-2 gap-8">
-              <div className="bg-neutral-dark rounded-lg border border-neutral-medium">
-                <div className="p-6 border-b border-neutral-medium">
-                  <h3 className="text-lg font-bold text-primary">Returns Breakdown</h3>
-                  <p className="text-sm text-secondary">Analysis of realized vs unrealized gains</p>
+            <div className="bg-neutral-dark rounded-lg border border-neutral-medium p-6">
+              <h3 className="text-lg font-bold text-primary">Tax Summary</h3>
+              <p className="text-sm text-secondary">
+                Tax statements will be available once payout reports are finalized.
+              </p>
+            </div>
+          </div>
+        )}
+
+        {selectedTab === 'payouts' && (
+          <div className="space-y-8">
+            <div className="bg-neutral-dark rounded-lg border border-neutral-medium p-6">
+              <h2 className="text-xl font-semibold text-primary mb-2">Payout Preferences</h2>
+              <p className="text-secondary text-sm mb-6">
+                Provide your bank details and a cancelled cheque to enable automated payouts.
+              </p>
+              <div className="grid md:grid-cols-2 gap-4">
+                <div>
+                  <label className="text-xs uppercase tracking-wide text-secondary">Account Holder Name</label>
+                  <input
+                    type="text"
+                    value={bankForm.accountHolder}
+                    onChange={(e) => handleBankFieldChange('accountHolder', e.target.value)}
+                    className="mt-2 w-full rounded-lg border border-neutral-medium bg-neutral-darker px-3 py-2 text-sm text-primary"
+                    placeholder="Name as per bank account"
+                  />
                 </div>
-                <div className="p-6">
-                  <div className="space-y-4">
-                    <div className="flex justify-between">
-                      <span className="text-sm text-secondary">Unrealized Gains</span>
-                      <span className="text-sm font-medium text-accent-amber">{formatCurrency(financialData.unrealizedGains)}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-sm text-secondary">Realized Gains</span>
-                      <span className="text-sm font-medium text-success">{formatCurrency(financialData.realizedGains)}</span>
-                    </div>
-                    <div className="border-t border-neutral-medium pt-2">
-                      <div className="flex justify-between">
-                        <span className="text-sm font-medium text-primary">Total Returns</span>
-                        <span className="text-sm font-bold text-success">{formatCurrency(financialData.totalReturns)}</span>
-                      </div>
-                    </div>
+                <div>
+                  <label className="text-xs uppercase tracking-wide text-secondary">Bank Name</label>
+                  <input
+                    type="text"
+                    value={bankForm.bankName}
+                    onChange={(e) => handleBankFieldChange('bankName', e.target.value)}
+                    className="mt-2 w-full rounded-lg border border-neutral-medium bg-neutral-darker px-3 py-2 text-sm text-primary"
+                    placeholder="Bank name"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs uppercase tracking-wide text-secondary">Account Number</label>
+                  <input
+                    type="text"
+                    value={bankForm.accountNumber}
+                    onChange={(e) => handleBankFieldChange('accountNumber', e.target.value)}
+                    className="mt-2 w-full rounded-lg border border-neutral-medium bg-neutral-darker px-3 py-2 text-sm text-primary"
+                    placeholder="Account number"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs uppercase tracking-wide text-secondary">IFSC Code</label>
+                  <input
+                    type="text"
+                    value={bankForm.ifscCode}
+                    onChange={(e) => handleBankFieldChange('ifscCode', e.target.value)}
+                    className="mt-2 w-full rounded-lg border border-neutral-medium bg-neutral-darker px-3 py-2 text-sm text-primary"
+                    placeholder="IFSC code"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs uppercase tracking-wide text-secondary">Branch Name</label>
+                  <input
+                    type="text"
+                    value={bankForm.branchName}
+                    onChange={(e) => handleBankFieldChange('branchName', e.target.value)}
+                    className="mt-2 w-full rounded-lg border border-neutral-medium bg-neutral-darker px-3 py-2 text-sm text-primary"
+                    placeholder="Branch"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs uppercase tracking-wide text-secondary">Cancelled Cheque</label>
+                  <div className="mt-2 flex items-center gap-3 rounded-lg border border-dashed border-neutral-medium bg-neutral-darker px-3 py-2 text-sm text-secondary">
+                    <input
+                      type="file"
+                      accept=".pdf,.png,.jpg,.jpeg"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0] || null;
+                        setChequeFile(file);
+                        setChequeFileName(file?.name || '');
+                      }}
+                      className="text-xs text-secondary"
+                    />
+                    {chequeFileName && (
+                      <span className="text-xs text-primary">{chequeFileName}</span>
+                    )}
                   </div>
                 </div>
               </div>
+              <div className="mt-6 flex items-center justify-between">
+                <p className="text-xs text-secondary">
+                  {bankMessage || 'We will verify these details before enabling payouts.'}
+                </p>
+                <Button size="sm" disabled={bankSaving} onClick={handleSaveBankDetails}>
+                  {bankSaving ? 'Saving...' : 'Save Bank Details'}
+                </Button>
+              </div>
+            </div>
 
-              <div className="bg-neutral-dark rounded-lg border border-neutral-medium">
-                <div className="p-6 border-b border-neutral-medium">
-                  <h3 className="text-lg font-bold text-primary">Tax Summary (FY 2024-25)</h3>
-                  <p className="text-sm text-secondary">Current financial year tax obligations</p>
+            <div className="bg-neutral-dark rounded-lg border border-neutral-medium p-6">
+              <h2 className="text-xl font-semibold text-primary mb-2">PAN Document</h2>
+              <p className="text-secondary text-sm mb-6">
+                Upload your PAN card for compliance and payout processing.
+              </p>
+              <div className="flex flex-col sm:flex-row sm:items-center gap-4">
+                <input
+                  type="file"
+                  accept=".pdf,.png,.jpg,.jpeg"
+                  className="text-sm text-secondary"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0] || null;
+                    setPanFile(file);
+                    setPanFileName(file?.name || '');
+                  }}
+                />
+                <Button variant="outline" size="sm" onClick={handleUploadPan} disabled={panUploading}>
+                  {panUploading ? 'Uploading...' : panDocument ? 'Replace PAN' : 'Upload PAN'}
+                </Button>
+              </div>
+              {panFileName && (
+                <p className="text-xs text-secondary mt-2">Selected: {panFileName}</p>
+              )}
+              {panDocument && (
+                <div className="mt-3 text-xs text-secondary">
+                  Uploaded PAN: <span className="text-primary">{panDocument.name}</span>{' '}
+                  {panDocument.createdAt ? `on ${formatDate(panDocument.createdAt)}` : ''}
+                  {panDocument.signedUrl && (
+                    <>
+                      {' '}·{' '}
+                      <a href={panDocument.signedUrl} className="text-accent-amber hover:underline" target="_blank" rel="noreferrer">
+                        View
+                      </a>
+                    </>
+                  )}
                 </div>
-                <div className="p-6">
-                  <div className="space-y-4">
-                    <div className="flex justify-between">
-                      <span className="text-sm text-secondary">Taxable Income</span>
-                      <span className="text-sm font-medium text-primary">{formatCurrency(financialData.taxableincome)}</span>
+              )}
+              {panMessage && (
+                <p className="text-xs text-secondary mt-2">{panMessage}</p>
+              )}
+            </div>
+
+            <div className="bg-neutral-dark rounded-lg border border-neutral-medium p-6">
+              <h2 className="text-xl font-semibold text-primary mb-2">Upcoming Payouts</h2>
+              <p className="text-secondary text-sm mb-6">
+                Completed capital returns are listed here.
+              </p>
+              <div className="space-y-4">
+                {completedReturns.length === 0 && (
+                  <div className="text-secondary text-sm">No completed returns yet.</div>
+                )}
+                {completedReturns.map((payout) => (
+                  <div key={payout.id} className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 border border-neutral-medium rounded-lg p-4">
+                    <div>
+                      <div className="text-primary font-medium">{payout.projectName}</div>
+                      <div className="text-xs text-secondary">{payout.description || 'Capital return'}</div>
+                      <div className="text-xs text-secondary mt-1">{payout.date ? formatDate(payout.date) : 'Date not set'}</div>
                     </div>
-                    <div className="flex justify-between">
-                      <span className="text-sm text-secondary">TDS Deducted</span>
-                      <span className="text-sm font-medium text-warning">{formatCurrency(financialData.tdsDeducted)}</span>
-                    </div>
-                    <div className="border-t border-neutral-medium pt-2">
-                      <div className="flex justify-between">
-                        <span className="text-sm font-medium text-primary">Net Receivable</span>
-                        <span className="text-sm font-bold text-success">{formatCurrency(financialData.netReceivable)}</span>
-                      </div>
+                    <div className="text-right">
+                      <div className="text-primary font-semibold">{formatCurrency(payout.amount)}</div>
+                      <span className={`inline-flex items-center px-2 py-1 rounded text-xs ${getStatusColor(payout.status)}`}>
+                        {payout.status}
+                      </span>
                     </div>
                   </div>
-                </div>
+                ))}
               </div>
             </div>
           </div>
@@ -290,46 +479,6 @@ export default function FinancialManagement(): React.ReactElement {
 
         {selectedTab === 'transactions' && (
           <div className="space-y-6">
-            {/* Transaction Filters */}
-            <div className="bg-neutral-dark rounded-lg border border-neutral-medium p-6">
-              <div className="grid md:grid-cols-4 gap-6">
-                <div>
-                  <label className="block text-sm font-medium text-primary mb-2">Time Period</label>
-                  <select 
-                    value={selectedTimeframe} 
-                    onChange={(e) => setSelectedTimeframe(e.target.value)}
-                    className="w-full px-3 py-2 bg-neutral-medium border border-neutral-light rounded text-primary text-sm"
-                  >
-                    <option value="12months">Last 12 Months</option>
-                    <option value="6months">Last 6 Months</option>
-                    <option value="3months">Last 3 Months</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-primary mb-2">Transaction Type</label>
-                  <select className="w-full px-3 py-2 bg-neutral-medium border border-neutral-light rounded text-primary text-sm">
-                    <option value="all">All Types</option>
-                    <option value="investment">Investments</option>
-                    <option value="interest">Interest Payments</option>
-                    <option value="principal">Principal Repayments</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-primary mb-2">Project</label>
-                  <select className="w-full px-3 py-2 bg-neutral-medium border border-neutral-light rounded text-primary text-sm">
-                    <option value="all">All Projects</option>
-                    <option value="proj_156">Tata Motors Project</option>
-                    <option value="proj_148">HCL Tech Project</option>
-                  </select>
-                </div>
-                <div className="flex items-end">
-                  <Button variant="primary" size="sm">
-                    Export CSV
-                  </Button>
-                </div>
-              </div>
-            </div>
-
             {/* Transactions Table */}
             <div className="bg-neutral-dark rounded-lg border border-neutral-medium">
               <div className="p-6 border-b border-neutral-medium">
@@ -349,6 +498,13 @@ export default function FinancialManagement(): React.ReactElement {
                     </tr>
                   </thead>
                   <tbody>
+                    {transactions.length === 0 && (
+                      <tr>
+                        <td className="p-4 text-sm text-secondary" colSpan={6}>
+                          No transactions available yet.
+                        </td>
+                      </tr>
+                    )}
                     {transactions.map((txn) => (
                       <tr key={txn.id} className="border-b border-neutral-medium">
                         <td className="p-4 text-sm text-primary">{formatDate(txn.date)}</td>
@@ -375,145 +531,13 @@ export default function FinancialManagement(): React.ReactElement {
           </div>
         )}
 
-        {selectedTab === 'payouts' && (
-          <div className="space-y-6">
-            {/* Upcoming Payouts */}
-            <div className="bg-neutral-dark rounded-lg border border-neutral-medium">
-              <div className="p-6 border-b border-neutral-medium">
-                <div className="flex justify-between items-center">
-                  <div>
-                    <h3 className="text-lg font-bold text-primary">Upcoming Payouts</h3>
-                    <p className="text-sm text-secondary">Scheduled and projected payments</p>
-                  </div>
-                  <div className="text-right">
-                    <div className="text-sm text-secondary">Next 6 Months</div>
-                    <div className="text-lg font-bold text-success">₹89.8L expected</div>
-                  </div>
-                </div>
-              </div>
-              <div className="overflow-x-auto">
-                <table className="w-full">
-                  <thead className="bg-neutral-medium">
-                    <tr>
-                      <th className="text-left p-4 text-sm font-medium text-primary">Expected Date</th>
-                      <th className="text-left p-4 text-sm font-medium text-primary">Project</th>
-                      <th className="text-left p-4 text-sm font-medium text-primary">Type</th>
-                      <th className="text-right p-4 text-sm font-medium text-primary">Amount</th>
-                      <th className="text-center p-4 text-sm font-medium text-primary">Status</th>
-                      <th className="text-left p-4 text-sm font-medium text-primary">Description</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {upcomingPayouts.map((payout) => (
-                      <tr key={payout.id} className="border-b border-neutral-medium">
-                        <td className="p-4 text-sm text-primary">{formatDate(payout.date)}</td>
-                        <td className="p-4 text-sm text-secondary">{payout.projectName}</td>
-                        <td className="p-4 text-sm text-primary">{payout.type}</td>
-                        <td className="p-4 text-sm text-right font-medium text-success">
-                          {formatCurrency(payout.amount)}
-                        </td>
-                        <td className="p-4 text-center">
-                          <span className={`px-2 py-1 rounded text-xs font-medium ${getStatusColor(payout.status)}`}>
-                            {payout.status}
-                          </span>
-                        </td>
-                        <td className="p-4 text-sm text-secondary">{payout.description}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          </div>
-        )}
-
         {selectedTab === 'tax' && (
           <div className="space-y-8">
-            {/* Tax Summary Cards */}
-            <div className="grid lg:grid-cols-4 md:grid-cols-2 gap-6">
-              <div className="bg-neutral-dark p-6 rounded-lg border border-neutral-medium">
-                <div className="text-accent-amber text-sm font-mono mb-2">TAXABLE INCOME</div>
-                <div className="text-2xl font-bold text-primary mb-1">{formatCurrency(taxSummary.totalTaxableIncome)}</div>
-                <div className="text-xs text-secondary">FY {taxSummary.currentFY}</div>
-              </div>
-              
-              <div className="bg-neutral-dark p-6 rounded-lg border border-neutral-medium">
-                <div className="text-accent-amber text-sm font-mono mb-2">TDS DEDUCTED</div>
-                <div className="text-2xl font-bold text-warning mb-1">{formatCurrency(taxSummary.tdsDeducted)}</div>
-                <div className="text-xs text-secondary">15% on interest income</div>
-              </div>
-              
-              <div className="bg-neutral-dark p-6 rounded-lg border border-neutral-medium">
-                <div className="text-accent-amber text-sm font-mono mb-2">TAX RATE</div>
-                <div className="text-2xl font-bold text-primary mb-1">{taxSummary.applicableTaxRate}</div>
-                <div className="text-xs text-secondary">Applicable slab rate</div>
-              </div>
-              
-              <div className="bg-neutral-dark p-6 rounded-lg border border-neutral-medium">
-                <div className="text-accent-amber text-sm font-mono mb-2">NET TAX PAYABLE</div>
-                <div className="text-2xl font-bold text-success mb-1">{formatCurrency(taxSummary.netTaxPayable)}</div>
-                <div className="text-xs text-secondary">After TDS adjustment</div>
-              </div>
-            </div>
-
-            {/* Tax Details */}
-            <div className="grid lg:grid-cols-2 gap-8">
-              <div className="bg-neutral-dark rounded-lg border border-neutral-medium">
-                <div className="p-6 border-b border-neutral-medium">
-                  <h3 className="text-lg font-bold text-primary">Income Breakdown</h3>
-                  <p className="text-sm text-secondary">Taxable income by category</p>
-                </div>
-                <div className="p-6">
-                  <div className="space-y-4">
-                    <div className="flex justify-between">
-                      <span className="text-sm text-secondary">Interest Income</span>
-                      <span className="text-sm font-medium text-primary">{formatCurrency(taxSummary.interestIncome)}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-sm text-secondary">Capital Gains</span>
-                      <span className="text-sm font-medium text-primary">{formatCurrency(taxSummary.capitalGains)}</span>
-                    </div>
-                    <div className="border-t border-neutral-medium pt-2">
-                      <div className="flex justify-between">
-                        <span className="text-sm font-medium text-primary">Total Taxable Income</span>
-                        <span className="text-sm font-bold text-primary">{formatCurrency(taxSummary.totalTaxableIncome)}</span>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              <div className="bg-neutral-dark rounded-lg border border-neutral-medium">
-                <div className="p-6 border-b border-neutral-medium">
-                  <h3 className="text-lg font-bold text-primary">Tax Documents</h3>
-                  <p className="text-sm text-secondary">Download tax-related documents</p>
-                </div>
-                <div className="p-6">
-                  <div className="space-y-4">
-                    <div className="flex justify-between items-center">
-                      <div>
-                        <div className="text-sm font-medium text-primary">Form 16A - TDS Certificate</div>
-                        <div className="text-xs text-secondary">Interest income TDS details</div>
-                      </div>
-                      <Button variant="outline" size="sm">Download</Button>
-                    </div>
-                    <div className="flex justify-between items-center">
-                      <div>
-                        <div className="text-sm font-medium text-primary">Capital Gains Statement</div>
-                        <div className="text-xs text-secondary">Realized gains for FY 2024-25</div>
-                      </div>
-                      <Button variant="outline" size="sm">Download</Button>
-                    </div>
-                    <div className="flex justify-between items-center">
-                      <div>
-                        <div className="text-sm font-medium text-primary">Annual Statement</div>
-                        <div className="text-xs text-secondary">Complete investment summary</div>
-                      </div>
-                      <Button variant="outline" size="sm">Download</Button>
-                    </div>
-                  </div>
-                </div>
-              </div>
+            <div className="bg-neutral-dark rounded-lg border border-neutral-medium p-6">
+              <h2 className="text-xl font-semibold text-primary mb-2">Tax Center</h2>
+              <p className="text-secondary text-sm">
+                Tax statements will be available once payout reports are finalized.
+              </p>
             </div>
           </div>
         )}

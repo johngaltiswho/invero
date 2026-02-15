@@ -14,10 +14,6 @@ export async function GET(request: NextRequest) {
     const projectId = searchParams.get('project_id');
     const category = searchParams.get('category');
 
-    if (!projectId) {
-      return NextResponse.json({ error: 'Project ID required' }, { status: 400 });
-    }
-
     const supabase = createClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
       process.env.SUPABASE_SERVICE_ROLE_KEY!
@@ -34,15 +30,18 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Contractor not found' }, { status: 404 });
     }
 
-    // Build query
+    // Build query — project_id is now optional
+    // When omitted, return all files for this contractor across projects with project name joined
     let query = supabase
       .from('project_files')
       .select('*')
-      .eq('project_id', projectId)
       .eq('contractor_id', contractor.id)
       .order('created_at', { ascending: false });
 
-    // Filter by category if provided
+    if (projectId) {
+      query = query.eq('project_id', projectId);
+    }
+
     if (category) {
       query = query.eq('category', category);
     }
@@ -51,15 +50,41 @@ export async function GET(request: NextRequest) {
 
     if (error) {
       console.error('Failed to fetch project files:', error);
-      return NextResponse.json({ 
+      return NextResponse.json({
         error: 'Failed to fetch project files',
-        details: (error as any)?.message || 'Unknown error' 
+        details: (error as any)?.message || 'Unknown error'
       }, { status: 500 });
     }
 
+    const files = projectFiles || [];
+    const projectIds = Array.from(
+      new Set(files.map((file: any) => file.project_id).filter(Boolean))
+    ) as string[];
+    const projectMap = new Map<string, { id: string; project_name: string | null; client_name: string | null }>();
+
+    if (projectIds.length > 0) {
+      const { data: projects, error: projectError } = await supabase
+        .from('projects')
+        .select('id, project_name, client_name')
+        .in('id', projectIds);
+
+      if (projectError) {
+        console.error('Failed to fetch projects for files:', projectError);
+      } else {
+        (projects || []).forEach((project: any) => {
+          projectMap.set(project.id, project);
+        });
+      }
+    }
+
+    const filesWithProjects = files.map((file: any) => ({
+      ...file,
+      project: file.project_id ? projectMap.get(file.project_id) || null : null
+    }));
+
     return NextResponse.json({
       success: true,
-      data: projectFiles || []
+      data: filesWithProjects
     });
 
   } catch (error) {

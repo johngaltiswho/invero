@@ -10,7 +10,7 @@ type FinanceSummary = {
   total_requested_value: number;
   total_funded: number;
   total_platform_fee: number;
-  total_interest: number;
+  total_participation_fee: number;
   total_due: number;
   total_projects: number;
 };
@@ -21,7 +21,7 @@ type ProjectFinanceRow = {
   total_requested: number;
   total_funded: number;
   total_platform_fee: number;
-  total_interest: number;
+  total_participation_fee: number;
   total_due: number;
   request_count: number;
 };
@@ -35,7 +35,7 @@ type PurchaseRequestRow = {
   total_requested: number;
   total_funded: number;
   platform_fee: number;
-  interest_accrued: number;
+  participation_fee: number;
   total_due: number;
   days_outstanding: number;
 };
@@ -43,7 +43,7 @@ type PurchaseRequestRow = {
 type ContractorTerms = {
   platform_fee_rate: number;
   platform_fee_cap: number;
-  interest_rate_daily: number;
+  participation_fee_rate_daily: number;
 };
 
 const formatCurrency = (amount: number) =>
@@ -143,9 +143,9 @@ export default function ContractorFinancePage(): React.ReactElement {
                   <div className="text-xs text-secondary">Applied per purchase request</div>
                 </div>
                 <div className="bg-neutral-dark p-6 rounded-lg border border-neutral-medium">
-                  <div className="text-accent-amber text-sm font-mono mb-2">LATE FEES</div>
+                  <div className="text-accent-amber text-sm font-mono mb-2">PROJECT PARTICIPATION FEE</div>
                   <div className="text-2xl font-bold text-accent-blue mb-1">
-                    {formatCurrency(summary.total_interest)}
+                    {formatCurrency(summary.total_participation_fee)}
                   </div>
                   <div className="text-xs text-secondary">Applied on funded balance</div>
                 </div>
@@ -170,9 +170,9 @@ export default function ContractorFinancePage(): React.ReactElement {
                     </div>
                   </div>
                   <div className="bg-neutral-darker/60 p-4 rounded-lg border border-neutral-medium">
-                    <div className="text-secondary mb-1">Late Fees (Daily)</div>
+                    <div className="text-secondary mb-1">Project Participation Fee (Daily)</div>
                     <div className="text-primary font-semibold">
-                      {(terms.interest_rate_daily * 100).toFixed(2)}% per day
+                    {(terms.participation_fee_rate_daily * 100).toFixed(2)}% per day
                     </div>
                   </div>
                   <div className="bg-neutral-darker/60 p-4 rounded-lg border border-neutral-medium">
@@ -200,7 +200,7 @@ export default function ContractorFinancePage(): React.ReactElement {
                       <th className="px-6 py-4">Request Value</th>
                       <th className="px-6 py-4">Funded</th>
                       <th className="px-6 py-4">Platform Fee</th>
-                      <th className="px-6 py-4">Late Fees</th>
+                      <th className="px-6 py-4">Project Participation Fee</th>
                       <th className="px-6 py-4">Total Due</th>
                     </tr>
                   </thead>
@@ -221,7 +221,7 @@ export default function ContractorFinancePage(): React.ReactElement {
                           {formatCurrency(project.total_platform_fee)}
                         </td>
                         <td className="px-6 py-4 text-accent-blue">
-                          {formatCurrency(project.total_interest)}
+                          {formatCurrency(project.total_participation_fee)}
                         </td>
                         <td className="px-6 py-4 text-primary font-medium">
                           {formatCurrency(project.total_due)}
@@ -258,7 +258,7 @@ export default function ContractorFinancePage(): React.ReactElement {
                       <th className="px-6 py-4">Request Value</th>
                       <th className="px-6 py-4">Funded</th>
                       <th className="px-6 py-4">Platform Fee</th>
-                      <th className="px-6 py-4">Late Fees</th>
+                      <th className="px-6 py-4">Project Participation Fee</th>
                       <th className="px-6 py-4">Total Due</th>
                     </tr>
                   </thead>
@@ -288,7 +288,7 @@ export default function ContractorFinancePage(): React.ReactElement {
                           {formatCurrency(request.platform_fee)}
                         </td>
                         <td className="px-6 py-4 text-accent-blue">
-                          {formatCurrency(request.interest_accrued)}
+                          {formatCurrency(request.participation_fee)}
                         </td>
                         <td className="px-6 py-4 text-primary font-medium">
                           {formatCurrency(request.total_due)}

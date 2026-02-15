@@ -1,31 +1,38 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { auth } from '@clerk/nextjs/server';
+import { currentUser } from '@clerk/nextjs/server';
 import { ContractorAccessService } from '@/lib/contractor-access';
 
 export async function GET(request: NextRequest) {
   try {
-    // Get authenticated user from Clerk
-    const { userId } = await auth();
-    if (!userId) {
+    const user = await currentUser();
+    if (!user) {
       return NextResponse.json({
         success: false,
         error: 'Authentication required'
       }, { status: 401 });
     }
 
-    // Check dashboard access
-    const accessStatus = await ContractorAccessService.checkDashboardAccess(userId);
-    
-    // Get contractor with progress if they have access or contractor exists
+    const email = user.emailAddresses[0]?.emailAddress;
+
+    // Check dashboard access — pass email for pre-registered contractor matching
+    const accessStatus = await ContractorAccessService.checkDashboardAccess(user.id, email);
+
+    // Get contractor with progress details if a record exists
     let contractorWithProgress = null;
     if (accessStatus.contractor) {
-      contractorWithProgress = await ContractorAccessService.getContractorWithProgress(userId);
+      contractorWithProgress = await ContractorAccessService.getContractorWithProgress(user.id);
     }
 
     return NextResponse.json({
       success: true,
       data: {
-        ...accessStatus,
+        hasAccess: accessStatus.hasAccess,
+        registrationComplete: accessStatus.registrationComplete,
+        registrationStep: accessStatus.registrationStep,
+        reason: accessStatus.reason,
+        message: accessStatus.message,
+        canRetry: accessStatus.canRetry,
+        redirectTo: accessStatus.redirectTo,
         contractor: contractorWithProgress || accessStatus.contractor
       }
     });

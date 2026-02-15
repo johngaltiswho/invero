@@ -5,15 +5,17 @@ export const dynamic = 'force-dynamic';
 import React, { useState, useEffect } from 'react';
 import { ContractorDashboardLayout } from '@/components/ContractorDashboardLayout';
 import { Button, LoadingSpinner } from '@/components';
-import { useUser } from '@clerk/nextjs';
+import { useUser, useClerk } from '@clerk/nextjs';
 import { useRouter } from 'next/navigation';
 import { useContractorV2 } from '@/contexts/ContractorContextV2';
+import RegistrationBanner from '@/components/RegistrationBanner';
 import CreateProjectForm from '@/components/CreateProjectForm';
 import MasterSchedule from '@/components/MasterSchedule';
 // import ProjectHealthOverview from '@/components/ProjectHealthOverview'; // Hidden for now
 
 export default function ContractorDashboard(): React.ReactElement {
   const { user, isLoaded } = useUser();
+  const { signOut } = useClerk();
   const router = useRouter();
   const { contractor, loading: contractorLoading, accessInfo } = useContractorV2();
   const [contractorStatus, setContractorStatus] = useState<any>(null);
@@ -25,14 +27,14 @@ export default function ContractorDashboard(): React.ReactElement {
     total_requested_value: number;
     total_funded: number;
     total_platform_fee: number;
-    total_interest: number;
+  total_participation_fee: number;
     total_due: number;
     total_projects: number;
   } | null>(null);
   const [financeTerms, setFinanceTerms] = useState<{
     platform_fee_rate: number;
     platform_fee_cap: number;
-    interest_rate_daily: number;
+  participation_fee_rate_daily: number;
   } | null>(null);
   const [financeLoading, setFinanceLoading] = useState(true);
 
@@ -119,6 +121,31 @@ export default function ContractorDashboard(): React.ReactElement {
     );
   }
 
+  // Access denied — user is not pre-registered as a contractor
+  if (accessInfo && !accessInfo.hasAccess) {
+    return (
+      <div className="min-h-screen bg-neutral-darker flex items-center justify-center p-6">
+        <div className="max-w-md w-full bg-neutral-dark rounded-xl border border-neutral-medium p-8 text-center">
+          <div className="text-5xl mb-4">🔒</div>
+          <h1 className="text-2xl font-bold text-primary mb-2">Access Not Granted</h1>
+          <p className="text-secondary mb-6">
+            {accessInfo.message || 'Your email is not registered as a contractor. Please contact the administrator to get access.'}
+          </p>
+          <div className="bg-neutral-medium/40 rounded-lg p-4 text-sm text-secondary mb-6">
+            <p className="font-medium text-primary mb-1">Signed in as:</p>
+            <p>{user?.emailAddresses[0]?.emailAddress}</p>
+          </div>
+          <Button
+            variant="secondary"
+            onClick={() => signOut(() => router.push('/sign-in'))}
+          >
+            Sign out
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <ContractorDashboardLayout>
       <div className="p-6">
@@ -129,6 +156,15 @@ export default function ContractorDashboard(): React.ReactElement {
             Welcome back to your contractor portal, {contractorStatus?.company_name || contractorStatus?.companyName}
           </p>
         </div>
+
+        {/* Registration progress banner — hidden once fully registered */}
+        {!accessInfo?.registrationComplete && (
+          <RegistrationBanner
+            registrationStep={accessInfo?.registrationStep ?? 'not_applied'}
+            message={accessInfo?.message}
+            canRetry={accessInfo?.canRetry ?? false}
+          />
+        )}
 
         {/* Top Row: Key Metrics + Quick Actions */}
         <div className="grid lg:grid-cols-3 gap-6 mb-8">
@@ -264,9 +300,9 @@ export default function ContractorDashboard(): React.ReactElement {
                 </div>
               </div>
               <div className="bg-neutral-darker/60 p-4 rounded-lg border border-neutral-medium">
-                <div className="text-secondary mb-1">Late Fees (Daily)</div>
+                <div className="text-secondary mb-1">Project Participation Fee (Daily)</div>
                 <div className="text-primary font-semibold">
-                  {(financeTerms.interest_rate_daily * 100).toFixed(2)}% per day
+                  {(financeTerms.participation_fee_rate_daily * 100).toFixed(2)}% per day
                 </div>
               </div>
               <div className="bg-neutral-darker/60 p-4 rounded-lg border border-neutral-medium">

@@ -45,7 +45,7 @@ export interface Database {
           existing_loans: number
           platform_fee_rate: number | null
           platform_fee_cap: number | null
-          interest_rate_daily: number | null
+          participation_fee_rate_daily: number | null
           
           // KYC Documents with verification status
           documents: {
@@ -139,7 +139,7 @@ export interface Database {
           existing_loans?: number
           platform_fee_rate?: number | null
           platform_fee_cap?: number | null
-          interest_rate_daily?: number | null
+          participation_fee_rate_daily?: number | null
           documents?: Record<string, any>
           capacity_utilization?: number
           available_capacity?: number
@@ -186,7 +186,7 @@ export interface Database {
           existing_loans?: number
           platform_fee_rate?: number | null
           platform_fee_cap?: number | null
-          interest_rate_daily?: number | null
+          participation_fee_rate_daily?: number | null
           documents?: Record<string, any>
           capacity_utilization?: number
           available_capacity?: number

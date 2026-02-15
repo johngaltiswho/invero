@@ -34,6 +34,22 @@ interface Return {
   type: string;
 }
 
+interface InvestorTransaction {
+  id: string;
+  investor_id?: string;
+  project_id?: string;
+  contractor_id?: string;
+  amount?: number;
+  transaction_type?: string;
+  status?: string;
+  description?: string;
+  reference_number?: string;
+  created_at?: string;
+  projects?: GenericRecord | null;
+  contractors?: GenericRecord | null;
+  [key: string]: unknown;
+}
+
 type GenericRecord = Record<string, unknown>;
 
 interface PortfolioMetrics {
@@ -42,6 +58,7 @@ interface PortfolioMetrics {
   currentValue: number;
   roi: number;
   netRoi: number;
+  portfolioXirr?: number;
   activeInvestments: number;
   completedInvestments: number;
   totalInvestments: number;
@@ -54,6 +71,7 @@ interface PortfolioMetrics {
 
 interface InvestorWithData extends InvestorProfile {
   investments: Investment[];
+  transactions: InvestorTransaction[];
   returns: Return[];
   relatedContractors: GenericRecord[];
   relatedProjects: GenericRecord[];

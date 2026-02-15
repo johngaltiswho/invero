@@ -104,7 +104,7 @@ export async function GET() {
     console.log('🔄 Fetching investor capital inflows...');
     const { data: inflowTransactions, error: inflowError } = await supabase
       .from('capital_transactions')
-      .select('amount, status')
+      .select('amount, status, created_at')
       .eq('investor_id', investor.id)
       .eq('transaction_type', 'inflow');
 
@@ -122,6 +122,30 @@ export async function GET() {
 
     if (returnError) {
       console.error('❌ Error fetching capital returns:', returnError);
+    }
+
+    // Fetch all capital transactions for investor (for financials)
+    const { data: allTransactions, error: allTransactionsError } = await supabase
+      .from('capital_transactions')
+      .select(`
+        id,
+        investor_id,
+        project_id,
+        contractor_id,
+        amount,
+        transaction_type,
+        status,
+        description,
+        reference_number,
+        created_at,
+        projects:project_id ( project_name ),
+        contractors:contractor_id ( company_name )
+      `)
+      .eq('investor_id', investor.id)
+      .order('created_at', { ascending: false });
+
+    if (allTransactionsError) {
+      console.error('❌ Error fetching all capital transactions:', allTransactionsError);
     }
 
     const investments = (capitalTransactions || []).map((tx: any) => ({
@@ -214,13 +238,35 @@ export async function GET() {
       return Number.isFinite(rate) ? rate * 100 : 0;
     };
 
-    const baseCashflows = buildCashflows([...(capitalTransactions || []), ...(returnTransactions || [])]);
-    const roi = xirr(baseCashflows);
+    const portfolioCashflows = buildCashflows([...(capitalTransactions || []), ...(returnTransactions || [])]);
+    const portfolioXirr = xirr(portfolioCashflows);
 
-    const latestCashflowDate = baseCashflows.length
-      ? new Date(Math.max(...baseCashflows.map((cf) => cf.date.getTime())))
+    const investorCashflows = (inflowTransactions || [])
+      .filter((tx) => {
+        const status = typeof tx.status === 'string' ? tx.status.toLowerCase() : '';
+        return status !== 'failed' && status !== 'rejected';
+      })
+      .map((tx) => ({
+        date: tx.created_at ? new Date(tx.created_at) : new Date(),
+        amount: -Math.abs(Number(tx.amount) || 0)
+      }))
+      .concat(
+        (returnTransactions || [])
+          .filter((tx) => {
+            const status = typeof tx.status === 'string' ? tx.status.toLowerCase() : '';
+            return status !== 'failed' && status !== 'rejected';
+          })
+          .map((tx) => ({
+            date: tx.created_at ? new Date(tx.created_at) : new Date(),
+            amount: Math.abs(Number(tx.amount) || 0)
+          }))
+      );
+    const roi = xirr(investorCashflows);
+
+    const latestCashflowDate = investorCashflows.length
+      ? new Date(Math.max(...investorCashflows.map((cf) => cf.date.getTime())))
       : new Date();
-    const netCashflows = [...baseCashflows];
+    const netCashflows = [...investorCashflows];
     const totalFees = managementFee + performanceFee;
     if (totalFees > 0) {
       netCashflows.push({
@@ -310,6 +356,7 @@ export async function GET() {
       phone: investor.phone,
       status: investor.status,
       investments,
+      transactions: allTransactions || [],
       returns: [],
       allProjects: enhancedProjects,
       allContractors: allContractors || [],
@@ -321,6 +368,7 @@ export async function GET() {
         currentValue: outstandingCapital,
         roi,
         netRoi,
+        portfolioXirr,
         activeInvestments,
         completedInvestments,
         totalInvestments: investments.length,

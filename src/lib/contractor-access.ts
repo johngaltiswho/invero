@@ -7,99 +7,94 @@ export type { ContractorAccessStatus, ContractorWithProgress };
 export class ContractorAccessService {
   
   /**
-   * Check if a contractor has access to the dashboard
+   * Check if a contractor has access to the dashboard.
+   * Admin pre-registers contractors by email. Access is granted only when a
+   * matching contractor record exists. On first sign-in, clerk_user_id is auto-linked.
    */
-  static async checkDashboardAccess(clerkUserId: string): Promise<ContractorAccessStatus> {
+  static async checkDashboardAccess(clerkUserId: string, email?: string): Promise<ContractorAccessStatus> {
     try {
-      // Get contractor by Clerk user ID
-      const contractor = await ContractorService.getContractorByClerkId(clerkUserId);
-      
+      // 1. Try primary lookup by clerk_user_id
+      let contractor = await ContractorService.getContractorByClerkId(clerkUserId);
+
+      // 2. Fallback: try email match (contractor pre-registered by admin, not yet linked)
+      if (!contractor && email) {
+        contractor = await ContractorService.getContractorByEmail(email.toLowerCase());
+        // Auto-link clerk_user_id on first sign-in
+        if (contractor) {
+          await ContractorService.updateContractor(contractor.id, { clerk_user_id: clerkUserId });
+          contractor = { ...contractor, clerk_user_id: clerkUserId };
+        }
+      }
+
       if (!contractor) {
         return {
           hasAccess: false,
+          registrationComplete: false,
+          registrationStep: 'not_applied',
           contractor: null,
           reason: 'not_found',
-          redirectTo: '/contractors/apply',
-          message: 'No contractor application found. Please submit an application to access the dashboard.',
+          message: 'Your email is not registered. Please contact the administrator to get access.',
           canRetry: false
         };
       }
 
-      // Check contractor status and verification status
       const status = contractor.status;
       const verificationStatus = contractor.verification_status;
+      const registrationComplete = status === 'approved' && verificationStatus === 'verified';
 
-      // Handle different verification states
-      switch (verificationStatus) {
-        case 'verified':
-          if (status === 'approved') {
-            return {
-              hasAccess: true,
-              contractor,
-              reason: 'verified',
-              message: 'Access granted. Welcome to your contractor dashboard!',
-              canRetry: false
-            };
-          } else {
-            return {
-              hasAccess: false,
-              contractor,
-              reason: 'rejected',
-              redirectTo: '/contractor/status',
-              message: 'Your application has been rejected. Please contact support for assistance.',
-              canRetry: false
-            };
-          }
+      let registrationStep: import('@/types/contractor-access').RegistrationStep;
+      let reason: ContractorAccessStatus['reason'];
+      let message: string;
+      let canRetry = false;
 
-        case 'under_verification':
-          return {
-            hasAccess: false,
-            contractor,
-            reason: 'under_review',
-            redirectTo: '/contractor/status',
-            message: 'Your documents are currently under review. You will be notified once verification is complete.',
-            canRetry: false
-          };
-
-        case 'documents_uploaded':
-          return {
-            hasAccess: false,
-            contractor,
-            reason: 'under_review',
-            redirectTo: '/contractor/status',
-            message: 'Your documents have been uploaded and are awaiting review by our team.',
-            canRetry: false
-          };
-
-        case 'rejected':
-          return {
-            hasAccess: false,
-            contractor,
-            reason: 'rejected',
-            redirectTo: '/contractor/status',
-            message: 'Some of your documents were rejected. Please re-upload the required documents.',
-            canRetry: true
-          };
-
-        case 'documents_pending':
-        default:
-          return {
-            hasAccess: false,
-            contractor,
-            reason: 'pending_documents',
-            redirectTo: '/contractor/status',
-            message: 'Please upload all required KYC documents to proceed.',
-            canRetry: true
-          };
+      if (registrationComplete) {
+        registrationStep = 'complete';
+        reason = 'verified';
+        message = 'Access granted. Welcome to your contractor dashboard!';
+      } else if (verificationStatus === 'verified' && status !== 'approved') {
+        registrationStep = 'rejected';
+        reason = 'rejected';
+        message = 'Your application has been rejected. Please contact support for assistance.';
+        canRetry = false;
+      } else if (verificationStatus === 'under_verification') {
+        registrationStep = 'under_review';
+        reason = 'under_review';
+        message = 'Your documents are under review. You can browse the portal while you wait.';
+      } else if (verificationStatus === 'documents_uploaded') {
+        registrationStep = 'docs_uploaded';
+        reason = 'under_review';
+        message = 'Documents submitted. Our team will review them shortly.';
+      } else if (verificationStatus === 'rejected') {
+        registrationStep = 'rejected';
+        reason = 'rejected';
+        message = 'Some documents were rejected. Please re-upload to complete registration.';
+        canRetry = true;
+      } else {
+        // documents_pending or any unknown state
+        registrationStep = 'docs_pending';
+        reason = 'pending_documents';
+        message = 'Upload your KYC documents to unlock purchasing features.';
+        canRetry = true;
       }
+
+      return {
+        hasAccess: true,
+        registrationComplete,
+        registrationStep,
+        contractor,
+        reason,
+        message,
+        canRetry
+      };
     } catch (error) {
       console.error('Error checking contractor dashboard access:', error);
       return {
         hasAccess: false,
+        registrationComplete: false,
+        registrationStep: 'not_applied',
         contractor: null,
         reason: 'not_found',
-        redirectTo: '/contractors/apply',
-        message: 'Unable to verify your contractor status. Please try again or contact support.',
+        message: 'Unable to verify your access. Please try again or contact support.',
         canRetry: true
       };
     }
@@ -130,22 +125,17 @@ export class ContractorAccessService {
   }
 
   /**
-   * Check if contractor can access specific features
+   * Check if contractor can access specific features.
+   * Purchase/ordering actions require full registration.
+   * All other features are open to any authenticated user.
    */
-  static canAccessFeature(contractor: Contractor, feature: string): boolean {
-    if (contractor.status !== 'approved' || contractor.verification_status !== 'verified') {
-      return false;
+  static canAccessFeature(contractor: Contractor | null, feature: string): boolean {
+    const purchaseGatedFeatures = ['purchase_request', 'rfq_generation', 'po_creation'];
+    if (purchaseGatedFeatures.includes(feature)) {
+      return contractor?.status === 'approved' && contractor?.verification_status === 'verified';
     }
-
-    switch (feature) {
-      case 'projects':
-      case 'boq_upload':
-      case 'schedule_upload':
-      case 'analytics':
-        return true;
-      default:
-        return false;
-    }
+    // All other features (projects, boq_upload, schedule_upload, analytics, documents, finance) are open
+    return true;
   }
 
   /**

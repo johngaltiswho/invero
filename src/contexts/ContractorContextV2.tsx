@@ -2,10 +2,14 @@
 
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { useUser } from '@clerk/nextjs';
-import type { ContractorWithProgress } from '@/types/contractor-access';
+import type { ContractorWithProgress, RegistrationStep } from '@/types/contractor-access';
+
+const PURCHASE_GATED_FEATURES = ['purchase_request', 'rfq_generation', 'po_creation'];
 
 interface ContractorAccessInfo {
   hasAccess: boolean;
+  registrationComplete: boolean;
+  registrationStep: RegistrationStep;
   reason: string;
   message: string;
   canRetry: boolean;
@@ -19,6 +23,7 @@ interface ContractorContextType {
   accessInfo: ContractorAccessInfo | null;
   refetch: () => Promise<void>;
   checkAccess: () => Promise<ContractorAccessInfo>;
+  canAccessFeature: (feature: string) => boolean;
 }
 
 const ContractorContext = createContext<ContractorContextType | undefined>(undefined);
@@ -69,6 +74,8 @@ export function ContractorProvider({ children }: ContractorProviderProps) {
         // Set access info
         setAccessInfo({
           hasAccess: access.hasAccess,
+          registrationComplete: access.registrationComplete ?? false,
+          registrationStep: access.registrationStep ?? 'not_applied',
           reason: access.reason,
           message: access.message,
           canRetry: access.canRetry,
@@ -79,7 +86,9 @@ export function ContractorProvider({ children }: ContractorProviderProps) {
       } else {
         setContractor(null);
         setAccessInfo({
-          hasAccess: false,
+          hasAccess: true,
+          registrationComplete: false,
+          registrationStep: 'not_applied',
           reason: 'not_found',
           message: 'No contractor application found',
           canRetry: true,
@@ -92,7 +101,9 @@ export function ContractorProvider({ children }: ContractorProviderProps) {
       setError(errorMessage);
       setContractor(null);
       setAccessInfo({
-        hasAccess: false,
+        hasAccess: true,
+        registrationComplete: false,
+        registrationStep: 'not_applied',
         reason: 'error',
         message: errorMessage,
         canRetry: true
@@ -107,6 +118,8 @@ export function ContractorProvider({ children }: ContractorProviderProps) {
     if (!user) {
       return {
         hasAccess: false,
+        registrationComplete: false,
+        registrationStep: 'not_applied',
         reason: 'not_authenticated',
         message: 'Please log in to continue',
         canRetry: false,
@@ -117,30 +130,42 @@ export function ContractorProvider({ children }: ContractorProviderProps) {
     try {
       const response = await fetch('/api/contractor-access');
       const data = await response.json();
-      
+
       if (data.success) {
         const access = data.data;
-        const accessInfo = {
+        const info: ContractorAccessInfo = {
           hasAccess: access.hasAccess,
+          registrationComplete: access.registrationComplete ?? false,
+          registrationStep: access.registrationStep ?? 'not_applied',
           reason: access.reason,
           message: access.message,
           canRetry: access.canRetry,
           redirectTo: access.redirectTo
         };
-        
-        setAccessInfo(accessInfo);
-        return accessInfo;
+        setAccessInfo(info);
+        return info;
       }
-    } catch (error) {
-      const accessInfo = {
-        hasAccess: false,
-        reason: 'error',
-        message: 'Failed to check access status',
-        canRetry: true
-      };
-      setAccessInfo(accessInfo);
-      return accessInfo;
+    } catch {
+      // fall through
     }
+
+    const fallback: ContractorAccessInfo = {
+      hasAccess: true,
+      registrationComplete: false,
+      registrationStep: 'not_applied',
+      reason: 'error',
+      message: 'Failed to check access status',
+      canRetry: true
+    };
+    setAccessInfo(fallback);
+    return fallback;
+  };
+
+  const canAccessFeature = (feature: string): boolean => {
+    if (PURCHASE_GATED_FEATURES.includes(feature)) {
+      return accessInfo?.registrationComplete ?? false;
+    }
+    return true;
   };
 
   // Load contractor data when user changes
@@ -155,6 +180,7 @@ export function ContractorProvider({ children }: ContractorProviderProps) {
     accessInfo,
     refetch: fetchContractorData,
     checkAccess,
+    canAccessFeature,
   };
 
   return (
@@ -174,20 +200,15 @@ export function useContractorV2() {
 
 // Hook for checking if contractor has access to specific features
 export function useContractorAccess(feature?: string) {
-  const { contractor, accessInfo, loading } = useContractorV2();
-  
-  if (loading || !contractor || !accessInfo) {
+  const { accessInfo, loading, canAccessFeature } = useContractorV2();
+
+  if (loading) {
     return { hasAccess: false, loading: true };
   }
 
-  if (!accessInfo.hasAccess) {
-    return { hasAccess: false, loading: false, reason: accessInfo.reason };
+  if (feature) {
+    return { hasAccess: canAccessFeature(feature), loading: false, reason: accessInfo?.reason };
   }
 
-  if (feature && contractor) {
-    // For now, assume all features are accessible if contractor has dashboard access
-    return { hasAccess: true, loading: false };
-  }
-
-  return { hasAccess: true, loading: false };
+  return { hasAccess: accessInfo?.hasAccess ?? true, loading: false };
 }

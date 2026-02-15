@@ -25,6 +25,17 @@ type ProjectFinanceRow = {
   request_count: number;
 };
 
+type InvestorFinanceRow = {
+  investor_id: string;
+  investor_name: string | null;
+  investor_email: string | null;
+  investor_type: string | null;
+  total_inflow: number;
+  total_returns: number;
+  xirr: number;
+  net_xirr: number;
+};
+
 const formatCurrency = (amount: number) =>
   new Intl.NumberFormat('en-IN', {
     style: 'currency',
@@ -36,6 +47,7 @@ const formatCurrency = (amount: number) =>
 const AdminFinanceDashboard: React.FC = () => {
   const [summary, setSummary] = useState<FinanceSummary | null>(null);
   const [projects, setProjects] = useState<ProjectFinanceRow[]>([]);
+  const [investors, setInvestors] = useState<InvestorFinanceRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -50,6 +62,7 @@ const AdminFinanceDashboard: React.FC = () => {
         }
         setSummary(data.summary);
         setProjects(data.projects || []);
+        setInvestors(data.investors || []);
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Failed to load finance overview');
       } finally {
@@ -185,6 +198,64 @@ const AdminFinanceDashboard: React.FC = () => {
                 <tr>
                   <td className="px-6 py-6 text-center text-secondary" colSpan={7}>
                     No purchase request funding data available yet.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div className="mt-8 bg-neutral-dark rounded-lg border border-neutral-medium overflow-hidden">
+        <div className="p-6 border-b border-neutral-medium flex items-center justify-between">
+          <div>
+            <h2 className="text-xl font-semibold text-primary">Investor Portfolio Overview</h2>
+            <p className="text-sm text-secondary">Capital inflows, returns, and XIRR by investor</p>
+          </div>
+          <div className="text-sm text-secondary">
+            {investors.length} investors
+          </div>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="min-w-full text-sm text-left">
+            <thead className="bg-neutral-darker text-secondary text-xs uppercase tracking-wide">
+              <tr>
+                <th className="px-6 py-4">Investor</th>
+                <th className="px-6 py-4">Type</th>
+                <th className="px-6 py-4">Capital Inflow</th>
+                <th className="px-6 py-4">Portfolio Returns</th>
+                <th className="px-6 py-4">Investor XIRR</th>
+                <th className="px-6 py-4">Net XIRR</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-neutral-medium">
+              {investors.map((investor) => (
+                <tr key={investor.investor_id} className="hover:bg-neutral-medium/20">
+                  <td className="px-6 py-4">
+                    <div className="text-primary font-medium">{investor.investor_name || 'Investor'}</div>
+                    <div className="text-xs text-secondary">{investor.investor_email || '—'}</div>
+                  </td>
+                  <td className="px-6 py-4 text-secondary">
+                    {investor.investor_type || '—'}
+                  </td>
+                  <td className="px-6 py-4 text-primary">
+                    {formatCurrency(investor.total_inflow)}
+                  </td>
+                  <td className="px-6 py-4 text-success">
+                    {formatCurrency(investor.total_returns)}
+                  </td>
+                  <td className="px-6 py-4 text-accent-amber">
+                    {Number.isFinite(investor.xirr) ? `${investor.xirr.toFixed(1)}%` : '0.0%'}
+                  </td>
+                  <td className="px-6 py-4 text-accent-blue">
+                    {Number.isFinite(investor.net_xirr) ? `${investor.net_xirr.toFixed(1)}%` : '0.0%'}
+                  </td>
+                </tr>
+              ))}
+              {investors.length === 0 && (
+                <tr>
+                  <td className="px-6 py-6 text-center text-secondary" colSpan={6}>
+                    No investor data available yet.
                   </td>
                 </tr>
               )}

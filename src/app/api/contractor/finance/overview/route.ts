@@ -45,7 +45,7 @@ export async function GET() {
     const terms = {
       platform_fee_rate: contractor.platform_fee_rate ?? 0.0025,
       platform_fee_cap: contractor.platform_fee_cap ?? 25000,
-      interest_rate_daily: contractor.interest_rate_daily ?? 0.001
+      participation_fee_rate_daily: contractor.participation_fee_rate_daily ?? 0.001
     };
 
     const { data: purchaseRequests, error: purchaseRequestError } = await supabaseAdmin
@@ -67,8 +67,9 @@ export async function GET() {
           total_requests: 0,
           total_requested_value: 0,
           total_funded: 0,
-          total_returns: 0,
-          total_outstanding: 0,
+          total_platform_fee: 0,
+          total_participation_fee: 0,
+          total_due: 0,
           total_projects: 0
         },
         projects: [],
@@ -147,7 +148,7 @@ export async function GET() {
       total_requested: number;
       total_funded: number;
       total_platform_fee: number;
-      total_interest: number;
+      total_participation_fee: number;
       total_due: number;
       request_count: number;
     }>();
@@ -164,8 +165,8 @@ export async function GET() {
           )
         : 0;
       const platformFee = Math.min(funded * terms.platform_fee_rate, terms.platform_fee_cap);
-      const interest = funded * terms.interest_rate_daily * daysOutstanding;
-      const totalDue = funded + platformFee + interest;
+      const participationFee = funded * terms.participation_fee_rate_daily * daysOutstanding;
+      const totalDue = funded + platformFee + participationFee;
 
       return {
         id: request.id,
@@ -176,7 +177,7 @@ export async function GET() {
         total_requested: requestTotal,
         total_funded: funded,
         platform_fee: platformFee,
-        interest_accrued: interest,
+        participation_fee: participationFee,
         total_due: totalDue,
         days_outstanding: daysOutstanding
       };
@@ -185,7 +186,7 @@ export async function GET() {
     let totalRequestedValue = 0;
     let totalFunded = 0;
     let totalPlatformFee = 0;
-    let totalInterest = 0;
+    let totalParticipationFee = 0;
 
     requests.forEach((request) => {
       if (!request.project_id) return;
@@ -199,13 +200,13 @@ export async function GET() {
           )
         : 0;
       const platformFee = Math.min(funded * terms.platform_fee_rate, terms.platform_fee_cap);
-      const interest = funded * terms.interest_rate_daily * daysOutstanding;
-      const totalDue = funded + platformFee + interest;
+      const participationFee = funded * terms.participation_fee_rate_daily * daysOutstanding;
+      const totalDue = funded + platformFee + participationFee;
 
       totalRequestedValue += requestTotal;
       totalFunded += funded;
       totalPlatformFee += platformFee;
-      totalInterest += interest;
+      totalParticipationFee += participationFee;
 
       const existing = projectTotals.get(request.project_id);
       const project = projectMap.get(request.project_id);
@@ -215,7 +216,7 @@ export async function GET() {
         total_requested: 0,
         total_funded: 0,
         total_platform_fee: 0,
-        total_interest: 0,
+        total_participation_fee: 0,
         total_due: 0,
         request_count: 0
       };
@@ -223,13 +224,13 @@ export async function GET() {
       base.total_requested += requestTotal;
       base.total_funded += funded;
       base.total_platform_fee += platformFee;
-      base.total_interest += interest;
+      base.total_participation_fee += participationFee;
       base.total_due += totalDue;
       base.request_count += 1;
       projectTotals.set(request.project_id, base);
     });
 
-    const totalDue = totalFunded + totalPlatformFee + totalInterest;
+    const totalDue = totalFunded + totalPlatformFee + totalParticipationFee;
 
     return NextResponse.json({
       summary: {
@@ -237,7 +238,7 @@ export async function GET() {
         total_requested_value: totalRequestedValue,
         total_funded: totalFunded,
         total_platform_fee: totalPlatformFee,
-        total_interest: totalInterest,
+        total_participation_fee: totalParticipationFee,
         total_due: totalDue,
         total_projects: projectTotals.size
       },

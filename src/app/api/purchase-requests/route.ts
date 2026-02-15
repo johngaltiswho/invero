@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { currentUser } from '@clerk/nextjs/server';
 import { createClient } from '@supabase/supabase-js';
 import type { CreatePurchaseRequestPayload } from '@/types/purchase-requests';
+import { sendEmail, formatCurrency } from '@/lib/email';
 
 // GET - Fetch purchase requests for contractor
 export async function GET(request: NextRequest) {
@@ -23,7 +24,7 @@ export async function GET(request: NextRequest) {
     // Get contractor
     const { data: contractor } = await supabase
       .from('contractors')
-      .select('id')
+      .select('id, company_name, contact_person, email')
       .eq('clerk_user_id', user.id)
       .single();
 
@@ -120,7 +121,7 @@ export async function POST(request: NextRequest) {
     // Get contractor
     const { data: contractor } = await supabase
       .from('contractors')
-      .select('id')
+      .select('id, email, contact_person, company_name')
       .eq('clerk_user_id', user.id)
       .single();
 
@@ -196,6 +197,33 @@ export async function POST(request: NextRequest) {
 
     console.log('✅ Purchase request items created:', createdItems.length);
 
+    const { data: project } = await supabase
+      .from('projects')
+      .select('project_name')
+      .eq('id', project_id)
+      .single();
+
+    const estimatedTotal = createdItems.reduce(
+      (sum, item) => sum + (Number(item.requested_qty) || 0) * (Number(item.unit_rate) || 0),
+      0
+    );
+
+    if (contractor?.email) {
+      await sendEmail({
+        to: contractor.email,
+        subject: `Purchase request submitted · ${project?.project_name || 'Project'}`,
+        text: `Hi ${contractor.contact_person || contractor.company_name || 'there'},\n\nYour purchase request has been submitted successfully.\nProject: ${project?.project_name || project_id}\nItems: ${createdItems.length}\nEstimated value: ${formatCurrency(estimatedTotal)}\n\nWe will notify you once it is approved.`,
+        html: `
+          <p>Hi ${contractor.contact_person || contractor.company_name || 'there'},</p>
+          <p>Your purchase request has been submitted successfully.</p>
+          <p><strong>Project:</strong> ${project?.project_name || project_id}<br/>
+          <strong>Items:</strong> ${createdItems.length}<br/>
+          <strong>Estimated value:</strong> ${formatCurrency(estimatedTotal)}</p>
+          <p>We will notify you once it is approved.</p>
+        `
+      });
+    }
+
     // Return the full purchase request with items
     return NextResponse.json({
       success: true,
@@ -249,7 +277,7 @@ export async function PUT(request: NextRequest) {
     // Get contractor
     const { data: contractor } = await supabase
       .from('contractors')
-      .select('id')
+      .select('id, email, contact_person, company_name')
       .eq('clerk_user_id', user.id)
       .single();
 

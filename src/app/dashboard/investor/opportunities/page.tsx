@@ -109,9 +109,10 @@ export default function InvestmentOpportunities(): React.ReactElement {
     const allProjects = investor.relatedProjects || [];
     const allContractors = investor.relatedContractors || [];
     
-    const allActiveProjects = allProjects.filter(project => 
-      project.status !== 'Draft'
-    );
+    const allActiveProjects = allProjects.filter(project => {
+      const status = String(project.project_status || project.status || '').toLowerCase();
+      return status === 'awarded' || status === 'finalized';
+    });
     
     console.log('📋 Total projects available:', allProjects.length);
     console.log('📋 Active projects for opportunities:', allActiveProjects.length);
