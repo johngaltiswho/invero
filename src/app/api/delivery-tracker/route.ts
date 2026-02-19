@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
 import { createClient } from '@supabase/supabase-js';
+import { createSignedUrlWithFallback } from '@/lib/storage-url';
 
 function supabaseAdmin() {
   return createClient(
@@ -54,12 +55,13 @@ export async function GET(request: NextRequest) {
         remarks,
         purchase_request_items (
           id,
+          hsn_code,
           requested_qty,
           unit_rate,
           tax_percent,
           project_materials (
             id,
-            materials ( name, unit )
+            materials ( name, unit, hsn_code )
           )
         )
       `)
@@ -78,7 +80,24 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Failed to fetch delivery data' }, { status: 500 });
     }
 
-    return NextResponse.json({ success: true, data: data || [] });
+    const invoiceBucket = process.env.INVOICE_STORAGE_BUCKET || 'contractor-documents';
+    const enriched = await Promise.all(
+      (data || []).map(async (requestRow: any) => {
+        const fallbackPath = `${contractor.id}/invoices/${requestRow.id}.pdf`;
+        const signedUrl = await createSignedUrlWithFallback(supabase, {
+          sourceUrl: requestRow.invoice_url,
+          defaultBucket: invoiceBucket,
+          fallbackPath
+        });
+
+        return {
+          ...requestRow,
+          invoice_download_url: signedUrl || requestRow.invoice_url || null
+        };
+      })
+    );
+
+    return NextResponse.json({ success: true, data: enriched });
   } catch (err) {
     console.error('Delivery tracker GET error:', err);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
@@ -223,14 +242,24 @@ export async function PATCH(request: NextRequest) {
 
     // Trigger invoice generation inline
     try {
-      await fetch(`${process.env.NEXT_PUBLIC_APP_URL}/api/invoices`, {
+      const appOrigin = process.env.NEXT_PUBLIC_APP_URL || new URL(request.url).origin;
+      const internalSecret = process.env.CRON_SECRET;
+      if (!internalSecret) {
+        console.warn('CRON_SECRET is not configured. Invoice generation call may be rejected.');
+      }
+
+      const invoiceRes = await fetch(`${appOrigin}/api/invoices`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'x-internal-secret': process.env.CRON_SECRET || '',
+          ...(internalSecret ? { 'x-internal-secret': internalSecret } : {}),
         },
         body: JSON.stringify({ purchase_request_id }),
       });
+      if (!invoiceRes.ok) {
+        const msg = await invoiceRes.text();
+        console.error('Invoice generation request failed:', invoiceRes.status, msg);
+      }
     } catch {
       // Non-blocking — cron will catch it if this fails
     }

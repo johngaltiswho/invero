@@ -6,6 +6,36 @@ import {
   uploadInvoicePDF,
   type InvoiceLineItem,
 } from '@/lib/invoice-generator';
+import { createSignedUrlWithFallback } from '@/lib/storage-url';
+
+type InvoiceRow = {
+  id: string;
+  invoice_url?: string | null;
+  [key: string]: unknown;
+};
+
+type PurchaseRequestMaterial = {
+  name?: string | null;
+  unit?: string | null;
+  hsn_code?: string | null;
+};
+
+type PurchaseRequestItem = {
+  hsn_code?: string | null;
+  requested_qty?: number | string | null;
+  unit_rate?: number | string | null;
+  tax_percent?: number | string | null;
+  project_materials?: {
+    materials?: PurchaseRequestMaterial | null;
+  } | null;
+};
+
+type PurchaseRequestRow = {
+  id: string;
+  project_id: string;
+  contractor_id: string;
+  purchase_request_items?: PurchaseRequestItem[] | null;
+};
 
 function supabaseAdmin() {
   return createClient(
@@ -54,7 +84,24 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Failed to fetch invoices' }, { status: 500 });
     }
 
-    return NextResponse.json({ success: true, data: data || [] });
+    const invoiceBucket = process.env.INVOICE_STORAGE_BUCKET || 'contractor-documents';
+    const enrichedInvoices = await Promise.all(
+      ((data || []) as InvoiceRow[]).map(async (invoice) => {
+        const fallbackPath = `${contractor.id}/invoices/${invoice.id}.pdf`;
+        const signedUrl = await createSignedUrlWithFallback(supabase, {
+          sourceUrl: invoice.invoice_url,
+          defaultBucket: invoiceBucket,
+          fallbackPath
+        });
+
+        return {
+          ...invoice,
+          invoice_download_url: signedUrl || invoice.invoice_url || null
+        };
+      })
+    );
+
+    return NextResponse.json({ success: true, data: enrichedInvoices });
   } catch (err) {
     console.error('Invoices GET error:', err);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
@@ -68,14 +115,18 @@ export async function GET(request: NextRequest) {
  * Body: { purchase_request_id: string }
  */
 export async function POST(request: NextRequest) {
-  // Verify this is an internal call
+  // Verify this is an internal call.
+  // In development, allow missing secret to keep local flows working.
   const secret = request.headers.get('x-internal-secret');
-  if (!secret || secret !== process.env.CRON_SECRET) {
+  const expectedSecret = process.env.CRON_SECRET;
+  const isInternal = !!expectedSecret && secret === expectedSecret;
+  const isDevelopment = process.env.NODE_ENV !== 'production';
+  if (!isInternal && !isDevelopment) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
 
   try {
-    const { purchase_request_id } = await request.json();
+    const { purchase_request_id, force_regenerate } = await request.json();
 
     if (!purchase_request_id) {
       return NextResponse.json({ error: 'purchase_request_id is required' }, { status: 400 });
@@ -86,16 +137,21 @@ export async function POST(request: NextRequest) {
     // Check if invoice already exists for this PR
     const { data: existing } = await supabase
       .from('invoices')
-      .select('id')
+      .select('id, invoice_number')
       .eq('purchase_request_id', purchase_request_id)
       .single();
 
-    if (existing) {
+    const shouldForceRegenerate = force_regenerate === true;
+
+    if (existing && !shouldForceRegenerate) {
       return NextResponse.json({ success: true, message: 'Invoice already exists', invoiceId: existing.id });
     }
 
     // Fetch purchase request with items and contractor
-    const { data: pr, error: prError } = await supabase
+    let pr: PurchaseRequestRow | null = null;
+    let prError: { message?: string } | null = null;
+
+    const withHsnQuery = await supabase
       .from('purchase_requests')
       .select(`
         id,
@@ -104,17 +160,48 @@ export async function POST(request: NextRequest) {
         remarks,
         purchase_request_items (
           id,
+          hsn_code,
           requested_qty,
           unit_rate,
           tax_percent,
           project_materials (
             id,
-            materials ( name, unit )
+            materials ( name, unit, hsn_code )
           )
         )
       `)
       .eq('id', purchase_request_id)
       .single();
+
+    pr = withHsnQuery.data as PurchaseRequestRow | null;
+    prError = withHsnQuery.error;
+
+    // Backward compatibility if hsn_code migration is not yet applied.
+    if (prError && String(prError.message || '').includes('hsn_code')) {
+      const fallbackQuery = await supabase
+        .from('purchase_requests')
+        .select(`
+          id,
+          project_id,
+          contractor_id,
+          remarks,
+          purchase_request_items (
+            id,
+            hsn_code,
+            requested_qty,
+            unit_rate,
+            tax_percent,
+            project_materials (
+              id,
+              materials ( name, unit )
+            )
+          )
+        `)
+        .eq('id', purchase_request_id)
+        .single();
+      pr = fallbackQuery.data as PurchaseRequestRow | null;
+      prError = fallbackQuery.error;
+    }
 
     if (prError || !pr) {
       return NextResponse.json({ error: 'Purchase request not found' }, { status: 404 });
@@ -139,7 +226,7 @@ export async function POST(request: NextRequest) {
       .single();
 
     // Build line items
-    const lineItems: InvoiceLineItem[] = (pr.purchase_request_items || []).map((item: any) => {
+    const lineItems: InvoiceLineItem[] = (pr.purchase_request_items || []).map((item: PurchaseRequestItem) => {
       const material = item.project_materials?.materials;
       const qty = Number(item.requested_qty) || 0;
       const rate = Number(item.unit_rate) || 0;
@@ -148,6 +235,7 @@ export async function POST(request: NextRequest) {
       const taxAmount = amount * (taxPct / 100);
       return {
         material_name: material?.name || 'Unknown Material',
+        hsn_code: item.hsn_code || material?.hsn_code || null,
         unit: material?.unit || 'nos',
         quantity: qty,
         unit_rate: rate,
@@ -162,12 +250,11 @@ export async function POST(request: NextRequest) {
     const totalTax = lineItems.reduce((s, i) => s + i.tax_amount, 0);
     const grandTotal = subtotal + totalTax;
 
-    // Get next invoice number using DB function
+    // Preserve invoice number/id when force-regenerating an existing invoice
     const { data: invNumData } = await supabase.rpc('next_invoice_number');
-    const invoiceNumber = invNumData || `INV-${Date.now()}`;
-
+    const invoiceNumber = existing?.invoice_number || invNumData || `INV-${Date.now()}`;
     const invoiceDate = new Date();
-    const invoiceId = crypto.randomUUID();
+    const invoiceId = existing?.id || crypto.randomUUID();
 
     // Generate PDF
     const pdfBuffer = generateInvoicePDF({
@@ -188,28 +275,52 @@ export async function POST(request: NextRequest) {
     // Upload PDF to storage
     const invoiceUrl = await uploadInvoicePDF(pdfBuffer, contractor.id, invoiceId);
 
-    // Insert invoice record
-    const { data: invoiceRecord, error: insertError } = await supabase
-      .from('invoices')
-      .insert({
-        id: invoiceId,
-        purchase_request_id: pr.id,
-        contractor_id: contractor.id,
-        project_id: pr.project_id,
-        invoice_number: invoiceNumber,
-        invoice_date: invoiceDate.toISOString(),
-        total_amount: grandTotal,
-        line_items: lineItems,
-        invoice_url: invoiceUrl,
-        status: 'generated',
-        generated_by: 'system',
-      })
-      .select()
-      .single();
+    let invoiceRecord: { id: string } | null = null;
+    if (existing) {
+      const { data: updatedRecord, error: updateError } = await supabase
+        .from('invoices')
+        .update({
+          invoice_date: invoiceDate.toISOString(),
+          total_amount: grandTotal,
+          line_items: lineItems,
+          invoice_url: invoiceUrl,
+          status: 'generated',
+          generated_by: 'system',
+          updated_at: invoiceDate.toISOString(),
+        })
+        .eq('id', invoiceId)
+        .select('id')
+        .single();
 
-    if (insertError) {
-      console.error('Error inserting invoice:', insertError);
-      return NextResponse.json({ error: 'Failed to create invoice record' }, { status: 500 });
+      if (updateError) {
+        console.error('Error updating invoice:', updateError);
+        return NextResponse.json({ error: 'Failed to update invoice record' }, { status: 500 });
+      }
+      invoiceRecord = updatedRecord;
+    } else {
+      const { data: insertedRecord, error: insertError } = await supabase
+        .from('invoices')
+        .insert({
+          id: invoiceId,
+          purchase_request_id: pr.id,
+          contractor_id: contractor.id,
+          project_id: pr.project_id,
+          invoice_number: invoiceNumber,
+          invoice_date: invoiceDate.toISOString(),
+          total_amount: grandTotal,
+          line_items: lineItems,
+          invoice_url: invoiceUrl,
+          status: 'generated',
+          generated_by: 'system',
+        })
+        .select('id')
+        .single();
+
+      if (insertError) {
+        console.error('Error inserting invoice:', insertError);
+        return NextResponse.json({ error: 'Failed to create invoice record' }, { status: 500 });
+      }
+      invoiceRecord = insertedRecord;
     }
 
     // Update purchase request with invoice reference
@@ -225,9 +336,10 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({
       success: true,
-      invoiceId: invoiceRecord.id,
+      invoiceId: invoiceRecord?.id || invoiceId,
       invoiceNumber,
       invoiceUrl,
+      regenerated: !!existing,
     });
   } catch (err) {
     console.error('Invoices POST error:', err);

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase';
 import { sendEmail, formatCurrency } from '@/lib/email';
+import { createSignedUrlWithFallback } from '@/lib/storage-url';
 
 type PurchaseSummary = {
   draft: number;
@@ -16,6 +17,7 @@ type PurchaseRequestItemRow = {
   id: string;
   purchase_request_id: string;
   project_material_id: string;
+  hsn_code?: string | null;
   requested_qty: number;
   approved_qty?: number | null;
   unit_rate?: number | null;
@@ -27,6 +29,7 @@ type PurchaseRequestItemRow = {
     materials?: {
       name?: string | null;
       description?: string | null;
+      hsn_code?: string | null;
     } | null;
   } | null;
 };
@@ -152,6 +155,7 @@ async function fetchPurchaseRequests(options: FetchOptions = {}) {
           id,
           purchase_request_id,
           project_material_id,
+          hsn_code,
           requested_qty,
           approved_qty,
           unit_rate,
@@ -163,7 +167,8 @@ async function fetchPurchaseRequests(options: FetchOptions = {}) {
             notes,
             materials:material_id (
               name,
-              description
+              description,
+              hsn_code
             )
           )
         `
@@ -196,30 +201,32 @@ async function fetchPurchaseRequests(options: FetchOptions = {}) {
   }
 
   const projectIds = Array.from(new Set((requestRows || []).map((row: { project_id: string }) => row.project_id).filter(Boolean)));
-  const projectMap = new Map<string, { name?: string | null; location?: string | null }>();
+  const projectMap = new Map<string, { name?: string | null }>();
 
   if (projectIds.length > 0) {
     const { data: projects, error: projectError } = await supabaseAdmin
       .from('projects')
-      .select('id, project_name, location')
+      .select('id, project_name')
       .in('id', projectIds);
 
     if (projectError) {
       console.error('Failed to fetch project metadata:', projectError);
     } else {
-      projects?.forEach((project: { id: string; project_name?: string; location?: string }) => {
+      projects?.forEach((project: { id: string; project_name?: string }) => {
         projectMap.set(project.id, {
-          name: (project as { project_name?: string }).project_name,
-          location: project.location
+          name: (project as { project_name?: string }).project_name
         });
       });
     }
   }
 
-  const normalizedRequests = (requestRows || []).map((request: any) => {
+  const invoiceBucket = process.env.INVOICE_STORAGE_BUCKET || 'contractor-documents';
+
+  const normalizedRequests = await Promise.all((requestRows || []).map(async (request: any) => {
     const items = (itemsByRequest.get(request.id) || []).map((item) => ({
       id: item.id,
       project_material_id: item.project_material_id,
+      hsn_code: item.hsn_code || item.project_materials?.materials?.hsn_code || null,
       requested_qty: item.requested_qty,
       approved_qty: item.approved_qty,
       unit_rate: item.unit_rate,
@@ -231,9 +238,23 @@ async function fetchPurchaseRequests(options: FetchOptions = {}) {
     }));
 
     const totalRequestedQty = items.reduce((sum, item) => sum + (item.requested_qty || 0), 0);
-    const estimatedTotal = items.reduce((sum, item) => sum + (item.requested_qty || 0) * (item.unit_rate || 0), 0);
+    const estimatedTotal = items.reduce((sum, item) => {
+      const qty = Number(item.requested_qty) || 0;
+      const rate = Number(item.unit_rate) || 0;
+      const taxPercent = Number(item.tax_percent) || 0;
+      const base = qty * rate;
+      const tax = base * (taxPercent / 100);
+      return sum + base + tax;
+    }, 0);
 
     const vendor = request.vendor_id ? vendorMap.get(request.vendor_id) : null;
+    const fallbackPath = `${request.contractor_id}/invoices/${request.id}.pdf`;
+    const signedInvoiceUrl = await createSignedUrlWithFallback(supabaseAdmin, {
+      sourceUrl: request.invoice_url,
+      defaultBucket: invoiceBucket,
+      fallbackPath
+    });
+
     return {
       id: request.id,
       project_id: request.project_id,
@@ -257,6 +278,8 @@ async function fetchPurchaseRequests(options: FetchOptions = {}) {
       dispute_reason: request.dispute_reason || null,
       delivered_at: request.delivered_at || null,
       invoice_generated_at: request.invoice_generated_at || null,
+      invoice_url: request.invoice_url || null,
+      invoice_download_url: signedInvoiceUrl || request.invoice_url || null,
       contractors: request.contractors,
       project: projectMap.get(request.project_id) || null,
       purchase_request_items: items,
@@ -264,7 +287,7 @@ async function fetchPurchaseRequests(options: FetchOptions = {}) {
       total_requested_qty: totalRequestedQty,
       estimated_total: estimatedTotal
     };
-  });
+  }));
 
   const fundingTotals = new Map<string, number>();
   const returnTotals = new Map<string, number>();
@@ -403,7 +426,7 @@ export async function PUT(request: NextRequest) {
 
     const { data: existingRequest, error: fetchError } = await supabaseAdmin
       .from('purchase_requests')
-      .select('id, approved_at')
+      .select('id, approved_at, status, delivery_status')
       .eq('id', purchase_request_id)
       .single();
 
@@ -416,6 +439,21 @@ export async function PUT(request: NextRequest) {
 
     // Handle vendor assignment separately — no item status change needed
     if (action === 'assign_vendor') {
+      const lockedStatuses = ['funded', 'po_generated', 'completed'];
+      if (lockedStatuses.includes(existingRequest.status)) {
+        return NextResponse.json(
+          { error: `Vendor cannot be changed once request is ${existingRequest.status}` },
+          { status: 409 }
+        );
+      }
+
+      if (existingRequest.delivery_status && existingRequest.delivery_status !== 'not_dispatched') {
+        return NextResponse.json(
+          { error: `Vendor cannot be changed once delivery is ${existingRequest.delivery_status}` },
+          { status: 409 }
+        );
+      }
+
       const { vendor_id } = body;
       if (!vendor_id) {
         return NextResponse.json({ error: 'vendor_id is required for assign_vendor' }, { status: 400 });

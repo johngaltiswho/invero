@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { auth } from '@clerk/nextjs/server';
+import { requireAdmin } from '@/lib/admin-auth';
 import { createClient } from '@supabase/supabase-js';
 
 function supabaseAdmin() {
@@ -7,16 +7,6 @@ function supabaseAdmin() {
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.SUPABASE_SERVICE_ROLE_KEY!
   );
-}
-
-async function isAdmin(userId: string): Promise<boolean> {
-  const supabase = supabaseAdmin();
-  const { data } = await supabase
-    .from('admin_users')
-    .select('id')
-    .eq('clerk_user_id', userId)
-    .single();
-  return !!data;
 }
 
 /**
@@ -29,12 +19,7 @@ async function isAdmin(userId: string): Promise<boolean> {
  */
 export async function POST(request: NextRequest) {
   try {
-    const { userId } = await auth();
-    if (!userId) return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
-
-    if (!(await isAdmin(userId))) {
-      return NextResponse.json({ error: 'Forbidden: admin access required' }, { status: 403 });
-    }
+    await requireAdmin();
 
     const body = await request.json();
     const { purchase_request_id, dispute_window_hours = 48 } = body;
@@ -89,6 +74,14 @@ export async function POST(request: NextRequest) {
     });
   } catch (err) {
     console.error('Admin delivery POST error:', err);
+    if (err instanceof Error) {
+      if (err.message === 'Authentication required') {
+        return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
+      }
+      if (err.message === 'Admin access required') {
+        return NextResponse.json({ error: 'Forbidden: admin access required' }, { status: 403 });
+      }
+    }
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }
@@ -100,12 +93,7 @@ export async function POST(request: NextRequest) {
  */
 export async function GET(request: NextRequest) {
   try {
-    const { userId } = await auth();
-    if (!userId) return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
-
-    if (!(await isAdmin(userId))) {
-      return NextResponse.json({ error: 'Forbidden: admin access required' }, { status: 403 });
-    }
+    await requireAdmin();
 
     const supabase = supabaseAdmin();
     const { searchParams } = new URL(request.url);
@@ -143,6 +131,14 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ success: true, data: data || [] });
   } catch (err) {
     console.error('Admin delivery GET error:', err);
+    if (err instanceof Error) {
+      if (err.message === 'Authentication required') {
+        return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
+      }
+      if (err.message === 'Admin access required') {
+        return NextResponse.json({ error: 'Forbidden: admin access required' }, { status: 403 });
+      }
+    }
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }

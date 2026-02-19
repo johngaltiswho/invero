@@ -9,6 +9,8 @@ type FinanceSummary = {
   total_requested_value: number;
   total_funded: number;
   total_returns: number;
+  total_platform_fee?: number;
+  total_participation_fee?: number;
   total_outstanding: number;
   total_projects: number;
   total_contractors: number;
@@ -21,6 +23,8 @@ type ProjectFinanceRow = {
   total_requested: number;
   total_funded: number;
   total_returns: number;
+  total_platform_fee?: number;
+  total_participation_fee?: number;
   total_outstanding: number;
   request_count: number;
 };
@@ -31,9 +35,18 @@ type InvestorFinanceRow = {
   investor_email: string | null;
   investor_type: string | null;
   total_inflow: number;
+  total_deployed: number;
   total_returns: number;
   xirr: number;
   net_xirr: number;
+  disbursements: Array<{
+    purchase_request_id: string;
+    project_id: string | null;
+    project_name: string | null;
+    contractor_name: string | null;
+    amount: number;
+    last_deployed_at: string | null;
+  }>;
 };
 
 const formatCurrency = (amount: number) =>
@@ -131,7 +144,7 @@ const AdminFinanceDashboard: React.FC = () => {
             <div className="text-2xl font-bold text-accent-blue mb-1">
               {formatCurrency(summary.total_outstanding)}
             </div>
-            <div className="text-xs text-secondary">Funded minus returns</div>
+            <div className="text-xs text-secondary">Funded + fees - returns</div>
           </div>
           <div className="bg-neutral-dark p-6 rounded-lg border border-neutral-medium">
             <div className="text-accent-amber text-sm font-mono mb-2">FUNDING REQUIRED</div>
@@ -165,6 +178,8 @@ const AdminFinanceDashboard: React.FC = () => {
                 <th className="px-6 py-4">Funding Required</th>
                 <th className="px-6 py-4">Funded</th>
                 <th className="px-6 py-4">Returns</th>
+                <th className="px-6 py-4">Platform Fee</th>
+                <th className="px-6 py-4">Participation Fee</th>
                 <th className="px-6 py-4">Outstanding</th>
               </tr>
             </thead>
@@ -189,6 +204,12 @@ const AdminFinanceDashboard: React.FC = () => {
                   <td className="px-6 py-4 text-accent-amber">
                     {formatCurrency(project.total_returns)}
                   </td>
+                  <td className="px-6 py-4 text-accent-amber">
+                    {formatCurrency(project.total_platform_fee || 0)}
+                  </td>
+                  <td className="px-6 py-4 text-accent-blue">
+                    {formatCurrency(project.total_participation_fee || 0)}
+                  </td>
                   <td className="px-6 py-4 text-accent-blue font-medium">
                     {formatCurrency(project.total_outstanding)}
                   </td>
@@ -196,7 +217,7 @@ const AdminFinanceDashboard: React.FC = () => {
               ))}
               {projects.length === 0 && (
                 <tr>
-                  <td className="px-6 py-6 text-center text-secondary" colSpan={7}>
+                  <td className="px-6 py-6 text-center text-secondary" colSpan={9}>
                     No purchase request funding data available yet.
                   </td>
                 </tr>
@@ -223,7 +244,9 @@ const AdminFinanceDashboard: React.FC = () => {
                 <th className="px-6 py-4">Investor</th>
                 <th className="px-6 py-4">Type</th>
                 <th className="px-6 py-4">Capital Inflow</th>
+                <th className="px-6 py-4">PR Disbursed</th>
                 <th className="px-6 py-4">Portfolio Returns</th>
+                <th className="px-6 py-4">PR Disbursements</th>
                 <th className="px-6 py-4">Investor XIRR</th>
                 <th className="px-6 py-4">Net XIRR</th>
               </tr>
@@ -241,8 +264,33 @@ const AdminFinanceDashboard: React.FC = () => {
                   <td className="px-6 py-4 text-primary">
                     {formatCurrency(investor.total_inflow)}
                   </td>
+                  <td className="px-6 py-4 text-accent-blue">
+                    {formatCurrency(investor.total_deployed || 0)}
+                  </td>
                   <td className="px-6 py-4 text-success">
                     {formatCurrency(investor.total_returns)}
+                  </td>
+                  <td className="px-6 py-4 text-secondary max-w-sm">
+                    {investor.disbursements?.length ? (
+                      <div className="space-y-1">
+                        {investor.disbursements.slice(0, 3).map((row) => (
+                          <div key={`${investor.investor_id}-${row.purchase_request_id}`} className="text-xs">
+                            <span className="text-primary font-medium">
+                              PR-{row.purchase_request_id.slice(0, 8).toUpperCase()}
+                            </span>
+                            <span className="text-secondary"> · {row.project_name || row.project_id || 'Project'}</span>
+                            <span className="text-accent-blue"> · {formatCurrency(row.amount)}</span>
+                          </div>
+                        ))}
+                        {investor.disbursements.length > 3 && (
+                          <div className="text-xs text-secondary">
+                            +{investor.disbursements.length - 3} more
+                          </div>
+                        )}
+                      </div>
+                    ) : (
+                      '—'
+                    )}
                   </td>
                   <td className="px-6 py-4 text-accent-amber">
                     {Number.isFinite(investor.xirr) ? `${investor.xirr.toFixed(1)}%` : '0.0%'}
@@ -254,7 +302,7 @@ const AdminFinanceDashboard: React.FC = () => {
               ))}
               {investors.length === 0 && (
                 <tr>
-                  <td className="px-6 py-6 text-center text-secondary" colSpan={6}>
+                  <td className="px-6 py-6 text-center text-secondary" colSpan={8}>
                     No investor data available yet.
                   </td>
                 </tr>

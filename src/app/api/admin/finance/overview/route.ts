@@ -13,6 +13,7 @@ type PurchaseRequestItemRow = {
   purchase_request_id: string;
   requested_qty: number | null;
   unit_rate: number | null;
+  tax_percent: number | null;
 };
 
 type CapitalTransactionRow = {
@@ -20,6 +21,7 @@ type CapitalTransactionRow = {
   transaction_type: 'deployment' | 'return' | string;
   amount: number | null;
   status: string | null;
+  created_at: string | null;
 };
 
 type ProjectRow = {
@@ -32,6 +34,9 @@ type ProjectRow = {
 type ContractorRow = {
   id: string;
   company_name: string | null;
+  platform_fee_rate: number | null;
+  platform_fee_cap: number | null;
+  participation_fee_rate_daily: number | null;
 };
 
 type InvestorRow = {
@@ -47,12 +52,38 @@ type InvestorSummaryRow = {
   investor_email: string | null;
   investor_type: string | null;
   total_inflow: number;
+  total_deployed: number;
   total_returns: number;
   xirr: number;
   net_xirr: number;
+  disbursements: InvestorDisbursementRow[];
 };
 
 type CashflowPoint = { date: Date; amount: number };
+
+type DeploymentTransactionRow = {
+  investor_id: string | null;
+  purchase_request_id: string | null;
+  amount: number | null;
+  created_at: string | null;
+};
+
+type InvestorDisbursementRow = {
+  purchase_request_id: string;
+  project_id: string | null;
+  project_name: string | null;
+  contractor_name: string | null;
+  amount: number;
+  last_deployed_at: string | null;
+};
+
+type InvestorTransactionRow = {
+  investor_id: string | null;
+  amount: number | null;
+  transaction_type: 'inflow' | 'return' | string;
+  status: string | null;
+  created_at: string | null;
+};
 
 const computeXirr = (cashflows: CashflowPoint[]) => {
   if (!cashflows || cashflows.length < 2) return 0;
@@ -107,7 +138,7 @@ export async function GET() {
     }
 
     const investorIdsFromTx = Array.from(
-      new Set((investorTransactions || []).map((row: any) => row.investor_id).filter(Boolean))
+      new Set(((investorTransactions as InvestorTransactionRow[] | null) || []).map((row) => row.investor_id).filter(Boolean))
     ) as string[];
 
     const { data: investors, error: investorsError } = await supabaseAdmin
@@ -120,7 +151,7 @@ export async function GET() {
     }
 
     const investorTransactionsById = new Map<string, { inflows: CashflowPoint[]; returns: CashflowPoint[] }>();
-    (investorTransactions || []).forEach((row: any) => {
+    (((investorTransactions as InvestorTransactionRow[] | null) || [])).forEach((row) => {
       if (!row.investor_id) return;
       const entry = investorTransactionsById.get(row.investor_id) || { inflows: [], returns: [] };
       const amount = Number(row.amount) || 0;
@@ -162,9 +193,11 @@ export async function GET() {
         investor_email: investorRow.email ?? null,
         investor_type: investorRow.investor_type ?? null,
         total_inflow: inflowTotal,
+        total_deployed: 0,
         total_returns: returnTotal,
         xirr: grossXirr,
-        net_xirr: netXirr
+        net_xirr: netXirr,
+        disbursements: []
       };
     });
 
@@ -186,7 +219,7 @@ export async function GET() {
 
     const { data: requestItems, error: itemsError } = await supabaseAdmin
       .from('purchase_request_items')
-      .select('purchase_request_id, requested_qty, unit_rate')
+      .select('purchase_request_id, requested_qty, unit_rate, tax_percent')
       .in('purchase_request_id', requestIds);
 
     if (itemsError) {
@@ -196,7 +229,7 @@ export async function GET() {
 
     const { data: capitalTransactions, error: capitalError } = await supabaseAdmin
       .from('capital_transactions')
-      .select('purchase_request_id, transaction_type, amount, status')
+      .select('purchase_request_id, transaction_type, amount, status, created_at')
       .in('purchase_request_id', requestIds)
       .in('transaction_type', ['deployment', 'return'])
       .eq('status', 'completed');
@@ -210,18 +243,28 @@ export async function GET() {
     (requestItems as PurchaseRequestItemRow[] | null)?.forEach((item) => {
       const qty = Number(item.requested_qty ?? 0);
       const rate = Number(item.unit_rate ?? 0);
+      const taxPercent = Number(item.tax_percent ?? 0);
+      const base = qty * rate;
+      const tax = base * (taxPercent / 100);
       const current = requestTotals.get(item.purchase_request_id) || 0;
-      requestTotals.set(item.purchase_request_id, current + qty * rate);
+      requestTotals.set(item.purchase_request_id, current + base + tax);
     });
 
     const fundedTotals = new Map<string, number>();
     const returnTotals = new Map<string, number>();
+    const firstDeploymentAtByRequest = new Map<string, string>();
     (capitalTransactions as CapitalTransactionRow[] | null)?.forEach((row) => {
       if (!row.purchase_request_id) return;
       const amount = Number(row.amount ?? 0);
       if (row.transaction_type === 'deployment') {
         const current = fundedTotals.get(row.purchase_request_id) || 0;
         fundedTotals.set(row.purchase_request_id, current + amount);
+        if (row.created_at) {
+          const existing = firstDeploymentAtByRequest.get(row.purchase_request_id);
+          if (!existing || new Date(row.created_at).getTime() < new Date(existing).getTime()) {
+            firstDeploymentAtByRequest.set(row.purchase_request_id, row.created_at);
+          }
+        }
       } else if (row.transaction_type === 'return') {
         const current = returnTotals.get(row.purchase_request_id) || 0;
         returnTotals.set(row.purchase_request_id, current + amount);
@@ -305,7 +348,7 @@ export async function GET() {
     if (contractorIds.length > 0) {
       const { data: contractors, error: contractorsError } = await supabaseAdmin
         .from('contractors')
-        .select('id, company_name')
+        .select('id, company_name, platform_fee_rate, platform_fee_cap, participation_fee_rate_daily')
         .in('id', contractorIds);
 
       if (contractorsError) {
@@ -317,6 +360,67 @@ export async function GET() {
       }
     }
 
+    const requestById = new Map<string, PurchaseRequestRow>();
+    requests.forEach((request) => {
+      requestById.set(request.id, request);
+    });
+
+    const { data: deploymentTransactions, error: deploymentError } = await supabaseAdmin
+      .from('capital_transactions')
+      .select('investor_id, purchase_request_id, amount, created_at')
+      .eq('transaction_type', 'deployment')
+      .eq('status', 'completed')
+      .not('investor_id', 'is', null)
+      .not('purchase_request_id', 'is', null);
+
+    if (deploymentError) {
+      console.error('Failed to load investor deployment transactions:', deploymentError);
+    }
+
+    const disbursementsByInvestor = new Map<string, Map<string, InvestorDisbursementRow>>();
+    (deploymentTransactions as DeploymentTransactionRow[] | null || []).forEach((row) => {
+      if (!row.investor_id || !row.purchase_request_id) return;
+      const request = requestById.get(row.purchase_request_id);
+      const projectId = request?.project_id?.trim() || null;
+      const contractorId = request?.contractor_id || null;
+      const project = projectId ? projectMap.get(projectId) : null;
+      const contractor = contractorId ? contractorMap.get(contractorId) : null;
+
+      const investorMap = disbursementsByInvestor.get(row.investor_id) || new Map<string, InvestorDisbursementRow>();
+      const existing = investorMap.get(row.purchase_request_id);
+      const amount = Number(row.amount || 0);
+      const lastDeployedAt = row.created_at || null;
+
+      if (!existing) {
+        investorMap.set(row.purchase_request_id, {
+          purchase_request_id: row.purchase_request_id,
+          project_id: projectId,
+          project_name: project?.project_name ?? project?.project_id_external ?? projectId,
+          contractor_name: contractor?.company_name ?? null,
+          amount,
+          last_deployed_at: lastDeployedAt
+        });
+      } else {
+        existing.amount += amount;
+        if (lastDeployedAt && (!existing.last_deployed_at || new Date(lastDeployedAt).getTime() > new Date(existing.last_deployed_at).getTime())) {
+          existing.last_deployed_at = lastDeployedAt;
+        }
+      }
+
+      disbursementsByInvestor.set(row.investor_id, investorMap);
+    });
+
+    const investorSummariesWithDisbursements = investorSummaries.map((investor) => {
+      const investorDisbursements = Array.from(disbursementsByInvestor.get(investor.investor_id)?.values() || [])
+        .sort((a, b) => (new Date(b.last_deployed_at || 0).getTime() - new Date(a.last_deployed_at || 0).getTime()));
+      const totalDeployed = investorDisbursements.reduce((sum, row) => sum + row.amount, 0);
+      return {
+        ...investor,
+        total_deployed: totalDeployed,
+        disbursements: investorDisbursements
+      };
+    });
+
     const projectTotals = new Map<string, {
       project_id: string;
       project_name: string | null;
@@ -324,6 +428,8 @@ export async function GET() {
       total_requested: number;
       total_funded: number;
       total_returns: number;
+      total_platform_fee: number;
+      total_participation_fee: number;
       total_outstanding: number;
       request_count: number;
     }>();
@@ -331,6 +437,8 @@ export async function GET() {
     let totalRequestedValue = 0;
     let totalFunded = 0;
     let totalReturns = 0;
+    let totalPlatformFee = 0;
+    let totalParticipationFee = 0;
 
     requests.forEach((request) => {
       if (!request.project_id) return;
@@ -338,14 +446,26 @@ export async function GET() {
       const requestTotal = requestTotals.get(request.id) || 0;
       const funded = fundedTotals.get(request.id) || 0;
       const returns = returnTotals.get(request.id) || 0;
+      const contractor = request.contractor_id ? contractorMap.get(request.contractor_id) : null;
+      const deployedAt = firstDeploymentAtByRequest.get(request.id);
+      const daysOutstanding = deployedAt
+        ? Math.max(0, Math.floor((Date.now() - new Date(deployedAt).getTime()) / (1000 * 60 * 60 * 24)))
+        : 0;
+      const platformFeeRate = Number(contractor?.platform_fee_rate ?? 0.0025);
+      const platformFeeCap = Number(contractor?.platform_fee_cap ?? 25000);
+      const participationFeeRate = Number(contractor?.participation_fee_rate_daily ?? 0.001);
+      const platformFee = Math.min(funded * platformFeeRate, platformFeeCap);
+      const participationFee = funded * participationFeeRate * daysOutstanding;
+      const outstandingForRequest = Math.max(funded + platformFee + participationFee - returns, 0);
 
       totalRequestedValue += requestTotal;
       totalFunded += funded;
       totalReturns += returns;
+      totalPlatformFee += platformFee;
+      totalParticipationFee += participationFee;
 
       const existing = projectTotals.get(normalizedProjectId);
       const project = projectMap.get(normalizedProjectId);
-      const contractor = request.contractor_id ? contractorMap.get(request.contractor_id) : null;
       const base = existing || {
         project_id: normalizedProjectId,
         project_name: project?.project_name ?? project?.project_id_external ?? normalizedProjectId,
@@ -353,6 +473,8 @@ export async function GET() {
         total_requested: 0,
         total_funded: 0,
         total_returns: 0,
+        total_platform_fee: 0,
+        total_participation_fee: 0,
         total_outstanding: 0,
         request_count: 0
       };
@@ -360,12 +482,14 @@ export async function GET() {
       base.total_requested += requestTotal;
       base.total_funded += funded;
       base.total_returns += returns;
-      base.total_outstanding = Math.max(base.total_funded - base.total_returns, 0);
+      base.total_platform_fee += platformFee;
+      base.total_participation_fee += participationFee;
+      base.total_outstanding += outstandingForRequest;
       base.request_count += 1;
       projectTotals.set(normalizedProjectId, base);
     });
 
-    const totalOutstanding = Math.max(totalFunded - totalReturns, 0);
+    const totalOutstanding = Math.max(totalFunded + totalPlatformFee + totalParticipationFee - totalReturns, 0);
 
     return NextResponse.json({
       summary: {
@@ -373,11 +497,13 @@ export async function GET() {
         total_requested_value: totalRequestedValue,
         total_funded: totalFunded,
         total_returns: totalReturns,
+        total_platform_fee: totalPlatformFee,
+        total_participation_fee: totalParticipationFee,
         total_outstanding: totalOutstanding,
         total_projects: projectTotals.size,
         total_contractors: contractorIds.length
       },
-      investors: investorSummaries,
+      investors: investorSummariesWithDisbursements,
       projects: Array.from(projectTotals.values())
         .sort((a, b) => b.total_funded - a.total_funded)
     });

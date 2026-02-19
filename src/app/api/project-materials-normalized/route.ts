@@ -62,6 +62,7 @@ export async function GET(request: NextRequest) {
           id,
           purchase_request_id,
           project_material_id,
+          hsn_code,
           requested_qty,
           approved_qty,
           unit_rate,
@@ -69,6 +70,11 @@ export async function GET(request: NextRequest) {
           status,
           created_at,
           updated_at,
+          project_materials (
+            materials (
+              hsn_code
+            )
+          ),
           purchase_requests (
             id,
             status,
@@ -88,6 +94,7 @@ export async function GET(request: NextRequest) {
             id: item.id,
             purchase_request_id: item.purchase_request_id,
             project_material_id: item.project_material_id,
+            hsn_code: item.hsn_code || item.project_materials?.materials?.hsn_code || null,
             requested_qty: item.requested_qty,
             approved_qty: item.approved_qty,
             unit_rate: item.unit_rate,

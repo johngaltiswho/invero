@@ -32,6 +32,7 @@ interface Invoice {
   total_amount: number;
   status: string;
   invoice_url?: string;
+  invoice_download_url?: string;
   project_id: string;
   purchase_request_id: string;
 }
@@ -363,9 +364,9 @@ export default function DocumentsPage() {
                               </span>
                             </td>
                             <td className="py-3 px-4">
-                              {inv.invoice_url ? (
+                              {(inv.invoice_download_url || inv.invoice_url) ? (
                                 <a
-                                  href={inv.invoice_url}
+                                  href={inv.invoice_download_url || inv.invoice_url}
                                   target="_blank"
                                   rel="noopener noreferrer"
                                   className="text-accent-amber hover:underline text-xs"

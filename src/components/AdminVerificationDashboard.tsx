@@ -81,6 +81,7 @@ interface BOQTakeoff {
 interface PurchaseRequestItemUI {
   id: string;
   project_material_id: string;
+  hsn_code?: string | null;
   requested_qty: number;
   approved_qty?: number;
   unit_rate?: number;
@@ -114,6 +115,8 @@ interface PurchaseRequest {
   dispute_reason?: string | null;
   delivered_at?: string | null;
   invoice_generated_at?: string | null;
+  invoice_url?: string | null;
+  invoice_download_url?: string | null;
   contractors?: {
     id?: string;
     company_name: string;
@@ -190,6 +193,8 @@ export default function AdminVerificationDashboard(): React.ReactElement {
   const [assigningVendor, setAssigningVendor] = useState(false);
   const [dispatchLoading, setDispatchLoading] = useState(false);
   const [disputeWindowHours, setDisputeWindowHours] = useState(48);
+  const [showPurchaseModal, setShowPurchaseModal] = useState(false);
+  const [purchaseAdminNotes, setPurchaseAdminNotes] = useState('');
 
   const formatDate = (dateString?: string | null) => {
     if (!dateString) return 'N/A';
@@ -492,6 +497,12 @@ export default function AdminVerificationDashboard(): React.ReactElement {
     } finally {
       setDispatchLoading(false);
     }
+  };
+
+  const openPurchaseModal = (request: PurchaseRequest) => {
+    setSelectedPurchaseRequest(request);
+    setPurchaseAdminNotes(request.approval_notes || '');
+    setShowPurchaseModal(true);
   };
 
   const handleVerifyTakeoff = async (
@@ -1679,391 +1690,336 @@ export default function AdminVerificationDashboard(): React.ReactElement {
           </div>
         </div>
       ) : activeTab === 'purchases' ? (
-        <div className="grid lg:grid-cols-3 gap-8">
-          <div className="lg:col-span-1">
-            <div className="bg-neutral-dark rounded-lg border border-neutral-medium">
-              <div className="p-4 border-b border-neutral-medium">
-                <h2 className="text-lg font-semibold text-primary">Procurement</h2>
-                <p className="text-sm text-secondary">Purchase requests, vendor allocation &amp; delivery tracking</p>
+        <div className="bg-neutral-dark rounded-lg border border-neutral-medium">
+          <div className="p-4 border-b border-neutral-medium">
+            <h2 className="text-lg font-semibold text-primary">Procurement</h2>
+            <p className="text-sm text-secondary">Purchase requests, vendor allocation &amp; delivery tracking</p>
 
-                <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
-                  <div className="bg-yellow-100 text-yellow-800 px-2 py-1 rounded">Submitted: {purchaseSummary.submitted}</div>
-                  <div className="bg-blue-100 text-blue-800 px-2 py-1 rounded">Approved: {purchaseSummary.approved}</div>
-                  <div className="bg-purple-100 text-purple-800 px-2 py-1 rounded">Funded: {purchaseSummary.funded}</div>
-                  <div className="bg-green-100 text-green-800 px-2 py-1 rounded">Completed: {purchaseSummary.completed}</div>
-                  <div className="bg-red-100 text-red-800 px-2 py-1 rounded col-span-2">Rejected: {purchaseSummary.rejected}</div>
-                </div>
-                <div className="mt-3 flex flex-wrap gap-1">
-                  {(['all', 'submitted', 'approved', 'funded', 'completed', 'rejected'] as const).map(s => (
-                    <button
-                      key={s}
-                      onClick={() => setPrStatusFilter(s)}
-                      className={`px-2 py-1 rounded text-xs font-medium transition-colors ${
-                        prStatusFilter === s
-                          ? 'bg-accent-amber text-neutral-dark'
-                          : 'bg-neutral-medium text-secondary hover:text-primary'
-                      }`}
-                    >
-                      {s.charAt(0).toUpperCase() + s.slice(1)}
-                    </button>
-                  ))}
-                </div>
-              </div>
-              <div className="divide-y divide-neutral-medium max-h-96 overflow-y-auto">
-                {purchaseRequests.length === 0 ? (
-                  <div className="p-6 text-center">
-                    <div className="text-4xl mb-4">🛒</div>
-                    <h3 className="text-lg font-semibold text-primary mb-2">No Pending Requests</h3>
-                    <p className="text-secondary text-sm">All purchase requests have been processed.</p>
-                  </div>
-                ) : (
-                  purchaseRequests.map((request) => {
-                    const statusMeta = getPurchaseRequestStatusStyle(request.status);
-                    const estimated = request.estimated_total || 0;
-                    return (
-                      <div
-                        key={request.id}
-                        className={`p-4 cursor-pointer hover:bg-neutral-medium/50 transition-colors ${
-                          selectedPurchaseRequest?.id === request.id ? 'bg-neutral-medium/50 border-l-4 border-l-accent-orange' : ''
-                        }`}
-                        onClick={() => setSelectedPurchaseRequest(request)}
-                      >
-                        <div className="flex justify-between items-start mb-2">
-                          <div>
-                            <h3 className="font-semibold text-primary text-sm">
-                              Request #{request.id.slice(0, 8).toUpperCase()}
-                            </h3>
-                            <p className="text-xs text-secondary">
-                              {request.project?.name || 'Project'} • {request.contractors?.company_name || 'Unknown Contractor'}
-                            </p>
-                          </div>
-                          <div className="flex flex-col items-end gap-1">
-                            <span className={`text-xs px-2 py-1 rounded border ${statusMeta.classes}`}>{statusMeta.label}</span>
-                            {request.delivery_status && request.delivery_status !== 'not_dispatched' && (
-                              <span className={`text-xs px-2 py-0.5 rounded ${
-                                request.delivery_status === 'dispatched' ? 'bg-blue-100 text-blue-700' :
-                                request.delivery_status === 'disputed' ? 'bg-red-100 text-red-700' :
-                                'bg-green-100 text-green-700'
-                              }`}>
-                                {request.delivery_status === 'dispatched' ? 'Dispatched' :
-                                 request.delivery_status === 'disputed' ? 'Disputed' : 'Delivered'}
-                              </span>
-                            )}
-                          </div>
-                        </div>
-                        <div className="text-xs text-secondary">
-                          ₹{estimated.toLocaleString(undefined, { maximumFractionDigits: 2 })} • {request.total_items} items
-                          {request.vendor_name && <span className="ml-1 text-accent-amber">• {request.vendor_name}</span>}
-                        </div>
-                        <div className="text-xs text-secondary mt-1">
-                          {formatDate(request.submitted_at || request.created_at)}
-                        </div>
-                      </div>
-                    );
-                  })
-                )}
-              </div>
+            <div className="mt-3 grid grid-cols-2 md:grid-cols-5 gap-2 text-xs">
+              <div className="bg-yellow-100 text-yellow-800 px-2 py-1 rounded">Submitted: {purchaseSummary.submitted}</div>
+              <div className="bg-blue-100 text-blue-800 px-2 py-1 rounded">Approved: {purchaseSummary.approved}</div>
+              <div className="bg-purple-100 text-purple-800 px-2 py-1 rounded">Funded: {purchaseSummary.funded}</div>
+              <div className="bg-green-100 text-green-800 px-2 py-1 rounded">Completed: {purchaseSummary.completed}</div>
+              <div className="bg-red-100 text-red-800 px-2 py-1 rounded">Rejected: {purchaseSummary.rejected}</div>
+            </div>
+
+            <div className="mt-3 flex flex-wrap gap-1">
+              {(['all', 'submitted', 'approved', 'funded', 'completed', 'rejected'] as const).map(s => (
+                <button
+                  key={s}
+                  onClick={() => setPrStatusFilter(s)}
+                  className={`px-2 py-1 rounded text-xs font-medium transition-colors ${
+                    prStatusFilter === s
+                      ? 'bg-accent-amber text-neutral-dark'
+                      : 'bg-neutral-medium text-secondary hover:text-primary'
+                  }`}
+                >
+                  {s.charAt(0).toUpperCase() + s.slice(1)}
+                </button>
+              ))}
             </div>
           </div>
 
-          <div className="lg:col-span-2">
-            {selectedPurchaseRequest ? (
-              <div className="bg-neutral-dark rounded-lg border border-neutral-medium">
-                <div className="p-6 border-b border-neutral-medium">
-                  <div className="flex justify-between items-start">
-                    <div>
-                      <h2 className="text-xl font-semibold text-primary">
-                        Purchase Request #{selectedPurchaseRequest.id.slice(0, 8).toUpperCase()}
-                      </h2>
-                      <p className="text-secondary">
-                        {selectedPurchaseRequest.project?.name || 'Project'} • {selectedPurchaseRequest.contractors?.company_name || 'Unknown Contractor'}
-                      </p>
-                      <p className="text-sm text-secondary mt-1">
-                        Submitted: {formatDate(selectedPurchaseRequest.submitted_at || selectedPurchaseRequest.created_at)}
-                      </p>
-                    </div>
-                    <span className={`px-3 py-1 rounded border text-sm ${getPurchaseRequestStatusStyle(selectedPurchaseRequest.status).classes}`}>
-                      {getPurchaseRequestStatusStyle(selectedPurchaseRequest.status).label}
-                    </span>
-                  </div>
-                </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="bg-neutral-darker border-b border-neutral-medium">
+                <tr>
+                  <th className="text-left p-3 text-primary font-semibold">Request</th>
+                  <th className="text-left p-3 text-primary font-semibold">Project</th>
+                  <th className="text-left p-3 text-primary font-semibold">Contractor</th>
+                  <th className="text-left p-3 text-primary font-semibold">Items</th>
+                  <th className="text-left p-3 text-primary font-semibold">Amount</th>
+                  <th className="text-left p-3 text-primary font-semibold">Vendor</th>
+                  <th className="text-left p-3 text-primary font-semibold">Status</th>
+                  <th className="text-left p-3 text-primary font-semibold">Delivery</th>
+                  <th className="text-right p-3 text-primary font-semibold">Action</th>
+                </tr>
+              </thead>
+              <tbody>
+                {purchaseRequests.length === 0 ? (
+                  <tr>
+                    <td colSpan={9} className="p-8 text-center text-secondary">
+                      No purchase requests found for this filter.
+                    </td>
+                  </tr>
+                ) : (
+                  purchaseRequests.map((request) => {
+                    const statusMeta = getPurchaseRequestStatusStyle(request.status);
+                    const deliveryLabel =
+                      request.delivery_status === 'dispatched'
+                        ? 'Dispatched'
+                        : request.delivery_status === 'disputed'
+                        ? 'Disputed'
+                        : request.delivery_status === 'delivered'
+                        ? 'Delivered'
+                        : 'Not Dispatched';
 
-                <div className="p-6 space-y-6">
-                  <div className="grid md:grid-cols-2 gap-6">
-                    <div>
-                      <h3 className="text-lg font-semibold text-primary mb-3">Request Details</h3>
-                      <div className="space-y-2 text-sm">
-                        <div><strong>Total Items:</strong> {selectedPurchaseRequest.total_items}</div>
-                        <div><strong>Total Quantity:</strong> {selectedPurchaseRequest.total_requested_qty}</div>
-                        <div>
-                          <strong>Estimated Total:</strong> ₹{(selectedPurchaseRequest.estimated_total || 0).toLocaleString(undefined, { maximumFractionDigits: 2 })}
-                        </div>
-                        {selectedPurchaseRequest.remarks && (<div><strong>Remarks:</strong> {selectedPurchaseRequest.remarks}</div>)}
-                        {selectedPurchaseRequest.approval_notes && (<div><strong>Admin Notes:</strong> {selectedPurchaseRequest.approval_notes}</div>)}
-                      </div>
-                    </div>
-                    <div>
-                      <h3 className="text-lg font-semibold text-primary mb-3">Contractor & Project</h3>
-                      <div className="space-y-2 text-sm">
-                        <div><strong>Company:</strong> {selectedPurchaseRequest.contractors?.company_name || 'N/A'}</div>
-                        {selectedPurchaseRequest.contractors?.contact_person && (
-                          <div><strong>Contact:</strong> {selectedPurchaseRequest.contractors?.contact_person}</div>
-                        )}
-                        {selectedPurchaseRequest.contractors?.email && (
-                          <div><strong>Email:</strong> {selectedPurchaseRequest.contractors?.email}</div>
-                        )}
-                        {selectedPurchaseRequest.project?.name ? (
-                          <div><strong>Project:</strong> {selectedPurchaseRequest.project?.name}</div>
-                        ) : (
-                          selectedPurchaseRequest.project_id && (
-                            <div><strong>Project:</strong> {selectedPurchaseRequest.project_id}</div>
-                          )
-                        )}
-                        {selectedPurchaseRequest.project?.location && (
-                          <div><strong>Location:</strong> {selectedPurchaseRequest.project?.location}</div>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Vendor Assignment */}
-                  <div className="bg-neutral-darker border border-neutral-medium rounded-lg p-4">
-                    <h3 className="text-base font-semibold text-primary mb-3">Vendor Assignment</h3>
-                    {selectedPurchaseRequest.vendor_id ? (
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <p className="text-sm font-medium text-primary">{selectedPurchaseRequest.vendor_name}</p>
-                          {selectedPurchaseRequest.vendor_contact && (
-                            <p className="text-xs text-secondary">{selectedPurchaseRequest.vendor_contact}</p>
-                          )}
-                          <p className="text-xs text-secondary mt-1">
-                            Assigned {formatDate(selectedPurchaseRequest.vendor_assigned_at)}
-                          </p>
-                        </div>
-                        <button
-                          className="text-xs text-accent-amber underline"
-                          onClick={() => setSelectedVendorId(null)}
-                        >
-                          Change
-                        </button>
-                      </div>
-                    ) : (
-                      <div className="flex gap-2 items-end">
-                        <div className="flex-1">
-                          <label className="block text-xs font-medium text-secondary mb-1">Select Vendor</label>
-                          {vendorsLoading ? (
-                            <p className="text-xs text-secondary">Loading vendors...</p>
-                          ) : vendors.length === 0 ? (
-                            <p className="text-xs text-secondary italic">No vendors registered for this contractor yet.</p>
-                          ) : (
-                            <select
-                              value={selectedVendorId ?? ''}
-                              onChange={e => setSelectedVendorId(e.target.value ? Number(e.target.value) : null)}
-                              className="w-full px-3 py-2 bg-neutral-dark border border-neutral-medium rounded-md text-sm text-primary"
+                    return (
+                      <tr key={request.id} className="border-b border-neutral-medium hover:bg-neutral-medium/20">
+                        <td className="p-3 text-primary font-medium">#{request.id.slice(0, 8).toUpperCase()}</td>
+                        <td className="p-3 text-secondary">{request.project?.name || request.project_id || 'Project'}</td>
+                        <td className="p-3 text-secondary">{request.contractors?.company_name || 'Unknown Contractor'}</td>
+                        <td className="p-3 text-secondary">{request.total_items}</td>
+                        <td className="p-3 text-primary">
+                          ₹{(request.estimated_total || 0).toLocaleString(undefined, { maximumFractionDigits: 2 })}
+                        </td>
+                        <td className="p-3 text-secondary">{request.vendor_name || 'Unassigned'}</td>
+                        <td className="p-3">
+                          <span className={`text-xs px-2 py-1 rounded border ${statusMeta.classes}`}>{statusMeta.label}</span>
+                        </td>
+                        <td className="p-3 text-secondary text-xs">{deliveryLabel}</td>
+                        <td className="p-3 text-right">
+                          <div className="flex items-center justify-end gap-2">
+                            {(request.invoice_download_url || request.invoice_url) && (
+                              <a
+                                href={request.invoice_download_url || request.invoice_url || '#'}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-xs text-accent-amber underline"
+                              >
+                                View Invoice
+                              </a>
+                            )}
+                            <Button
+                              variant="outline"
+                              onClick={() => openPurchaseModal(request)}
                             >
-                              <option value="">-- Choose vendor --</option>
-                              {vendors.map(v => (
-                                <option key={v.id} value={v.id}>{v.name}{v.contact_person ? ` (${v.contact_person})` : ''}</option>
-                              ))}
-                            </select>
-                          )}
-                        </div>
-                        <button
-                          onClick={handleAssignVendor}
-                          disabled={!selectedVendorId || assigningVendor}
-                          className="px-4 py-2 bg-accent-amber text-neutral-dark rounded-md text-sm font-medium disabled:opacity-50 whitespace-nowrap"
-                        >
-                          {assigningVendor ? 'Assigning...' : 'Assign Vendor'}
-                        </button>
-                      </div>
-                    )}
-                  </div>
-
-                  <div>
-                    <h3 className="text-lg font-semibold text-primary mb-3">Requested Items</h3>
-                    <div className="overflow-x-auto">
-                      <table className="w-full text-xs">
-                        <thead>
-                          <tr className="border-b border-neutral-medium">
-                            <th className="text-left p-2 font-medium text-primary">Item</th>
-                            <th className="text-center p-2 font-medium text-primary">Qty</th>
-                            <th className="text-center p-2 font-medium text-primary">Unit</th>
-                            <th className="text-center p-2 font-medium text-primary">Rate (₹)</th>
-                            <th className="text-center p-2 font-medium text-primary">Tax (%)</th>
-                            <th className="text-center p-2 font-medium text-primary">Tax Amount</th>
-                            <th className="text-center p-2 font-medium text-primary">Total (₹)</th>
-                            <th className="text-center p-2 font-medium text-primary">Status</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {selectedPurchaseRequest.purchase_request_items.map((item) => {
-                            const rate = item.unit_rate || 0;
-                            const qty = item.requested_qty || 0;
-                            const subtotal = qty * rate;
-                            const taxPercent = item.tax_percent || 0;
-                            const taxAmount = (subtotal * taxPercent) / 100;
-                            const total = subtotal + taxAmount;
-
-                            return (
-                              <tr key={item.id} className="border-b border-neutral-medium hover:bg-neutral-medium/30">
-                                <td className="p-2 border-r border-neutral-medium">
-                                  <div className="font-medium text-primary">{item.material_name}</div>
-                                  {item.material_description && (<div className="text-secondary text-xs">{item.material_description}</div>)}
-                                </td>
-                                <td className="p-2 border-r border-neutral-medium text-center text-primary">{qty}</td>
-                                <td className="p-2 border-r border-neutral-medium text-center text-primary">{item.unit || 'units'}</td>
-                                <td className="p-2 border-r border-neutral-medium text-center text-primary">{rate.toLocaleString(undefined, { maximumFractionDigits: 2 })}</td>
-                                <td className="p-2 border-r border-neutral-medium text-center text-primary">{taxPercent}%</td>
-                                <td className="p-2 border-r border-neutral-medium text-center text-primary">₹{taxAmount.toLocaleString(undefined, { maximumFractionDigits: 2 })}</td>
-                                <td className="p-2 border-r border-neutral-medium text-center text-primary font-medium">₹{total.toLocaleString(undefined, { maximumFractionDigits: 2 })}</td>
-                                <td className="p-2 text-center">
-                                  <span className={`text-xs px-2 py-1 rounded ${
-                                    item.status === 'approved' ? 'bg-green-100 text-green-800' :
-                                    item.status === 'rejected' ? 'bg-red-100 text-red-700' :
-                                    item.status === 'ordered' ? 'bg-blue-100 text-blue-700' :
-                                    'bg-neutral-medium/40 text-secondary'
-                                  }`}>
-                                    {item.status.replace(/_/g, ' ').toUpperCase()}
-                                  </span>
-                                </td>
-                              </tr>
-                            );
-                          })}
-                        </tbody>
-                      </table>
-                    </div>
-                  </div>
-
-                  {selectedPurchaseRequest.status === 'submitted' && (
-                    <div className="bg-accent-amber/5 border border-accent-amber/20 rounded-lg p-6">
-                      <h3 className="text-lg font-semibold text-primary mb-4">Review Purchase Request</h3>
-                      {!selectedPurchaseRequest.vendor_id && (
-                        <div className="mb-4 p-3 bg-yellow-50 border border-yellow-200 rounded-lg text-sm text-yellow-800">
-                          A vendor must be assigned before this request can be approved.
-                        </div>
-                      )}
-                      <div className="mb-4">
-                        <label className="block text-sm font-medium text-primary mb-2">Admin Notes</label>
-                        <textarea
-                          rows={3}
-                          className="w-full px-3 py-2 border border-neutral-medium rounded-md bg-neutral-darker text-primary placeholder-secondary"
-                          placeholder="Add your review notes..."
-                          id={`admin-notes-${selectedPurchaseRequest.id}`}
-                        ></textarea>
-                      </div>
-                      <div className="flex flex-wrap gap-3">
-                        <Button
-                          variant="primary"
-                          onClick={() => {
-                            if (!selectedPurchaseRequest.vendor_id) {
-                              alert('Please assign a vendor before approving.');
-                              return;
-                            }
-                            const notes = (document.getElementById(`admin-notes-${selectedPurchaseRequest.id}`) as HTMLTextAreaElement)?.value;
-                            handlePurchaseRequestAction(selectedPurchaseRequest.id, 'approve_for_purchase', notes || undefined);
-                          }}
-                        >
-                          {selectedPurchaseRequest.vendor_id ? 'Approve Request' : 'Approve Request (assign vendor first)'}
-                        </Button>
-                        <Button
-                          variant="outline"
-                          onClick={() => {
-                            const notes = (document.getElementById(`admin-notes-${selectedPurchaseRequest.id}`) as HTMLTextAreaElement)?.value;
-                            handlePurchaseRequestAction(selectedPurchaseRequest.id, 'approve_for_funding', notes || undefined);
-                          }}
-                        >
-                          Mark as Funded
-                        </Button>
-                        <Button
-                          variant="outline"
-                          onClick={() => {
-                            const reason = prompt('Rejection reason:');
-                            if (reason) {
-                              handlePurchaseRequestAction(selectedPurchaseRequest.id, 'reject', reason);
-                            }
-                          }}
-                        >
-                          Reject Request
-                        </Button>
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Dispatch section — shown for approved/funded PRs not yet dispatched */}
-                  {(['approved', 'funded', 'po_generated'].includes(selectedPurchaseRequest.status)) &&
-                    (!selectedPurchaseRequest.delivery_status || selectedPurchaseRequest.delivery_status === 'not_dispatched') && (
-                    <div className="bg-blue-500/5 border border-blue-500/20 rounded-lg p-6">
-                      <h3 className="text-lg font-semibold text-primary mb-2">Mark as Dispatched</h3>
-                      <p className="text-sm text-secondary mb-4">
-                        Once you dispatch the order, the contractor has a window to raise a dispute. After the window closes, an invoice is auto-generated.
-                      </p>
-                      <div className="flex items-center gap-4">
-                        <div>
-                          <label className="block text-xs font-medium text-secondary mb-1">Dispute Window</label>
-                          <select
-                            value={disputeWindowHours}
-                            onChange={e => setDisputeWindowHours(Number(e.target.value))}
-                            className="px-3 py-2 bg-neutral-dark border border-neutral-medium rounded-md text-sm text-primary"
-                          >
-                            <option value={24}>24 hours</option>
-                            <option value={48}>48 hours</option>
-                            <option value={72}>72 hours</option>
-                          </select>
-                        </div>
-                        <button
-                          onClick={() => handleDispatch(disputeWindowHours)}
-                          disabled={dispatchLoading}
-                          className="px-5 py-2 bg-blue-600 text-white rounded-md text-sm font-medium hover:bg-blue-700 disabled:opacity-50 mt-4"
-                        >
-                          {dispatchLoading ? 'Processing...' : 'Mark as Dispatched'}
-                        </button>
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Delivery status info when already dispatched */}
-                  {selectedPurchaseRequest.delivery_status === 'dispatched' && (
-                    <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg text-sm">
-                      <p className="font-medium text-blue-900">Order Dispatched</p>
-                      <p className="text-blue-800">Dispatched: {formatDate(selectedPurchaseRequest.dispatched_at)}</p>
-                      {selectedPurchaseRequest.dispute_deadline && (
-                        <p className="text-blue-800">Dispute deadline: {new Date(selectedPurchaseRequest.dispute_deadline).toLocaleString()}</p>
-                      )}
-                    </div>
-                  )}
-                  {selectedPurchaseRequest.delivery_status === 'disputed' && (
-                    <div className="p-4 bg-red-50 border border-red-200 rounded-lg text-sm">
-                      <p className="font-medium text-red-900">Dispute Raised by Contractor</p>
-                      {selectedPurchaseRequest.dispute_reason && (
-                        <p className="text-red-800 mt-1">Reason: {selectedPurchaseRequest.dispute_reason}</p>
-                      )}
-                    </div>
-                  )}
-                  {selectedPurchaseRequest.delivery_status === 'delivered' && selectedPurchaseRequest.invoice_generated_at && (
-                    <div className="p-4 bg-green-50 border border-green-200 rounded-lg text-sm">
-                      <p className="font-medium text-green-900">Delivered — Invoice Generated</p>
-                      <p className="text-green-800">Invoice date: {formatDate(selectedPurchaseRequest.invoice_generated_at)}</p>
-                    </div>
-                  )}
-
-                  {selectedPurchaseRequest.approval_notes && selectedPurchaseRequest.status !== 'submitted' && (
-                    <div className="mt-6 p-4 bg-neutral-darker border border-neutral-medium rounded-lg">
-                      <h4 className="font-semibold text-primary mb-2">Latest Admin Notes</h4>
-                      <p className="text-sm text-primary">{selectedPurchaseRequest.approval_notes}</p>
-                    </div>
-                  )}
-                </div>
-              </div>
-            ) : (
-              <div className="bg-neutral-dark rounded-lg border border-neutral-medium p-8 text-center">
-                <div className="text-4xl mb-4">👈</div>
-                <h3 className="text-lg font-semibold text-primary mb-2">Select a Purchase Request</h3>
-                <p className="text-secondary">Choose a request from the list to review details</p>
-              </div>
-            )}
+                              Open
+                            </Button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })
+                )}
+              </tbody>
+            </table>
           </div>
         </div>
       ) : null}
+
+      {/* Purchase Request Modal */}
+      {showPurchaseModal && selectedPurchaseRequest && (
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
+          <div className="bg-neutral-dark rounded-lg border border-neutral-medium w-full max-w-5xl max-h-[90vh] overflow-y-auto">
+            <div className="p-5 border-b border-neutral-medium flex items-start justify-between">
+              <div>
+                <h2 className="text-xl font-semibold text-primary">
+                  Purchase Request #{selectedPurchaseRequest.id.slice(0, 8).toUpperCase()}
+                </h2>
+                <p className="text-sm text-secondary">
+                  {selectedPurchaseRequest.project?.name || selectedPurchaseRequest.project_id || 'Project'} • {selectedPurchaseRequest.contractors?.company_name || 'Unknown Contractor'}
+                </p>
+              </div>
+              <button
+                className="text-secondary hover:text-primary"
+                onClick={() => setShowPurchaseModal(false)}
+              >
+                Close
+              </button>
+            </div>
+
+            <div className="p-5 space-y-5">
+              {(() => {
+                const vendorLocked =
+                  ['funded', 'po_generated', 'completed'].includes(selectedPurchaseRequest.status) ||
+                  (selectedPurchaseRequest.delivery_status && selectedPurchaseRequest.delivery_status !== 'not_dispatched');
+                return (
+                  <>
+              <div className="grid md:grid-cols-3 gap-4 text-sm">
+                <div className="bg-neutral-darker border border-neutral-medium rounded-lg p-3">
+                  <div className="text-secondary">Status</div>
+                  <div className="text-primary font-medium mt-1">{getPurchaseRequestStatusStyle(selectedPurchaseRequest.status).label}</div>
+                </div>
+                <div className="bg-neutral-darker border border-neutral-medium rounded-lg p-3">
+                  <div className="text-secondary">Total Items</div>
+                  <div className="text-primary font-medium mt-1">{selectedPurchaseRequest.total_items}</div>
+                </div>
+                <div className="bg-neutral-darker border border-neutral-medium rounded-lg p-3">
+                  <div className="text-secondary">Estimated Total</div>
+                  <div className="text-primary font-medium mt-1">₹{(selectedPurchaseRequest.estimated_total || 0).toLocaleString(undefined, { maximumFractionDigits: 2 })}</div>
+                </div>
+              </div>
+
+              <div className="bg-neutral-darker border border-neutral-medium rounded-lg p-4">
+                <h3 className="text-base font-semibold text-primary mb-3">Vendor Assignment</h3>
+                {vendorLocked && (
+                  <div className="mb-3 p-2 rounded border border-yellow-500/30 bg-yellow-500/10 text-xs text-yellow-300">
+                    Vendor is locked and cannot be changed after funding or dispatch.
+                  </div>
+                )}
+                <div className="flex gap-2 items-end">
+                  <div className="flex-1">
+                    <label className="block text-xs font-medium text-secondary mb-1">Select Vendor</label>
+                    {vendorsLoading ? (
+                      <p className="text-xs text-secondary">Loading vendors...</p>
+                    ) : vendors.length === 0 ? (
+                      <p className="text-xs text-secondary italic">No vendors registered for this contractor yet.</p>
+                    ) : (
+                      <select
+                        value={selectedVendorId ?? ''}
+                        onChange={e => setSelectedVendorId(e.target.value ? Number(e.target.value) : null)}
+                        disabled={vendorLocked}
+                        className="w-full px-3 py-2 bg-neutral-dark border border-neutral-medium rounded-md text-sm text-primary"
+                      >
+                        <option value="">-- Choose vendor --</option>
+                        {vendors.map(v => (
+                          <option key={v.id} value={v.id}>{v.name}{v.contact_person ? ` (${v.contact_person})` : ''}</option>
+                        ))}
+                      </select>
+                    )}
+                  </div>
+                  <button
+                    onClick={handleAssignVendor}
+                    disabled={!selectedVendorId || assigningVendor || vendorLocked}
+                    className="px-4 py-2 bg-accent-amber text-neutral-dark rounded-md text-sm font-medium disabled:opacity-50 whitespace-nowrap"
+                  >
+                    {assigningVendor ? 'Assigning...' : 'Assign Vendor'}
+                  </button>
+                </div>
+              </div>
+
+              <div className="overflow-x-auto border border-neutral-medium rounded-lg">
+                <table className="w-full text-xs">
+                  <thead className="bg-neutral-darker">
+                    <tr className="border-b border-neutral-medium">
+                      <th className="text-left p-2 font-medium text-primary">Item</th>
+                      <th className="text-center p-2 font-medium text-primary">HSN</th>
+                      <th className="text-center p-2 font-medium text-primary">Qty</th>
+                      <th className="text-center p-2 font-medium text-primary">Unit</th>
+                      <th className="text-center p-2 font-medium text-primary">Rate</th>
+                      <th className="text-center p-2 font-medium text-primary">Status</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {selectedPurchaseRequest.purchase_request_items.map((item) => (
+                      <tr key={item.id} className="border-b border-neutral-medium">
+                        <td className="p-2 text-primary">{item.material_name}</td>
+                        <td className="p-2 text-center text-primary font-mono">{item.hsn_code || '-'}</td>
+                        <td className="p-2 text-center text-primary">{item.requested_qty}</td>
+                        <td className="p-2 text-center text-primary">{item.unit || 'units'}</td>
+                        <td className="p-2 text-center text-primary">₹{(item.unit_rate || 0).toLocaleString(undefined, { maximumFractionDigits: 2 })}</td>
+                        <td className="p-2 text-center text-secondary">{item.status.replace(/_/g, ' ').toUpperCase()}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              {selectedPurchaseRequest.status === 'submitted' && (
+                <div className="bg-accent-amber/5 border border-accent-amber/20 rounded-lg p-4">
+                  <h3 className="text-base font-semibold text-primary mb-2">Review Request</h3>
+                  <textarea
+                    rows={3}
+                    className="w-full px-3 py-2 border border-neutral-medium rounded-md bg-neutral-darker text-primary placeholder-secondary mb-3"
+                    placeholder="Add admin notes..."
+                    value={purchaseAdminNotes}
+                    onChange={(e) => setPurchaseAdminNotes(e.target.value)}
+                  />
+                  <div className="flex flex-wrap gap-2">
+                    <Button
+                      variant="primary"
+                      onClick={() => {
+                        if (!selectedPurchaseRequest.vendor_id && !selectedVendorId) {
+                          alert('Please assign a vendor before approving.');
+                          return;
+                        }
+                        handlePurchaseRequestAction(selectedPurchaseRequest.id, 'approve_for_purchase', purchaseAdminNotes || undefined);
+                      }}
+                    >
+                      Approve Request
+                    </Button>
+                    <Button
+                      variant="outline"
+                      onClick={() => handlePurchaseRequestAction(selectedPurchaseRequest.id, 'approve_for_funding', purchaseAdminNotes || undefined)}
+                    >
+                      Mark as Funded
+                    </Button>
+                    <Button
+                      variant="outline"
+                      onClick={() => {
+                        const reason = prompt('Rejection reason:');
+                        if (reason) handlePurchaseRequestAction(selectedPurchaseRequest.id, 'reject', reason);
+                      }}
+                    >
+                      Reject
+                    </Button>
+                  </div>
+                </div>
+              )}
+
+              {(['approved', 'funded', 'po_generated'].includes(selectedPurchaseRequest.status)) &&
+                (!selectedPurchaseRequest.delivery_status || selectedPurchaseRequest.delivery_status === 'not_dispatched') && (
+                <div className="bg-blue-500/5 border border-blue-500/20 rounded-lg p-4">
+                  <h3 className="text-base font-semibold text-primary mb-2">Initiate Delivery</h3>
+                  <div className="flex items-center gap-3">
+                    <select
+                      value={disputeWindowHours}
+                      onChange={e => setDisputeWindowHours(Number(e.target.value))}
+                      className="px-3 py-2 bg-neutral-dark border border-neutral-medium rounded-md text-sm text-primary"
+                    >
+                      <option value={24}>24 hours</option>
+                      <option value={48}>48 hours</option>
+                      <option value={72}>72 hours</option>
+                    </select>
+                    <button
+                      onClick={() => handleDispatch(disputeWindowHours)}
+                      disabled={dispatchLoading}
+                      className="px-5 py-2 bg-blue-600 text-white rounded-md text-sm font-medium hover:bg-blue-700 disabled:opacity-50"
+                    >
+                      {dispatchLoading ? 'Processing...' : 'Mark as Dispatched'}
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {selectedPurchaseRequest.delivery_status === 'dispatched' && (
+                <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg text-sm">
+                  <p className="font-medium text-blue-900">Order Dispatched</p>
+                  <p className="text-blue-800">Dispatched: {formatDate(selectedPurchaseRequest.dispatched_at)}</p>
+                  {selectedPurchaseRequest.dispute_deadline && (
+                    <p className="text-blue-800">
+                      Dispute deadline: {new Date(selectedPurchaseRequest.dispute_deadline).toLocaleString()}
+                    </p>
+                  )}
+                </div>
+              )}
+
+              {selectedPurchaseRequest.delivery_status === 'disputed' && (
+                <div className="p-4 bg-red-50 border border-red-200 rounded-lg text-sm">
+                  <p className="font-medium text-red-900">Dispute Raised by Contractor</p>
+                  {selectedPurchaseRequest.dispute_reason && (
+                    <p className="text-red-800 mt-1">Reason: {selectedPurchaseRequest.dispute_reason}</p>
+                  )}
+                </div>
+              )}
+
+              {selectedPurchaseRequest.delivery_status === 'delivered' && (
+                <div className="p-4 bg-green-50 border border-green-200 rounded-lg text-sm">
+                  <p className="font-medium text-green-900">Delivered</p>
+                  <p className="text-green-800">Delivered at: {formatDate(selectedPurchaseRequest.delivered_at)}</p>
+                  {selectedPurchaseRequest.invoice_generated_at && (
+                    <p className="text-green-800">Invoice generated: {formatDate(selectedPurchaseRequest.invoice_generated_at)}</p>
+                  )}
+                  {(selectedPurchaseRequest.invoice_download_url || selectedPurchaseRequest.invoice_url) && (
+                    <a
+                      href={selectedPurchaseRequest.invoice_download_url || selectedPurchaseRequest.invoice_url || '#'}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-block mt-2 px-3 py-1.5 rounded border border-green-300 text-green-700 bg-white hover:bg-green-50"
+                    >
+                      View Invoice
+                    </a>
+                  )}
+                </div>
+              )}
+                  </>
+                );
+              })()}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Add Contractor Modal */}
       {showAddContractor && (

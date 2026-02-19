@@ -54,6 +54,7 @@ export default function MaterialsPage() {
   const [activeTab, setActiveTab] = useState('materials');
   const [deliveryRequests, setDeliveryRequests] = useState<any[]>([]);
   const [deliveryLoading, setDeliveryLoading] = useState(false);
+  const [confirmingDeliveryId, setConfirmingDeliveryId] = useState<string | null>(null);
   const [disputeDialog, setDisputeDialog] = useState<{ open: boolean; prId: string }>({ open: false, prId: '' });
   const [disputeReason, setDisputeReason] = useState('');
   const [sortField, setSortField] = useState<string>('name');
@@ -728,6 +729,7 @@ export default function MaterialsPage() {
                   const now = new Date();
                   const hoursLeft = deadline ? Math.max(0, (deadline.getTime() - now.getTime()) / 3600000) : 0;
                   const canDispute = pr.delivery_status === 'dispatched' && deadline && deadline > now;
+                  const canConfirmDelivery = pr.delivery_status === 'dispatched';
                   const statusColors: Record<string, string> = {
                     dispatched: 'bg-accent-amber/10 text-accent-amber border-accent-amber/30',
                     disputed: 'bg-red-900/10 text-red-400 border-red-400/30',
@@ -767,8 +769,12 @@ export default function MaterialsPage() {
                             <p className="text-xs text-secondary mt-1">
                               {pr.purchase_request_items.length} item{pr.purchase_request_items.length > 1 ? 's' : ''}
                               {' — '}
-                              {pr.purchase_request_items.slice(0, 2).map((item: any) =>
-                                item.project_materials?.materials?.name
+                              {pr.purchase_request_items.slice(0, 2).map((item: any) => {
+                                const name = item.project_materials?.materials?.name;
+                                if (!name) return null;
+                                const hsn = item.hsn_code || item.project_materials?.materials?.hsn_code;
+                                return hsn ? `${name} (HSN: ${hsn})` : name;
+                              }
                               ).filter(Boolean).join(', ')}
                               {pr.purchase_request_items.length > 2 ? ` +${pr.purchase_request_items.length - 2} more` : ''}
                             </p>
@@ -776,6 +782,40 @@ export default function MaterialsPage() {
                         </div>
 
                         <div className="flex gap-2 shrink-0 flex-wrap">
+                          {canConfirmDelivery && (
+                            <button
+                              onClick={async () => {
+                                try {
+                                  setConfirmingDeliveryId(pr.id);
+                                  const res = await fetch('/api/delivery-tracker', {
+                                    method: 'PATCH',
+                                    headers: { 'Content-Type': 'application/json' },
+                                    body: JSON.stringify({ purchase_request_id: pr.id, action: 'confirm' }),
+                                  });
+                                  const data = await res.json();
+                                  if (data.success) {
+                                    setDeliveryRequests(prev =>
+                                      prev.map(r =>
+                                        r.id === pr.id
+                                          ? { ...r, delivery_status: 'delivered', delivered_at: new Date().toISOString() }
+                                          : r
+                                      )
+                                    );
+                                  } else {
+                                    alert(data.error || 'Failed to confirm delivery');
+                                  }
+                                } catch {
+                                  alert('Failed to confirm delivery');
+                                } finally {
+                                  setConfirmingDeliveryId(null);
+                                }
+                              }}
+                              disabled={confirmingDeliveryId === pr.id}
+                              className="px-3 py-1.5 text-xs font-medium bg-green-900/20 text-green-400 border border-green-400/30 rounded hover:bg-green-900/40 transition-colors disabled:opacity-50"
+                            >
+                              {confirmingDeliveryId === pr.id ? 'Confirming...' : 'Confirm Delivery'}
+                            </button>
+                          )}
                           {canDispute && (
                             <button
                               onClick={() => { setDisputeDialog({ open: true, prId: pr.id }); setDisputeReason(''); }}
@@ -784,14 +824,14 @@ export default function MaterialsPage() {
                               Raise Dispute
                             </button>
                           )}
-                          {pr.invoice_url && (
+                          {(pr.invoice_download_url || pr.invoice_url) && (
                             <a
-                              href={pr.invoice_url}
+                              href={pr.invoice_download_url || pr.invoice_url}
                               target="_blank"
                               rel="noopener noreferrer"
                               className="px-3 py-1.5 text-xs font-medium bg-accent-amber/10 text-accent-amber border border-accent-amber/30 rounded hover:bg-accent-amber/20 transition-colors"
                             >
-                              Download Invoice
+                              View Invoice
                             </a>
                           )}
                         </div>

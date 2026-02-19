@@ -81,6 +81,7 @@ function IndividualProjectContent(): React.ReactElement {
   // Purchase request state
   const [purchaseRates, setPurchaseRates] = useState<{[key: string]: number}>({});
   const [purchaseTax, setPurchaseTax] = useState<{[key: string]: number}>({});
+  const [purchaseHsn, setPurchaseHsn] = useState<{[key: string]: string}>({});
   const [purchaseRemarks, setPurchaseRemarks] = useState<{[key: string]: string}>({});
   const [purchaseQuantities, setPurchaseQuantities] = useState<{[key: string]: string}>({});
   const [selectedVendor, setSelectedVendor] = useState<any>(null);
@@ -1477,6 +1478,7 @@ function IndividualProjectContent(): React.ReactElement {
                                                 Qty Requested: {item.requested_qty}{' '}
                                                 {material.unit || 'units'}
                                                 {item.approved_qty ? ` • Approved: ${item.approved_qty}` : ''}
+                                                {item.hsn_code ? ` • HSN: ${item.hsn_code}` : ''}
                                               </div>
                                               <div className="text-secondary mt-1">
                                                 Raised: {formatDate(item.created_at)}{' '}
@@ -1883,7 +1885,7 @@ function IndividualProjectContent(): React.ReactElement {
                             </div>
                           </div>
                           
-                          <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+                          <div className="grid grid-cols-1 md:grid-cols-5 gap-3">
                             {/* Quantity */}
                             <div>
                               <label className="block text-xs font-medium text-secondary mb-1">
@@ -1934,6 +1936,22 @@ function IndividualProjectContent(): React.ReactElement {
                                   [material.id]: parseFloat(e.target.value) || 0
                                 }))}
                                 placeholder="0.00"
+                                className="w-full px-2 py-1 bg-neutral-dark border border-neutral-medium rounded text-primary text-sm focus:border-accent-amber focus:outline-none"
+                              />
+                            </div>
+
+                            <div>
+                              <label className="block text-xs font-medium text-secondary mb-1">
+                                HSN Code
+                              </label>
+                              <input
+                                type="text"
+                                value={purchaseHsn[material.id] || ''}
+                                onChange={(e) => setPurchaseHsn(prev => ({
+                                  ...prev,
+                                  [material.id]: e.target.value.toUpperCase().slice(0, 16)
+                                }))}
+                                placeholder="e.g. 72142000"
                                 className="w-full px-2 py-1 bg-neutral-dark border border-neutral-medium rounded text-primary text-sm focus:border-accent-amber focus:outline-none"
                               />
                             </div>
@@ -2013,6 +2031,7 @@ function IndividualProjectContent(): React.ReactElement {
                     setPurchaseQuantities({});
                     setPurchaseRates({});
                     setPurchaseTax({});
+                    setPurchaseHsn({});
                     setPurchaseRemarks({});
                     setSelectedVendor(null);
                   }}
@@ -2064,6 +2083,7 @@ function IndividualProjectContent(): React.ReactElement {
                         ).filter(remark => remark).join('; ') || null,
                         items: Array.from(selectedMaterials).map(materialId => ({
                           project_material_id: materialId,
+                          hsn_code: purchaseHsn[materialId]?.trim() || undefined,
                           requested_qty: parseFloat(purchaseQuantities[materialId] || '0'),
                           unit_rate: purchaseRates[materialId] || 0,
                           tax_percent: purchaseTax[materialId] || 0
@@ -2094,6 +2114,7 @@ function IndividualProjectContent(): React.ReactElement {
                         setPurchaseQuantities({});
                         setPurchaseRates({});
                         setPurchaseTax({});
+                        setPurchaseHsn({});
                         setPurchaseRemarks({});
                         setSelectedVendor(null);
                       } else {

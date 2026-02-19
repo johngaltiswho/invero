@@ -168,6 +168,7 @@ export async function POST(request: NextRequest) {
     const requestItems = items.map((item) => ({
       purchase_request_id: purchaseRequest.id,
       project_material_id: item.project_material_id,
+      hsn_code: item.hsn_code?.trim() || null,
       requested_qty: item.requested_qty,
       unit_rate: item.unit_rate || null,
       tax_percent: item.tax_percent || 0,

@@ -431,7 +431,8 @@ export async function POST(request: NextRequest) {
           approved_at,
           purchase_request_items (
             requested_qty,
-            unit_rate
+            unit_rate,
+            tax_percent
           )
         `)
         .eq('id', normalizedPurchaseRequestId)
@@ -458,7 +459,10 @@ export async function POST(request: NextRequest) {
       purchaseRequestTotal = (purchaseRequest.purchase_request_items || []).reduce((sum, item) => {
         const qty = Number(item.requested_qty) || 0;
         const rate = Number(item.unit_rate) || 0;
-        return sum + qty * rate;
+        const taxPercent = Number(item.tax_percent) || 0;
+        const base = qty * rate;
+        const tax = base * (taxPercent / 100);
+        return sum + base + tax;
       }, 0);
 
       if (purchaseRequestTotal > 0) {
