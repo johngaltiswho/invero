@@ -5,6 +5,26 @@ import { DashboardLayout } from '@/components/DashboardLayout';
 import { Button } from '@/components';
 import { useInvestor } from '@/contexts/InvestorContext';
 
+type InvestorTransaction = {
+  id: string;
+  transaction_type?: string;
+  amount?: number | string;
+  status?: string;
+  reference_number?: string;
+  description?: string;
+  created_at?: string;
+  projects?: {
+    project_name?: string;
+  } | null;
+};
+
+type InvestorDocument = {
+  name: string;
+  documentType?: string;
+  signedUrl?: string | null;
+  createdAt?: string | null;
+};
+
 export default function FinancialManagement(): React.ReactElement {
   const [selectedTab, setSelectedTab] = useState<'overview' | 'transactions' | 'payouts' | 'tax'>('overview');
   const [bankForm, setBankForm] = useState({
@@ -23,6 +43,38 @@ export default function FinancialManagement(): React.ReactElement {
   const [panUploading, setPanUploading] = useState(false);
   const [panMessage, setPanMessage] = useState<string | null>(null);
   const [panDocument, setPanDocument] = useState<{ name: string; signedUrl: string | null; createdAt: string | null } | null>(null);
+  const [finvernoBankDetails, setFinvernoBankDetails] = useState({
+    account_holder_name: '',
+    bank_name: '',
+    account_number: '',
+    ifsc_code: '',
+    account_type: '',
+    branch_name: '',
+    upi_id: ''
+  });
+  const [paymentSubmissions, setPaymentSubmissions] = useState<Array<{
+    id: string;
+    amount: number;
+    payment_date: string;
+    payment_method: string;
+    payment_reference?: string | null;
+    notes?: string | null;
+    status: 'pending' | 'approved' | 'rejected';
+    review_notes?: string | null;
+    created_at: string;
+    proof_signed_url?: string | null;
+  }>>([]);
+  const [submissionForm, setSubmissionForm] = useState({
+    amount: '',
+    paymentDate: '',
+    paymentMethod: 'bank_transfer',
+    paymentReference: '',
+    notes: ''
+  });
+  const [submissionProofFile, setSubmissionProofFile] = useState<File | null>(null);
+  const [submissionProofName, setSubmissionProofName] = useState('');
+  const [submittingPayment, setSubmittingPayment] = useState(false);
+  const [paymentSubmissionMessage, setPaymentSubmissionMessage] = useState<string | null>(null);
   const { investor } = useInvestor();
   const portfolioMetrics = investor?.portfolioMetrics || {
     totalInvested: 0,
@@ -41,7 +93,7 @@ export default function FinancialManagement(): React.ReactElement {
   };
 
   const transactions = useMemo(() => {
-    const allTx = (investor?.transactions || []) as any[];
+    const allTx = (investor?.transactions || []) as InvestorTransaction[];
     return allTx.map((tx) => {
       const type = String(tx.transaction_type || '').toLowerCase();
       const projectName = tx.projects?.project_name || 'Project';
@@ -94,6 +146,7 @@ export default function FinancialManagement(): React.ReactElement {
     switch (status) {
       case 'Completed': return 'bg-success/10 text-success';
       case 'Pending': return 'bg-warning/10 text-warning';
+      case 'Failed': return 'bg-error/10 text-error';
       default: return 'bg-neutral-medium text-secondary';
     }
   };
@@ -129,7 +182,7 @@ export default function FinancialManagement(): React.ReactElement {
         const response = await fetch('/api/investor/documents');
         const result = await response.json();
         if (response.ok && result?.success) {
-          const panDoc = (result.documents || []).find((doc: any) => doc.documentType === 'pan');
+          const panDoc = (result.documents || [] as InvestorDocument[]).find((doc) => doc.documentType === 'pan');
           if (panDoc) {
             setPanDocument({
               name: panDoc.name,
@@ -145,8 +198,42 @@ export default function FinancialManagement(): React.ReactElement {
       }
     };
 
+    const loadFinvernoBankDetails = async () => {
+      try {
+        const response = await fetch('/api/investor/finverno-bank-details');
+        const result = await response.json();
+        if (response.ok && result?.success && result?.details) {
+          setFinvernoBankDetails({
+            account_holder_name: result.details.account_holder_name || '',
+            bank_name: result.details.bank_name || '',
+            account_number: result.details.account_number || '',
+            ifsc_code: result.details.ifsc_code || '',
+            account_type: result.details.account_type || '',
+            branch_name: result.details.branch_name || '',
+            upi_id: result.details.upi_id || ''
+          });
+        }
+      } catch (error) {
+        console.warn('Failed to load Finverno bank details', error);
+      }
+    };
+
+    const loadPaymentSubmissions = async () => {
+      try {
+        const response = await fetch('/api/investor/payment-submissions');
+        const result = await response.json();
+        if (response.ok && result?.success) {
+          setPaymentSubmissions(result.submissions || []);
+        }
+      } catch (error) {
+        console.warn('Failed to load payment submissions', error);
+      }
+    };
+
     loadBankDetails();
     loadPanDocument();
+    loadFinvernoBankDetails();
+    loadPaymentSubmissions();
   }, []);
 
   const handleSaveBankDetails = async () => {
@@ -239,6 +326,63 @@ export default function FinancialManagement(): React.ReactElement {
     }
   };
 
+  const handleSubmitPaymentConfirmation = async () => {
+    setSubmittingPayment(true);
+    setPaymentSubmissionMessage(null);
+
+    try {
+      const amount = Number(submissionForm.amount);
+      if (!Number.isFinite(amount) || amount <= 0) {
+        throw new Error('Enter a valid payment amount');
+      }
+      if (!submissionForm.paymentDate) {
+        throw new Error('Please select payment date');
+      }
+
+      const formData = new FormData();
+      formData.append('amount', String(amount));
+      formData.append('payment_date', submissionForm.paymentDate);
+      formData.append('payment_method', submissionForm.paymentMethod);
+      formData.append('payment_reference', submissionForm.paymentReference);
+      formData.append('notes', submissionForm.notes);
+      if (submissionProofFile) {
+        formData.append('proof_file', submissionProofFile);
+      }
+
+      const response = await fetch('/api/investor/payment-submissions', {
+        method: 'POST',
+        body: formData
+      });
+      const result = await response.json();
+
+      if (!response.ok) {
+        throw new Error(result?.error || 'Failed to submit payment confirmation');
+      }
+
+      setPaymentSubmissionMessage('Payment confirmation submitted. Admin will review and approve.');
+      setSubmissionForm({
+        amount: '',
+        paymentDate: '',
+        paymentMethod: 'bank_transfer',
+        paymentReference: '',
+        notes: ''
+      });
+      setSubmissionProofFile(null);
+      setSubmissionProofName('');
+
+      const refreshResponse = await fetch('/api/investor/payment-submissions');
+      const refreshResult = await refreshResponse.json();
+      if (refreshResponse.ok && refreshResult?.success) {
+        setPaymentSubmissions(refreshResult.submissions || []);
+      }
+    } catch (error) {
+      console.error('Failed to submit payment confirmation:', error);
+      setPaymentSubmissionMessage(error instanceof Error ? error.message : 'Failed to submit payment confirmation');
+    } finally {
+      setSubmittingPayment(false);
+    }
+  };
+
   return (
     <DashboardLayout activeTab="financials">
       <div className="p-6">
@@ -259,10 +403,10 @@ export default function FinancialManagement(): React.ReactElement {
                 { id: 'transactions', name: 'Transactions', icon: '💳' },
                 { id: 'payouts', name: 'Payouts', icon: '💰' },
                 { id: 'tax', name: 'Tax Center', icon: '📋' }
-              ].map((tab) => (
+              ].map((tab: { id: 'overview' | 'transactions' | 'payouts' | 'tax'; name: string; icon: string }) => (
                 <button
                   key={tab.id}
-                  onClick={() => setSelectedTab(tab.id as any)}
+                  onClick={() => setSelectedTab(tab.id)}
                   className={`py-4 px-2 border-b-2 font-medium text-sm transition-colors ${
                     selectedTab === tab.id
                       ? 'border-accent-amber text-accent-amber'
@@ -321,6 +465,142 @@ export default function FinancialManagement(): React.ReactElement {
 
         {selectedTab === 'payouts' && (
           <div className="space-y-8">
+            <div className="bg-neutral-dark rounded-lg border border-neutral-medium p-6">
+              <h2 className="text-xl font-semibold text-primary mb-2">Add Capital to Finverno</h2>
+              <p className="text-secondary text-sm mb-6">
+                Transfer funds to the account below, then submit payment confirmation for admin approval.
+              </p>
+
+              <div className="grid md:grid-cols-2 gap-6 mb-6">
+                <div className="rounded-lg border border-neutral-medium bg-neutral-darker/40 p-4">
+                  <h3 className="text-sm font-semibold text-primary mb-3 uppercase tracking-wide">Finverno Receiving Account</h3>
+                  <div className="space-y-1 text-sm text-secondary">
+                    <p><span className="text-primary">Account Holder:</span> {finvernoBankDetails.account_holder_name || '—'}</p>
+                    <p><span className="text-primary">Bank:</span> {finvernoBankDetails.bank_name || '—'}</p>
+                    <p><span className="text-primary">A/C Number:</span> {finvernoBankDetails.account_number || '—'}</p>
+                    <p><span className="text-primary">A/C Type:</span> {finvernoBankDetails.account_type || '—'}</p>
+                    <p><span className="text-primary">IFSC:</span> {finvernoBankDetails.ifsc_code || '—'}</p>
+                    <p><span className="text-primary">Branch:</span> {finvernoBankDetails.branch_name || '—'}</p>
+                    <p><span className="text-primary">UPI:</span> {finvernoBankDetails.upi_id || '—'}</p>
+                  </div>
+                </div>
+
+                <div className="rounded-lg border border-neutral-medium bg-neutral-darker/40 p-4">
+                  <h3 className="text-sm font-semibold text-primary mb-3 uppercase tracking-wide">Submit Payment Confirmation</h3>
+                  <div className="space-y-3">
+                    <div>
+                      <label className="text-xs uppercase tracking-wide text-secondary">Amount (₹)</label>
+                      <input
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        value={submissionForm.amount}
+                        onChange={(e) => setSubmissionForm((prev) => ({ ...prev, amount: e.target.value }))}
+                        className="mt-2 w-full rounded-lg border border-neutral-medium bg-neutral-darker px-3 py-2 text-sm text-primary"
+                        placeholder="Enter transferred amount"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-xs uppercase tracking-wide text-secondary">Payment Date</label>
+                      <input
+                        type="date"
+                        value={submissionForm.paymentDate}
+                        onChange={(e) => setSubmissionForm((prev) => ({ ...prev, paymentDate: e.target.value }))}
+                        className="mt-2 w-full rounded-lg border border-neutral-medium bg-neutral-darker px-3 py-2 text-sm text-primary"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-xs uppercase tracking-wide text-secondary">Payment Reference (UTR / Txn ID)</label>
+                      <input
+                        type="text"
+                        value={submissionForm.paymentReference}
+                        onChange={(e) => setSubmissionForm((prev) => ({ ...prev, paymentReference: e.target.value }))}
+                        className="mt-2 w-full rounded-lg border border-neutral-medium bg-neutral-darker px-3 py-2 text-sm text-primary"
+                        placeholder="Enter UTR or transaction ID"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-xs uppercase tracking-wide text-secondary">Proof of Transfer (Optional)</label>
+                      <input
+                        type="file"
+                        accept=".pdf,.png,.jpg,.jpeg"
+                        onChange={(e) => {
+                          const file = e.target.files?.[0] || null;
+                          setSubmissionProofFile(file);
+                          setSubmissionProofName(file?.name || '');
+                        }}
+                        className="mt-2 text-xs text-secondary"
+                      />
+                      {submissionProofName && (
+                        <p className="text-xs text-secondary mt-1">Selected: {submissionProofName}</p>
+                      )}
+                    </div>
+                    <div>
+                      <label className="text-xs uppercase tracking-wide text-secondary">Notes (Optional)</label>
+                      <textarea
+                        value={submissionForm.notes}
+                        onChange={(e) => setSubmissionForm((prev) => ({ ...prev, notes: e.target.value }))}
+                        rows={2}
+                        className="mt-2 w-full rounded-lg border border-neutral-medium bg-neutral-darker px-3 py-2 text-sm text-primary"
+                        placeholder="Any context for admin review"
+                      />
+                    </div>
+                    <Button size="sm" disabled={submittingPayment} onClick={handleSubmitPaymentConfirmation}>
+                      {submittingPayment ? 'Submitting...' : 'Submit Confirmation'}
+                    </Button>
+                    {paymentSubmissionMessage && (
+                      <p className="text-xs text-secondary">{paymentSubmissionMessage}</p>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              <div>
+                <h3 className="text-sm font-semibold text-primary mb-3 uppercase tracking-wide">Submission Status</h3>
+                <div className="space-y-3">
+                  {paymentSubmissions.length === 0 && (
+                    <div className="text-secondary text-sm">No payment submissions yet.</div>
+                  )}
+                  {paymentSubmissions.map((submission) => (
+                    <div key={submission.id} className="border border-neutral-medium rounded-lg p-4 flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+                      <div>
+                        <div className="text-primary font-medium">{formatCurrency(Number(submission.amount || 0))}</div>
+                        <div className="text-xs text-secondary">
+                          {submission.payment_reference ? `Ref: ${submission.payment_reference} · ` : ''}
+                          Submitted {formatDate(submission.created_at)}
+                        </div>
+                        <div className="text-xs text-secondary">Paid on {formatDate(submission.payment_date)}</div>
+                        {submission.proof_signed_url && (
+                          <a
+                            href={submission.proof_signed_url}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="text-xs text-accent-amber hover:underline"
+                          >
+                            View Proof
+                          </a>
+                        )}
+                      </div>
+                      <div className="text-right">
+                        <span className={`inline-flex items-center px-2 py-1 rounded text-xs ${getStatusColor(
+                          submission.status === 'approved'
+                            ? 'Completed'
+                            : submission.status === 'rejected'
+                              ? 'Failed'
+                              : 'Pending'
+                        )}`}>
+                          {submission.status.charAt(0).toUpperCase() + submission.status.slice(1)}
+                        </span>
+                        {submission.review_notes && (
+                          <div className="text-xs text-secondary mt-1">{submission.review_notes}</div>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+
             <div className="bg-neutral-dark rounded-lg border border-neutral-medium p-6">
               <h2 className="text-xl font-semibold text-primary mb-2">Payout Preferences</h2>
               <p className="text-secondary text-sm mb-6">

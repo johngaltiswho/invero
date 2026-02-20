@@ -8,6 +8,19 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 );
 
+type InsertedReturnTransaction = {
+  amount: number | string;
+  reference_number?: string | null;
+  project_id?: string | null;
+  investor?: {
+    email?: string | null;
+    name?: string | null;
+  } | null;
+  project?: {
+    project_name?: string | null;
+  } | null;
+};
+
 export async function GET(request: NextRequest) {
   try {
     await requireAdmin();
@@ -98,6 +111,7 @@ export async function POST(request: NextRequest) {
     const { 
       investor_id, 
       transaction_type, 
+      transaction_date,
       amount, 
       project_id, 
       contractor_id,
@@ -155,6 +169,22 @@ export async function POST(request: NextRequest) {
     if (isNaN(numAmount) || numAmount <= 0) {
       return NextResponse.json(
         { error: 'Amount must be a positive number' },
+        { status: 400 }
+      );
+    }
+
+    const selectedDate = typeof transaction_date === 'string' ? transaction_date.trim() : '';
+    if (!selectedDate) {
+      return NextResponse.json(
+        { error: 'transaction_date is required' },
+        { status: 400 }
+      );
+    }
+
+    const transactionTimestamp = new Date(`${selectedDate}T00:00:00.000Z`);
+    if (Number.isNaN(transactionTimestamp.getTime())) {
+      return NextResponse.json(
+        { error: 'Invalid transaction_date format. Expected YYYY-MM-DD' },
         { status: 400 }
       );
     }
@@ -283,6 +313,8 @@ export async function POST(request: NextRequest) {
           description: description.trim(),
           admin_user_id: adminUser?.id || 'unknown',
           status: 'completed',
+          created_at: transactionTimestamp.toISOString(),
+          updated_at: transactionTimestamp.toISOString(),
           project_id: deployment.project_id,
           contractor_id: deployment.contractor_id,
           purchase_request_id: normalizedPurchaseRequestId,
@@ -313,7 +345,7 @@ export async function POST(request: NextRequest) {
 
       const { data: contractorTerms, error: contractorTermsError } = await supabase
         .from('contractors')
-        .select('platform_fee_rate, platform_fee_cap, participation_fee_rate_daily')
+        .select('participation_fee_rate_daily')
         .eq('id', purchaseRequest.contractor_id)
         .single();
 
@@ -321,8 +353,6 @@ export async function POST(request: NextRequest) {
         console.error('Failed to load contractor terms for return allocation:', contractorTermsError);
       }
 
-      const platformFeeRate = contractorTerms?.platform_fee_rate ?? 0.0025;
-      const platformFeeCap = contractorTerms?.platform_fee_cap ?? 25000;
       const lateFeeRate = contractorTerms?.participation_fee_rate_daily ?? 0.001;
 
       const firstDeploymentAt = deployments
@@ -334,9 +364,7 @@ export async function POST(request: NextRequest) {
         ? Math.max(0, Math.floor((Date.now() - firstDeploymentAt) / (1000 * 60 * 60 * 24)))
         : 0;
 
-      const platformFee = Math.min(totalDeployed * platformFeeRate, platformFeeCap);
       const lateFees = totalDeployed * lateFeeRate * daysOutstanding;
-      const totalDue = totalDeployed + platformFee + lateFees;
       const investorDue = totalDeployed + lateFees;
 
       const { data: existingReturns, error: existingReturnsError } = await supabase
@@ -381,7 +409,7 @@ export async function POST(request: NextRequest) {
       }
 
       await Promise.all(
-        (insertedReturns || []).map(async (returnTxn: any) => {
+        ((insertedReturns || []) as InsertedReturnTransaction[]).map(async (returnTxn) => {
           const investorEmail = returnTxn?.investor?.email;
           if (!investorEmail) return;
           const investorName = returnTxn?.investor?.name || 'Investor';
@@ -518,7 +546,9 @@ export async function POST(request: NextRequest) {
       amount: numAmount,
       description: description.trim(),
       admin_user_id: adminUser?.id || 'unknown',
-      status: 'completed'
+      status: 'completed',
+      created_at: transactionTimestamp.toISOString(),
+      updated_at: transactionTimestamp.toISOString()
     };
 
     if (project_id?.trim()) {
@@ -602,7 +632,7 @@ export async function POST(request: NextRequest) {
         investor_id,
         project_id: project_id.trim(),
         amount_deployed: numAmount,
-        deployment_date: new Date().toISOString().split('T')[0],
+        deployment_date: selectedDate,
         admin_deployed_by: adminUser?.id || 'unknown',
         notes: description,
         purchase_request_id: normalizedPurchaseRequestId || null

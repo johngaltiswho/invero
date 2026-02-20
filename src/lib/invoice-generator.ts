@@ -9,6 +9,7 @@ import { createClient } from '@supabase/supabase-js';
 
 export interface InvoiceLineItem {
   material_name: string;
+  item_description?: string | null;
   hsn_code?: string | null;
   unit: string;
   quantity: number;
@@ -201,7 +202,11 @@ export function generateInvoicePDF(params: InvoiceGenerationParams): Buffer {
     }
 
     const itemMaxWidth = cols.hsn - cols.item - 3;
-    const itemLines = doc.splitTextToSize(item.material_name || '-', itemMaxWidth) as string[];
+    const itemNameLines = doc.splitTextToSize(item.material_name || '-', itemMaxWidth) as string[];
+    const itemDescriptionLines = item.item_description
+      ? (doc.splitTextToSize(`Specs: ${item.item_description}`, itemMaxWidth) as string[])
+      : [];
+    const itemLines = [...itemNameLines, ...itemDescriptionLines];
     const rowHeight = Math.max(8, itemLines.length * 3.8 + 3);
     doc.rect(MARGIN, y, CONTENT_W, rowHeight);
     const rowTextY = y + 5;

@@ -82,6 +82,7 @@ interface PurchaseRequestItemUI {
   id: string;
   project_material_id: string;
   hsn_code?: string | null;
+  item_description?: string | null;
   requested_qty: number;
   approved_qty?: number;
   unit_rate?: number;
@@ -1894,7 +1895,12 @@ export default function AdminVerificationDashboard(): React.ReactElement {
                   <tbody>
                     {selectedPurchaseRequest.purchase_request_items.map((item) => (
                       <tr key={item.id} className="border-b border-neutral-medium">
-                        <td className="p-2 text-primary">{item.material_name}</td>
+                        <td className="p-2 text-primary">
+                          <div>{item.material_name}</div>
+                          {item.item_description && (
+                            <div className="text-[11px] text-secondary mt-0.5">{item.item_description}</div>
+                          )}
+                        </td>
                         <td className="p-2 text-center text-primary font-mono">{item.hsn_code || '-'}</td>
                         <td className="p-2 text-center text-primary">{item.requested_qty}</td>
                         <td className="p-2 text-center text-primary">{item.unit || 'units'}</td>

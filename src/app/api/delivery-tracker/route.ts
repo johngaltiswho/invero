@@ -56,6 +56,7 @@ export async function GET(request: NextRequest) {
         purchase_request_items (
           id,
           hsn_code,
+          item_description,
           requested_qty,
           unit_rate,
           tax_percent,

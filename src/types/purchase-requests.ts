@@ -21,6 +21,7 @@ export interface PurchaseRequestItem {
   purchase_request_id: string;
   project_material_id: string;
   hsn_code?: string | null;
+  item_description?: string | null;
   requested_qty: number;
   approved_qty?: number;
   unit_rate?: number;
@@ -61,6 +62,7 @@ export interface CreatePurchaseRequestPayload {
   items: Array<{
     project_material_id: string;
     hsn_code?: string;
+    item_description?: string;
     requested_qty: number;
     unit_rate?: number;
     tax_percent?: number;

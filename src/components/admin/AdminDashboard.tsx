@@ -28,6 +28,17 @@ interface DashboardStats {
   };
 }
 
+type InvestorRow = {
+  status?: string | null;
+};
+
+type CapitalTransactionRow = {
+  status?: string | null;
+  transaction_type?: string | null;
+  amount?: number | string | null;
+  created_at?: string | null;
+};
+
 const AdminDashboard: React.FC = () => {
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [loading, setLoading] = useState(true);
@@ -38,20 +49,33 @@ const AdminDashboard: React.FC = () => {
       setLoading(true);
       
       // Fetch data from multiple endpoints in parallel
-      const [investorsRes, accountsRes, transactionsRes] = await Promise.all([
+      const [investorsRes, transactionsRes] = await Promise.all([
         fetch('/api/admin/investors'),
-        fetch('/api/admin/capital/accounts'),
-        fetch('/api/admin/capital/transactions?limit=100')
+        fetch('/api/admin/capital/transactions?limit=5000')
       ]);
 
       const investorsData = investorsRes.ok ? await investorsRes.json() : { investors: [] };
-      const accountsData = accountsRes.ok ? await accountsRes.json() : { accounts: [] };
       const transactionsData = transactionsRes.ok ? await transactionsRes.json() : { transactions: [] };
 
       // Calculate stats
-      const investors = investorsData.investors || [];
-      const accounts = accountsData.accounts || [];
-      const transactions = transactionsData.transactions || [];
+      const investors: InvestorRow[] = investorsData.investors || [];
+      const transactions: CapitalTransactionRow[] = transactionsData.transactions || [];
+      const completedTransactions = transactions.filter((txn) => txn.status === 'completed');
+
+      const totalInflow = completedTransactions
+        .filter((txn) => txn.transaction_type === 'inflow')
+        .reduce((sum, txn) => sum + (Number(txn.amount) || 0), 0);
+      const totalDeployment = completedTransactions
+        .filter((txn) => txn.transaction_type === 'deployment')
+        .reduce((sum, txn) => sum + (Number(txn.amount) || 0), 0);
+      const totalReturn = completedTransactions
+        .filter((txn) => txn.transaction_type === 'return')
+        .reduce((sum, txn) => sum + (Number(txn.amount) || 0), 0);
+      const totalWithdrawal = completedTransactions
+        .filter((txn) => txn.transaction_type === 'withdrawal')
+        .reduce((sum, txn) => sum + (Number(txn.amount) || 0), 0);
+      const netDeployed = Math.max(totalDeployment - totalReturn, 0);
+      const availableBalanceFromLedger = totalInflow - totalDeployment + totalReturn - totalWithdrawal;
 
       const now = new Date();
       const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
@@ -61,14 +85,14 @@ const AdminDashboard: React.FC = () => {
       const dashboardStats: DashboardStats = {
         investors: {
           total: investors.length,
-          active: investors.filter((inv: any) => inv.status === 'active').length,
-          pending: investors.filter((inv: any) => inv.status === 'pending').length,
+          active: investors.filter((inv) => inv.status === 'active').length,
+          pending: investors.filter((inv) => inv.status === 'pending').length,
         },
         capital: {
-          totalCommitted: accounts.reduce((sum: number, acc: any) => sum + (acc.total_committed || 0), 0),
-          availableBalance: accounts.reduce((sum: number, acc: any) => sum + (acc.available_balance || 0), 0),
-          deployedCapital: accounts.reduce((sum: number, acc: any) => sum + (acc.deployed_capital || 0), 0),
-          returnsPaid: accounts.reduce((sum: number, acc: any) => sum + (acc.returned_capital || 0), 0),
+          totalCommitted: totalInflow,
+          availableBalance: availableBalanceFromLedger,
+          deployedCapital: netDeployed,
+          returnsPaid: totalReturn,
         },
         contractors: {
           total: 0, // TODO: Fetch from contractors API
@@ -76,9 +100,9 @@ const AdminDashboard: React.FC = () => {
           pending: 0,
         },
         transactions: {
-          today: transactions.filter((txn: any) => new Date(txn.created_at) >= today).length,
-          thisWeek: transactions.filter((txn: any) => new Date(txn.created_at) >= weekAgo).length,
-          thisMonth: transactions.filter((txn: any) => new Date(txn.created_at) >= monthAgo).length,
+          today: transactions.filter((txn) => txn.created_at && new Date(txn.created_at) >= today).length,
+          thisWeek: transactions.filter((txn) => txn.created_at && new Date(txn.created_at) >= weekAgo).length,
+          thisMonth: transactions.filter((txn) => txn.created_at && new Date(txn.created_at) >= monthAgo).length,
         }
       };
 

@@ -18,6 +18,7 @@ type PurchaseRequestItemRow = {
   purchase_request_id: string;
   project_material_id: string;
   hsn_code?: string | null;
+  item_description?: string | null;
   requested_qty: number;
   approved_qty?: number | null;
   unit_rate?: number | null;
@@ -156,6 +157,7 @@ async function fetchPurchaseRequests(options: FetchOptions = {}) {
           purchase_request_id,
           project_material_id,
           hsn_code,
+          item_description,
           requested_qty,
           approved_qty,
           unit_rate,
@@ -227,6 +229,7 @@ async function fetchPurchaseRequests(options: FetchOptions = {}) {
       id: item.id,
       project_material_id: item.project_material_id,
       hsn_code: item.hsn_code || item.project_materials?.materials?.hsn_code || null,
+      item_description: item.item_description || null,
       requested_qty: item.requested_qty,
       approved_qty: item.approved_qty,
       unit_rate: item.unit_rate,

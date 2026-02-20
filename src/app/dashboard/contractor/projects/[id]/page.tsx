@@ -1480,6 +1480,11 @@ function IndividualProjectContent(): React.ReactElement {
                                                 {item.approved_qty ? ` • Approved: ${item.approved_qty}` : ''}
                                                 {item.hsn_code ? ` • HSN: ${item.hsn_code}` : ''}
                                               </div>
+                                              {item.item_description && (
+                                                <div className="text-secondary mt-1">
+                                                  Specs: {item.item_description}
+                                                </div>
+                                              )}
                                               <div className="text-secondary mt-1">
                                                 Raised: {formatDate(item.created_at)}{' '}
                                                 {item.purchase_request?.status ? `• PR Status: ${item.purchase_request.status}` : ''}
@@ -2084,6 +2089,7 @@ function IndividualProjectContent(): React.ReactElement {
                         items: Array.from(selectedMaterials).map(materialId => ({
                           project_material_id: materialId,
                           hsn_code: purchaseHsn[materialId]?.trim() || undefined,
+                          item_description: purchaseRemarks[materialId]?.trim() || undefined,
                           requested_qty: parseFloat(purchaseQuantities[materialId] || '0'),
                           unit_rate: purchaseRates[materialId] || 0,
                           tax_percent: purchaseTax[materialId] || 0

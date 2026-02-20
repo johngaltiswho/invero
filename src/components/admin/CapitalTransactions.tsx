@@ -41,6 +41,7 @@ interface CapitalTransaction {
 interface TransactionFormData {
   investor_id: string;
   transaction_type: 'inflow' | 'deployment' | 'return' | 'withdrawal';
+  transaction_date: string;
   amount: string;
   contractor_id: string;
   contractor_name: string;
@@ -81,11 +82,30 @@ interface FundingPurchaseRequest {
   } | null;
 }
 
+interface InvestorPaymentSubmission {
+  id: string;
+  investor_id: string;
+  amount: number;
+  payment_date: string;
+  payment_method: string;
+  payment_reference?: string | null;
+  notes?: string | null;
+  status: 'pending' | 'approved' | 'rejected';
+  review_notes?: string | null;
+  created_at: string;
+  investor?: Investor;
+  proof_signed_url?: string | null;
+}
+
 const CapitalTransactions: React.FC = () => {
   const [transactions, setTransactions] = useState<CapitalTransaction[]>([]);
   const [investors, setInvestors] = useState<Investor[]>([]);
   const [accounts, setAccounts] = useState<InvestorAccount[]>([]);
   const [accountsLoading, setAccountsLoading] = useState(false);
+  const [paymentSubmissions, setPaymentSubmissions] = useState<InvestorPaymentSubmission[]>([]);
+  const [paymentSubmissionsLoading, setPaymentSubmissionsLoading] = useState(false);
+  const [reviewingSubmissionId, setReviewingSubmissionId] = useState<string | null>(null);
+  const [submissionReviewNotes, setSubmissionReviewNotes] = useState<Record<string, string>>({});
   const [purchaseRequests, setPurchaseRequests] = useState<FundingPurchaseRequest[]>([]);
   const [purchaseRequestsLoading, setPurchaseRequestsLoading] = useState(false);
   const [selectedInvestor, setSelectedInvestor] = useState<string>('');
@@ -100,6 +120,7 @@ const CapitalTransactions: React.FC = () => {
   const [formData, setFormData] = useState<TransactionFormData>({
     investor_id: '',
     transaction_type: 'inflow',
+    transaction_date: new Date().toISOString().split('T')[0] || '',
     amount: '',
     contractor_id: '',
     contractor_name: '',
@@ -169,6 +190,23 @@ const CapitalTransactions: React.FC = () => {
     }
   };
 
+  const fetchPaymentSubmissions = useCallback(async () => {
+    try {
+      setPaymentSubmissionsLoading(true);
+      const response = await fetch('/api/admin/capital/payment-submissions?status=pending');
+      const data = await response.json();
+      if (response.ok && data.success) {
+        setPaymentSubmissions(data.submissions || []);
+      } else {
+        console.error('Failed to fetch payment submissions:', data.error || data);
+      }
+    } catch (err) {
+      console.error('Failed to fetch payment submissions:', err);
+    } finally {
+      setPaymentSubmissionsLoading(false);
+    }
+  }, []);
+
   const getRemainingAmount = useCallback((request?: FundingPurchaseRequest | null) => {
     if (!request) return null;
     if (typeof request.remaining_amount === 'number') {
@@ -194,7 +232,6 @@ const CapitalTransactions: React.FC = () => {
     if (!fundedAmount) {
       return null;
     }
-    const platformFee = Number(request.platform_fee ?? 0);
     const participationFee = Number(request.participation_fee ?? 0);
     const totalDue = fundedAmount + participationFee;
     const returned = Number(request.returned_amount ?? 0);
@@ -302,6 +339,7 @@ const CapitalTransactions: React.FC = () => {
 
       const payload: Record<string, unknown> = {
         transaction_type: formData.transaction_type,
+        transaction_date: formData.transaction_date,
         amount: amountValue,
         description: formData.description.trim(),
       };
@@ -335,18 +373,19 @@ const CapitalTransactions: React.FC = () => {
       }
 
       // Reset form and refresh data
-    setFormData({
-      investor_id: '',
-      transaction_type: 'inflow',
-      amount: '',
-      project_id: '',
-      project_name: '',
-      contractor_id: '',
-      contractor_name: '',
-      purchase_request_id: '',
-      description: '',
-      reference_number: ''
-    });
+      setFormData({
+        investor_id: '',
+        transaction_type: 'inflow',
+        transaction_date: new Date().toISOString().split('T')[0] || '',
+        amount: '',
+        project_id: '',
+        project_name: '',
+        contractor_id: '',
+        contractor_name: '',
+        purchase_request_id: '',
+        description: '',
+        reference_number: ''
+      });
       setShowAddForm(false);
       fetchTransactions(currentPage);
       fetchAccounts(); // Refresh account balances
@@ -363,6 +402,7 @@ const CapitalTransactions: React.FC = () => {
     setFormData({
       investor_id: '',
       transaction_type: 'inflow',
+      transaction_date: new Date().toISOString().split('T')[0] || '',
       amount: '',
       contractor_id: '',
       contractor_name: '',
@@ -383,6 +423,10 @@ const CapitalTransactions: React.FC = () => {
     fetchInvestors();
     fetchAccounts();
   }, []);
+
+  useEffect(() => {
+    fetchPaymentSubmissions();
+  }, [fetchPaymentSubmissions]);
 
   useEffect(() => {
     fetchPurchaseRequests();
@@ -440,9 +484,42 @@ const CapitalTransactions: React.FC = () => {
     return new Intl.NumberFormat('en-IN', {
       style: 'currency',
       currency: 'INR',
-      minimumFractionDigits: 0,
-      maximumFractionDigits: 0,
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
     }).format(amount);
+  };
+
+  const handleReviewSubmission = async (submissionId: string, action: 'approve' | 'reject') => {
+    setReviewingSubmissionId(submissionId);
+    setError(null);
+
+    try {
+      const response = await fetch('/api/admin/capital/payment-submissions', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: submissionId,
+          action,
+          review_notes: submissionReviewNotes[submissionId] || '',
+        }),
+      });
+
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to review payment submission');
+      }
+
+      setSubmissionReviewNotes((prev) => ({ ...prev, [submissionId]: '' }));
+      await Promise.all([
+        fetchPaymentSubmissions(),
+        fetchTransactions(currentPage),
+        fetchAccounts(),
+      ]);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to review payment submission');
+    } finally {
+      setReviewingSubmissionId(null);
+    }
   };
 
   const getInvestorAccount = (investorId: string) => {
@@ -578,6 +655,72 @@ const CapitalTransactions: React.FC = () => {
                   Clear Filters
                 </Button>
               </div>
+            </div>
+
+            <div className="bg-neutral-dark rounded-lg border border-neutral-medium p-4">
+              <h3 className="text-lg font-semibold text-primary mb-4">Payment Confirmations</h3>
+              <p className="text-xs text-secondary mb-3">
+                Investor-submitted inflow confirmations awaiting approval.
+              </p>
+              {paymentSubmissionsLoading ? (
+                <div className="text-sm text-secondary">Loading pending submissions...</div>
+              ) : paymentSubmissions.length === 0 ? (
+                <div className="text-sm text-secondary">No pending confirmations.</div>
+              ) : (
+                <div className="space-y-3">
+                  {paymentSubmissions.map((submission) => (
+                    <div key={submission.id} className="border border-neutral-medium rounded-md p-3 bg-neutral-darker/40">
+                      <div className="text-sm font-medium text-primary">{submission.investor?.name || 'Investor'}</div>
+                      <div className="text-xs text-secondary">{submission.investor?.email || '—'}</div>
+                      <div className="text-sm text-success mt-1">{formatCurrency(Number(submission.amount || 0))}</div>
+                      <div className="text-xs text-secondary mt-1">
+                        Paid on {new Date(submission.payment_date).toLocaleDateString('en-IN')}
+                      </div>
+                      {submission.payment_reference && (
+                        <div className="text-xs text-secondary mt-1">Ref: {submission.payment_reference}</div>
+                      )}
+                      {submission.proof_signed_url && (
+                        <a
+                          href={submission.proof_signed_url}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="text-xs text-accent-blue hover:underline mt-1 inline-block"
+                        >
+                          View proof
+                        </a>
+                      )}
+                      <textarea
+                        value={submissionReviewNotes[submission.id] || ''}
+                        onChange={(e) =>
+                          setSubmissionReviewNotes((prev) => ({ ...prev, [submission.id]: e.target.value }))
+                        }
+                        className="mt-2 w-full px-2 py-2 border border-neutral-medium rounded-md bg-neutral-darker text-primary placeholder-secondary text-xs focus:outline-none focus:ring-1 focus:ring-accent-orange"
+                        rows={2}
+                        placeholder="Review notes (optional)"
+                      />
+                      <div className="mt-2 flex gap-2">
+                        <Button
+                          size="sm"
+                          className="flex-1"
+                          disabled={reviewingSubmissionId === submission.id}
+                          onClick={() => handleReviewSubmission(submission.id, 'approve')}
+                        >
+                          {reviewingSubmissionId === submission.id ? 'Processing...' : 'Approve'}
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="flex-1"
+                          disabled={reviewingSubmissionId === submission.id}
+                          onClick={() => handleReviewSubmission(submission.id, 'reject')}
+                        >
+                          Reject
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -786,6 +929,19 @@ const CapitalTransactions: React.FC = () => {
                   <option value="return">Return Payment</option>
                   <option value="withdrawal">Withdrawal</option>
                 </select>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-primary mb-1">
+                  Transaction Date *
+                </label>
+                <input
+                  type="date"
+                  required
+                  value={formData.transaction_date}
+                  onChange={(e) => setFormData({ ...formData, transaction_date: e.target.value })}
+                  className="w-full px-3 py-2 border border-neutral-medium rounded-md bg-neutral-darker text-primary focus:outline-none focus:ring-2 focus:ring-accent-orange"
+                />
               </div>
 
               {formData.transaction_type !== 'deployment' && (

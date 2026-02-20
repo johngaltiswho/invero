@@ -40,6 +40,25 @@ type PurchaseRequestRow = {
   days_outstanding: number;
 };
 
+type EditablePurchaseRequestItem = {
+  id: string;
+  item_description: string | null;
+  requested_qty: number;
+  unit_rate: number | null;
+  tax_percent: number | null;
+  hsn_code: string | null;
+  material_name: string;
+  unit: string;
+};
+
+type EditablePurchaseRequest = {
+  id: string;
+  status: string;
+  remarks: string | null;
+  editable: boolean;
+  items: EditablePurchaseRequestItem[];
+};
+
 type ContractorTerms = {
   platform_fee_rate: number;
   platform_fee_cap: number;
@@ -76,29 +95,116 @@ export default function ContractorFinancePage(): React.ReactElement {
   const [terms, setTerms] = useState<ContractorTerms | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [editingRequest, setEditingRequest] = useState<EditablePurchaseRequest | null>(null);
+  const [editLoading, setEditLoading] = useState(false);
+  const [savingEdit, setSavingEdit] = useState(false);
+
+  const canEditRequest = (status: string) => {
+    const normalized = status.toLowerCase();
+    return normalized === 'draft' || normalized === 'submitted' || normalized === 'rejected';
+  };
+
+  const fetchOverview = async () => {
+    try {
+      setLoading(true);
+      const response = await fetch('/api/contractor/finance/overview');
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to load finance overview');
+      }
+      setSummary(data.summary);
+      setProjects(data.projects || []);
+      setRequests(data.requests || []);
+      setTerms(data.terms || null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to load finance overview');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
-    const fetchOverview = async () => {
-      try {
-        setLoading(true);
-        const response = await fetch('/api/contractor/finance/overview');
-        const data = await response.json();
-        if (!response.ok) {
-          throw new Error(data.error || 'Failed to load finance overview');
-        }
-        setSummary(data.summary);
-        setProjects(data.projects || []);
-        setRequests(data.requests || []);
-        setTerms(data.terms || null);
-      } catch (err) {
-        setError(err instanceof Error ? err.message : 'Failed to load finance overview');
-      } finally {
-        setLoading(false);
-      }
-    };
-
     fetchOverview();
   }, []);
+
+  const openEditRequestModal = async (requestId: string) => {
+    try {
+      setEditLoading(true);
+      const response = await fetch(`/api/purchase-requests/${requestId}`);
+      const result = await response.json();
+      if (!response.ok || !result.success) {
+        throw new Error(result.error || 'Failed to load purchase request');
+      }
+      setEditingRequest(result.data);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to load purchase request');
+    } finally {
+      setEditLoading(false);
+    }
+  };
+
+  const updateEditItem = (itemId: string, field: keyof EditablePurchaseRequestItem, value: string) => {
+    if (!editingRequest) return;
+    const nextItems = editingRequest.items.map((item) => {
+      if (item.id !== itemId) return item;
+      if (field === 'hsn_code') {
+        return { ...item, hsn_code: value.toUpperCase().slice(0, 16) || null };
+      }
+      if (field === 'item_description') {
+        return { ...item, item_description: value || null };
+      }
+      if (field === 'requested_qty' || field === 'unit_rate' || field === 'tax_percent') {
+        const parsed = value === '' ? null : Number(value);
+        if (field === 'requested_qty') {
+          return { ...item, requested_qty: Number.isFinite(parsed as number) ? (parsed as number) : 0 };
+        }
+        return { ...item, [field]: Number.isFinite(parsed as number) ? (parsed as number) : null };
+      }
+      return item;
+    });
+    setEditingRequest({ ...editingRequest, items: nextItems });
+  };
+
+  const saveEditedRequest = async () => {
+    if (!editingRequest) return;
+
+    const invalidItem = editingRequest.items.find((item) => !Number.isFinite(item.requested_qty) || item.requested_qty <= 0);
+    if (invalidItem) {
+      setError('Requested quantity must be greater than zero for all items');
+      return;
+    }
+
+    try {
+      setSavingEdit(true);
+      const response = await fetch(`/api/purchase-requests/${editingRequest.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          remarks: editingRequest.remarks || null,
+          items: editingRequest.items.map((item) => ({
+            id: item.id,
+            item_description: item.item_description,
+            requested_qty: item.requested_qty,
+            unit_rate: item.unit_rate,
+            tax_percent: item.tax_percent,
+            hsn_code: item.hsn_code
+          }))
+        })
+      });
+
+      const result = await response.json();
+      if (!response.ok || !result.success) {
+        throw new Error(result.error || 'Failed to update purchase request');
+      }
+
+      setEditingRequest(null);
+      await fetchOverview();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to update purchase request');
+    } finally {
+      setSavingEdit(false);
+    }
+  };
 
   return (
     <ContractorDashboardLayout activeTab="finance">
@@ -202,6 +308,7 @@ export default function ContractorFinancePage(): React.ReactElement {
                       <th className="px-6 py-4">Platform Fee</th>
                       <th className="px-6 py-4">Project Participation Fee</th>
                       <th className="px-6 py-4">Total Due</th>
+                      <th className="px-6 py-4">Action</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-neutral-medium">
@@ -293,11 +400,24 @@ export default function ContractorFinancePage(): React.ReactElement {
                         <td className="px-6 py-4 text-primary font-medium">
                           {formatCurrency(request.total_due)}
                         </td>
+                        <td className="px-6 py-4">
+                          {canEditRequest(request.status) ? (
+                            <button
+                              type="button"
+                              onClick={() => openEditRequestModal(request.id)}
+                              className="px-3 py-1.5 text-xs font-medium rounded border border-accent-amber/40 text-accent-amber hover:bg-accent-amber/10 transition-colors"
+                            >
+                              Edit
+                            </button>
+                          ) : (
+                            <span className="text-xs text-secondary">Locked</span>
+                          )}
+                        </td>
                       </tr>
                     ))}
                     {requests.length === 0 && (
                       <tr>
-                        <td className="px-6 py-6 text-center text-secondary" colSpan={8}>
+                        <td className="px-6 py-6 text-center text-secondary" colSpan={9}>
                           No purchase requests available yet.
                         </td>
                       </tr>
@@ -309,6 +429,146 @@ export default function ContractorFinancePage(): React.ReactElement {
           </>
         )}
       </div>
+
+      {(editingRequest || editLoading) && (
+        <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4">
+          <div className="w-full max-w-5xl max-h-[90vh] overflow-y-auto bg-neutral-dark border border-neutral-medium rounded-lg">
+            <div className="p-6 border-b border-neutral-medium flex items-center justify-between">
+              <div>
+                <h2 className="text-xl font-semibold text-primary">Edit Purchase Request</h2>
+                {editingRequest && (
+                  <p className="text-xs text-secondary mt-1">
+                    Request ID: {editingRequest.id.slice(0, 8)}… · Status: {editingRequest.status}
+                  </p>
+                )}
+              </div>
+              <button
+                type="button"
+                onClick={() => setEditingRequest(null)}
+                className="text-secondary hover:text-primary text-xl"
+              >
+                ×
+              </button>
+            </div>
+
+            {editLoading ? (
+              <div className="p-8 text-center text-secondary">Loading purchase request...</div>
+            ) : editingRequest ? (
+              <div className="p-6 space-y-5">
+                {!editingRequest.editable && (
+                  <div className="bg-yellow-900/20 border border-yellow-700/40 text-yellow-300 px-4 py-3 rounded-lg text-sm">
+                    This request is no longer editable because it has already moved to approval/funding workflow.
+                  </div>
+                )}
+
+                <div>
+                  <label className="block text-sm font-medium text-primary mb-2">Remarks</label>
+                  <textarea
+                    value={editingRequest.remarks || ''}
+                    onChange={(e) => setEditingRequest({ ...editingRequest, remarks: e.target.value })}
+                    rows={2}
+                    disabled={!editingRequest.editable}
+                    className="w-full px-3 py-2 rounded-md bg-neutral-darker border border-neutral-medium text-primary focus:outline-none focus:border-accent-amber disabled:opacity-60"
+                  />
+                </div>
+
+                <div className="overflow-x-auto border border-neutral-medium rounded-lg">
+                  <table className="min-w-full text-sm">
+                    <thead className="bg-neutral-darker text-secondary">
+                      <tr>
+                        <th className="px-4 py-3 text-left">Item</th>
+                        <th className="px-4 py-3 text-left">Requested Qty</th>
+                        <th className="px-4 py-3 text-left">Unit</th>
+                        <th className="px-4 py-3 text-left">Rate</th>
+                        <th className="px-4 py-3 text-left">Tax %</th>
+                        <th className="px-4 py-3 text-left">HSN</th>
+                        <th className="px-4 py-3 text-left">Description / Specs</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-neutral-medium">
+                      {editingRequest.items.map((item) => (
+                        <tr key={item.id}>
+                          <td className="px-4 py-3 text-primary">{item.material_name}</td>
+                          <td className="px-4 py-3">
+                            <input
+                              type="number"
+                              min="0.001"
+                              step="0.001"
+                              value={item.requested_qty}
+                              disabled={!editingRequest.editable}
+                              onChange={(e) => updateEditItem(item.id, 'requested_qty', e.target.value)}
+                              className="w-28 px-2 py-1 rounded bg-neutral-darker border border-neutral-medium text-primary focus:outline-none focus:border-accent-amber disabled:opacity-60"
+                            />
+                          </td>
+                          <td className="px-4 py-3 text-secondary">{item.unit}</td>
+                          <td className="px-4 py-3">
+                            <input
+                              type="number"
+                              min="0"
+                              step="0.01"
+                              value={item.unit_rate ?? ''}
+                              disabled={!editingRequest.editable}
+                              onChange={(e) => updateEditItem(item.id, 'unit_rate', e.target.value)}
+                              className="w-28 px-2 py-1 rounded bg-neutral-darker border border-neutral-medium text-primary focus:outline-none focus:border-accent-amber disabled:opacity-60"
+                            />
+                          </td>
+                          <td className="px-4 py-3">
+                            <input
+                              type="number"
+                              min="0"
+                              step="0.01"
+                              value={item.tax_percent ?? 0}
+                              disabled={!editingRequest.editable}
+                              onChange={(e) => updateEditItem(item.id, 'tax_percent', e.target.value)}
+                              className="w-20 px-2 py-1 rounded bg-neutral-darker border border-neutral-medium text-primary focus:outline-none focus:border-accent-amber disabled:opacity-60"
+                            />
+                          </td>
+                          <td className="px-4 py-3">
+                            <input
+                              type="text"
+                              value={item.hsn_code ?? ''}
+                              disabled={!editingRequest.editable}
+                              onChange={(e) => updateEditItem(item.id, 'hsn_code', e.target.value)}
+                              className="w-32 px-2 py-1 rounded bg-neutral-darker border border-neutral-medium text-primary focus:outline-none focus:border-accent-amber disabled:opacity-60"
+                            />
+                          </td>
+                          <td className="px-4 py-3">
+                            <textarea
+                              value={item.item_description ?? ''}
+                              disabled={!editingRequest.editable}
+                              onChange={(e) => updateEditItem(item.id, 'item_description', e.target.value)}
+                              rows={2}
+                              className="w-64 px-2 py-1 rounded bg-neutral-darker border border-neutral-medium text-primary focus:outline-none focus:border-accent-amber disabled:opacity-60"
+                            />
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+
+                <div className="flex justify-end gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setEditingRequest(null)}
+                    className="px-4 py-2 text-sm text-secondary hover:text-primary"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={saveEditedRequest}
+                    disabled={!editingRequest.editable || savingEdit}
+                    className="px-4 py-2 text-sm rounded bg-accent-amber text-neutral-darker hover:bg-accent-amber/90 disabled:opacity-50"
+                  >
+                    {savingEdit ? 'Saving...' : 'Save Changes'}
+                  </button>
+                </div>
+              </div>
+            ) : null}
+          </div>
+        </div>
+      )}
     </ContractorDashboardLayout>
   );
 }

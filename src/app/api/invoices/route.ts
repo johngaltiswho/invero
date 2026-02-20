@@ -22,6 +22,7 @@ type PurchaseRequestMaterial = {
 
 type PurchaseRequestItem = {
   hsn_code?: string | null;
+  item_description?: string | null;
   requested_qty?: number | string | null;
   unit_rate?: number | string | null;
   tax_percent?: number | string | null;
@@ -161,6 +162,7 @@ export async function POST(request: NextRequest) {
         purchase_request_items (
           id,
           hsn_code,
+          item_description,
           requested_qty,
           unit_rate,
           tax_percent,
@@ -176,8 +178,14 @@ export async function POST(request: NextRequest) {
     pr = withHsnQuery.data as PurchaseRequestRow | null;
     prError = withHsnQuery.error;
 
-    // Backward compatibility if hsn_code migration is not yet applied.
-    if (prError && String(prError.message || '').includes('hsn_code')) {
+    // Backward compatibility if newer columns are not yet applied.
+    if (
+      prError &&
+      (
+        String(prError.message || '').includes('hsn_code') ||
+        String(prError.message || '').includes('item_description')
+      )
+    ) {
       const fallbackQuery = await supabase
         .from('purchase_requests')
         .select(`
@@ -210,7 +218,7 @@ export async function POST(request: NextRequest) {
     // Fetch contractor details
     const { data: contractor } = await supabase
       .from('contractors')
-      .select('id, company_name, gstin, email')
+      .select('id, company_name, gstin, email, platform_fee_rate, platform_fee_cap')
       .eq('id', pr.contractor_id)
       .single();
 
@@ -236,6 +244,7 @@ export async function POST(request: NextRequest) {
       return {
         material_name: material?.name || 'Unknown Material',
         hsn_code: item.hsn_code || material?.hsn_code || null,
+        item_description: item.item_description || null,
         unit: material?.unit || 'nos',
         quantity: qty,
         unit_rate: rate,
@@ -245,6 +254,26 @@ export async function POST(request: NextRequest) {
         total: amount + taxAmount,
       };
     });
+
+    const platformFeeRate = Number(contractor.platform_fee_rate ?? 0.0025);
+    const platformFeeCap = Number(contractor.platform_fee_cap ?? 25000);
+    const materialSubtotal = lineItems.reduce((s, i) => s + i.amount, 0);
+    const platformFeeAmount = Math.min(materialSubtotal * platformFeeRate, platformFeeCap);
+
+    if (platformFeeAmount > 0) {
+      lineItems.push({
+        material_name: 'Platform Fee',
+        hsn_code: '996111',
+        item_description: `As per contractor terms (${(platformFeeRate * 100).toFixed(2)}%, cap Rs ${platformFeeCap.toFixed(2)})`,
+        unit: 'service',
+        quantity: 1,
+        unit_rate: platformFeeAmount,
+        tax_percent: 0,
+        amount: platformFeeAmount,
+        tax_amount: 0,
+        total: platformFeeAmount,
+      });
+    }
 
     const subtotal = lineItems.reduce((s, i) => s + i.amount, 0);
     const totalTax = lineItems.reduce((s, i) => s + i.tax_amount, 0);
