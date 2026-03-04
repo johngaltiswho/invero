@@ -14,7 +14,6 @@ import type {
 
 // Contractor CRUD operations
 export class ContractorService {
-  
   // Get contractor by email (for login)
   static async getContractorByEmail(email: string): Promise<Contractor | null> {
     const { data, error } = await supabaseAdmin

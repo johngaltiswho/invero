@@ -22,6 +22,11 @@ export interface PurchaseRequestItem {
   project_material_id: string;
   hsn_code?: string | null;
   item_description?: string | null;
+  site_unit?: string | null;
+  purchase_unit?: string | null;
+  conversion_factor?: number | null;
+  purchase_qty?: number | null;
+  normalized_qty?: number | null;
   requested_qty: number;
   approved_qty?: number;
   unit_rate?: number;
@@ -35,6 +40,7 @@ export interface ProjectMaterialForUI {
   id: string;                   // project_materials.id
   project_id: string;
   material_id?: string;
+  hsn_code?: string | null;
   contractor_id: string;
   name: string;                 // from materials table or fallback
   description?: string;
@@ -63,6 +69,11 @@ export interface CreatePurchaseRequestPayload {
     project_material_id: string;
     hsn_code?: string;
     item_description?: string;
+    site_unit?: string;
+    purchase_unit?: string;
+    conversion_factor?: number;
+    purchase_qty?: number;
+    normalized_qty?: number;
     requested_qty: number;
     unit_rate?: number;
     tax_percent?: number;

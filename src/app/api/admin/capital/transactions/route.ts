@@ -451,7 +451,10 @@ export async function POST(request: NextRequest) {
     let purchaseRequestApprovedAt: string | null = null;
 
     if (transaction_type === 'deployment' && normalizedPurchaseRequestId) {
-      const { data: purchaseRequest, error: purchaseRequestError } = await supabase
+      let purchaseRequest: any = null;
+      let purchaseRequestError: { message?: string } | null = null;
+
+      const purchaseRequestWithPurchaseQty = await supabase
         .from('purchase_requests')
         .select(`
           id,
@@ -459,12 +462,34 @@ export async function POST(request: NextRequest) {
           approved_at,
           purchase_request_items (
             requested_qty,
+            purchase_qty,
             unit_rate,
             tax_percent
           )
         `)
         .eq('id', normalizedPurchaseRequestId)
         .single();
+      purchaseRequest = purchaseRequestWithPurchaseQty.data;
+      purchaseRequestError = purchaseRequestWithPurchaseQty.error;
+
+      if (purchaseRequestError && String(purchaseRequestError.message || '').includes('purchase_qty')) {
+        const fallbackPurchaseRequest = await supabase
+          .from('purchase_requests')
+          .select(`
+            id,
+            status,
+            approved_at,
+            purchase_request_items (
+              requested_qty,
+              unit_rate,
+              tax_percent
+            )
+          `)
+          .eq('id', normalizedPurchaseRequestId)
+          .single();
+        purchaseRequest = fallbackPurchaseRequest.data;
+        purchaseRequestError = fallbackPurchaseRequest.error;
+      }
 
       if (purchaseRequestError || !purchaseRequest) {
         console.error('Failed to load purchase request for deployment:', purchaseRequestError);
@@ -485,7 +510,7 @@ export async function POST(request: NextRequest) {
       }
 
       purchaseRequestTotal = (purchaseRequest.purchase_request_items || []).reduce((sum, item) => {
-        const qty = Number(item.requested_qty) || 0;
+        const qty = Number((item as any).purchase_qty ?? item.requested_qty) || 0;
         const rate = Number(item.unit_rate) || 0;
         const taxPercent = Number(item.tax_percent) || 0;
         const base = qty * rate;

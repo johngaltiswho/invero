@@ -23,22 +23,41 @@ export async function GET(request: NextRequest) {
     // Pending materials are visible only via /api/material-requests for the requesting contractor.
     const includePending = searchParams.get('include_pending') === 'true';
 
+    // Primary query with newest schema fields
     let materialsQuery = supabase
       .from('materials')
-      .select('id, name, category, unit, description, approval_status')
+      .select('id, name, category, unit, description, approval_status, hsn_code')
       .order('name', { ascending: true })
       .limit(limit);
 
     if (!includePending) {
-      // Only show approved/null approval_status items in the catalog
       materialsQuery = materialsQuery.or('approval_status.is.null,approval_status.eq.approved');
     }
 
     if (query) {
-      materialsQuery = materialsQuery.ilike('name', `%${query}%`);
+      materialsQuery = materialsQuery.or(`name.ilike.%${query}%,hsn_code.ilike.%${query}%`);
     }
 
-    const { data, error } = await materialsQuery;
+    const primaryResult = await materialsQuery;
+    let data: Array<Record<string, unknown>> | null = (primaryResult.data as Array<Record<string, unknown>> | null) ?? null;
+    let error = primaryResult.error;
+
+    // Fallback for environments where new columns are not migrated yet.
+    if (error && String(error.message || '').toLowerCase().includes('column')) {
+      let fallbackQuery = supabase
+        .from('materials')
+        .select('id, name, category, unit, description')
+        .order('name', { ascending: true })
+        .limit(limit);
+
+      if (query) {
+        fallbackQuery = fallbackQuery.ilike('name', `%${query}%`);
+      }
+
+      const fallback = await fallbackQuery;
+      data = (fallback.data as Array<Record<string, unknown>> | null) ?? null;
+      error = fallback.error;
+    }
 
     if (error) {
       console.error('Failed to fetch materials:', error);
@@ -75,6 +94,7 @@ export async function POST(request: NextRequest) {
       description,
       category,
       unit,
+      hsn_code,
       project_context,
       urgency,
       justification
@@ -109,6 +129,7 @@ export async function POST(request: NextRequest) {
         description: description ? String(description).trim() : null,
         category: String(category).trim(),
         unit: String(unit).trim(),
+        hsn_code: hsn_code ? String(hsn_code).trim() : null,
         project_context: project_context ? String(project_context).trim() : null,
         urgency: urgency ? String(urgency).trim() : 'normal',
         justification: justification ? String(justification).trim() : null,

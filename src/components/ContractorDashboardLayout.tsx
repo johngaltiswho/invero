@@ -24,42 +24,42 @@ export function ContractorDashboardLayout({ children, activeTab }: ContractorDas
       id: 'overview',
       name: 'Dashboard',
       href: '/dashboard/contractor',
-      icon: '📊',
       description: 'Overview & metrics'
     },
     {
       id: 'projects',
       name: 'My Projects',
       href: '/dashboard/contractor/projects',
-      icon: '📋',
       description: 'Project management'
     },
     {
       id: 'materials',
       name: 'Material Master',
       href: '/dashboard/contractor/materials',
-      icon: '🏗️',
       description: 'Materials & requests'
+    },
+    {
+      id: 'bulk-orders',
+      name: 'Bulk Orders',
+      href: '/dashboard/contractor/bulk-orders',
+      description: 'MOQ procurement'
     },
     {
       id: 'finance',
       name: 'Finance',
       href: '/dashboard/contractor/finance',
-      icon: '💳',
       description: 'Funding & repayments'
     },
     {
       id: 'network',
       name: 'Network',
       href: '/dashboard/contractor/network',
-      icon: '🌐',
       description: 'Vendors & suppliers'
     },
     {
       id: 'documents',
       name: 'Documents',
       href: '/dashboard/contractor/documents',
-      icon: '📄',
       description: 'BOQs, POs, Invoices & Forms'
     }
   ];
@@ -122,6 +122,12 @@ export function ContractorDashboardLayout({ children, activeTab }: ContractorDas
                   <div className="text-xs text-secondary">
                     {contractor?.company_name}
                   </div>
+                  <Link
+                    href="/dashboard/contractor/profile"
+                    className="text-xs text-accent-blue hover:text-accent-amber transition-colors"
+                  >
+                    Edit profile
+                  </Link>
                 </div>
                 <UserButton 
                   appearance={{
@@ -162,7 +168,6 @@ export function ContractorDashboardLayout({ children, activeTab }: ContractorDas
                   }`}
                   title={isSidebarCollapsed ? item.name : undefined}
                 >
-                  <span className="text-lg">{item.icon}</span>
                   {!isSidebarCollapsed && (
                     <div>
                       <div className="font-medium">{item.name}</div>

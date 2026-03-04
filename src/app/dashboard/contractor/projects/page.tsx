@@ -25,7 +25,8 @@ function ContractorProjectsContent(): React.ReactElement {
   const { contractor, loading: contractorLoading } = useContractorV2();
   
   // Determine main tab from URL
-  const mainTab = pathname.includes('/tendering') ? 'boq-quoting' : 
+  const mainTab = pathname.includes('/tendering') ? 'boq-quoting' :
+                  pathname.includes('/completed') ? 'completed' :
                   pathname.includes('/active') ? 'awarded' : 'awarded';
   const [selectedProject, setSelectedProject] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'overview' | 'boq' | 'schedule' | 'materials' | 'requested-materials' | 'files'>('overview');
@@ -36,6 +37,7 @@ function ContractorProjectsContent(): React.ReactElement {
   const [showScheduleEntry, setShowScheduleEntry] = useState(false);
   const [editingBOQ, setEditingBOQ] = useState(false);
   const [contractorProjects, setContractorProjects] = useState<any[]>([]);
+  const [projectFinanceMap, setProjectFinanceMap] = useState<Record<string, { total_funded: number; total_due: number }>>({});
   const [projectsLoading, setProjectsLoading] = useState(true);
   const [hasBOQData, setHasBOQData] = useState(false);
   const [hasScheduleData, setHasScheduleData] = useState(false);
@@ -122,12 +124,17 @@ function ContractorProjectsContent(): React.ReactElement {
 
   // Simple 2-stage filtering
   const filteredProjects = contractorProjects.filter(project => {
+    const isCompleted = project.project_status === 'completed' || project.status === 'Completed';
+
     if (mainTab === 'boq-quoting') {
       // Show only draft projects
       return project.project_status === 'draft';
     } else if (mainTab === 'awarded') {
-      // Show everything except draft projects
-      return project.project_status !== 'draft';
+      // Show active awarded projects (exclude draft and completed)
+      return project.project_status !== 'draft' && !isCompleted;
+    } else if (mainTab === 'completed') {
+      // Show only completed projects
+      return isCompleted;
     }
     return true;
   });
@@ -819,10 +826,12 @@ function ContractorProjectsContent(): React.ReactElement {
     const tab = searchParams.get('tab');
     const projectParam = searchParams.get('project');
     
-    // Handle main tab navigation (boq-quoting, awarded)
-    if (tab && ['boq-quoting', 'awarded'].includes(tab)) {
+    // Handle main tab navigation (boq-quoting, awarded, completed)
+    if (tab && ['boq-quoting', 'awarded', 'completed'].includes(tab)) {
       const newPath = tab === 'boq-quoting' ? 
-        '/dashboard/contractor/projects/tendering' : 
+        '/dashboard/contractor/projects/tendering' :
+        tab === 'completed' ?
+        '/dashboard/contractor/projects/completed' :
         '/dashboard/contractor/projects/active';
       router.push(newPath);
     }
@@ -888,6 +897,39 @@ function ContractorProjectsContent(): React.ReactElement {
     };
 
     fetchProjects();
+  }, [contractor?.id, refreshKey]);
+
+  // Fetch project-level finance values for project cards
+  useEffect(() => {
+    const fetchProjectFinance = async () => {
+      if (!contractor?.id) return;
+
+      try {
+        const response = await fetch('/api/contractor/finance/overview');
+        const result = await response.json();
+
+        if (!response.ok || !result?.projects) {
+          setProjectFinanceMap({});
+          return;
+        }
+
+        const map: Record<string, { total_funded: number; total_due: number }> = {};
+        (result.projects as Array<{ project_id: string; total_funded?: number; total_due?: number }>).forEach((project) => {
+          if (!project?.project_id) return;
+          map[project.project_id] = {
+            total_funded: Number(project.total_funded ?? 0),
+            total_due: Number(project.total_due ?? 0),
+          };
+        });
+
+        setProjectFinanceMap(map);
+      } catch (error) {
+        console.error('Error fetching project finance overview:', error);
+        setProjectFinanceMap({});
+      }
+    };
+
+    fetchProjectFinance();
   }, [contractor?.id, refreshKey]);
 
   // Calculate enhanced metrics when project is selected
@@ -1415,6 +1457,35 @@ function ContractorProjectsContent(): React.ReactElement {
     }
   };
 
+  const markProjectCompleted = async (projectId: string) => {
+    if (!confirm('Mark this project as completed?')) return;
+
+    try {
+      const response = await fetch(`/api/projects/${projectId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          project_status: 'completed',
+          status: 'Completed',
+          actual_end_date: new Date().toISOString()
+        })
+      });
+
+      const result = await response.json();
+      if (!response.ok || !result.success) {
+        throw new Error(result.error || 'Failed to mark project completed');
+      }
+
+      setRefreshKey((prev) => prev + 1);
+      if (mainTab !== 'completed') {
+        router.push('/dashboard/contractor/projects/completed');
+      }
+    } catch (error) {
+      console.error('Failed to mark project completed:', error);
+      alert(error instanceof Error ? error.message : 'Failed to mark project completed');
+    }
+  };
+
   // Update material status
 
   // Upload file to project
@@ -1652,14 +1723,17 @@ function ContractorProjectsContent(): React.ReactElement {
           <div className="border-b border-neutral-medium">
             <nav className="-mb-px flex space-x-8">
               {[
-                { id: 'awarded', name: 'Awarded Projects', description: 'Active & completed projects' },
+                { id: 'awarded', name: 'Awarded Projects', description: 'Active awarded projects' },
+                { id: 'completed', name: 'Completed Projects', description: 'Delivered and closed projects' },
                 { id: 'boq-quoting', name: 'Tendering & Quotes', description: 'Create quotes and submit tenders' }
               ].map((tab) => (
                 <button
                   key={tab.id}
                   onClick={() => {
-                    const newPath = tab.id === 'boq-quoting' ? 
-                      '/dashboard/contractor/projects/tendering' : 
+                    const newPath = tab.id === 'boq-quoting' ?
+                      '/dashboard/contractor/projects/tendering' :
+                      tab.id === 'completed' ?
+                      '/dashboard/contractor/projects/completed' :
                       '/dashboard/contractor/projects/active';
                     router.push(newPath);
                   }}
@@ -1713,12 +1787,50 @@ function ContractorProjectsContent(): React.ReactElement {
                 <div className="text-xs text-secondary">Potential project value</div>
               </div>
             </>
+          ) : mainTab === 'completed' ? (
+            <>
+              <div className="bg-neutral-dark p-6 rounded-lg border border-neutral-medium">
+                <div className="text-accent-amber text-sm font-mono mb-2">COMPLETED PROJECTS</div>
+                <div className="text-2xl font-bold text-primary mb-1">
+                  {contractorProjects.filter(p => p.project_status === 'completed' || p.status === 'Completed').length}
+                </div>
+                <div className="text-xs text-secondary">Total completed</div>
+              </div>
+              
+              <div className="bg-neutral-dark p-6 rounded-lg border border-neutral-medium">
+                <div className="text-accent-amber text-sm font-mono mb-2">COMPLETION RATE</div>
+                <div className="text-2xl font-bold text-success mb-1">
+                  {(() => {
+                    const nonDraftProjects = contractorProjects.filter(p => p.project_status !== 'draft');
+                    const completedProjects = contractorProjects.filter(p => p.project_status === 'completed' || p.status === 'Completed');
+                    return nonDraftProjects.length > 0 ? Math.round((completedProjects.length / nonDraftProjects.length) * 100) : 0;
+                  })()}%
+                </div>
+                <div className="text-xs text-secondary">Of non-draft projects</div>
+              </div>
+              
+              <div className="bg-neutral-dark p-6 rounded-lg border border-neutral-medium">
+                <div className="text-accent-amber text-sm font-mono mb-2">AVG PROGRESS</div>
+                <div className="text-2xl font-bold text-accent-amber mb-1">100%</div>
+                <div className="text-xs text-secondary">Completed projects</div>
+              </div>
+              
+              <div className="bg-neutral-dark p-6 rounded-lg border border-neutral-medium">
+                <div className="text-accent-amber text-sm font-mono mb-2">TOTAL VALUE</div>
+                <div className="text-2xl font-bold text-primary mb-1">
+                  {formatCurrency(contractorProjects
+                    .filter(p => p.project_status === 'completed' || p.status === 'Completed')
+                    .reduce((sum, p) => sum + (p.estimated_value || 0), 0))}
+                </div>
+                <div className="text-xs text-secondary">Completed portfolio value</div>
+              </div>
+            </>
           ) : (
             <>
               <div className="bg-neutral-dark p-6 rounded-lg border border-neutral-medium">
                 <div className="text-accent-amber text-sm font-mono mb-2">AWARDED PROJECTS</div>
                 <div className="text-2xl font-bold text-primary mb-1">
-                  {contractorProjects.filter(p => p.project_status === 'awarded' || p.project_status === 'finalized' || (!p.project_status && p.project_status !== 'draft')).length}
+                  {contractorProjects.filter(p => (p.project_status === 'awarded' || p.project_status === 'finalized' || (!p.project_status && p.project_status !== 'draft')) && p.project_status !== 'completed' && p.status !== 'Completed').length}
                 </div>
                 <div className="text-xs text-secondary">Total awarded</div>
               </div>
@@ -1735,7 +1847,7 @@ function ContractorProjectsContent(): React.ReactElement {
                 <div className="text-accent-amber text-sm font-mono mb-2">AVG PROGRESS</div>
                 <div className="text-2xl font-bold text-accent-amber mb-1">
                   {(() => {
-                    const awardedProjects = contractorProjects.filter(p => p.project_status === 'awarded' || p.project_status === 'finalized' || !p.project_status);
+                    const awardedProjects = contractorProjects.filter(p => (p.project_status === 'awarded' || p.project_status === 'finalized' || !p.project_status) && p.project_status !== 'completed' && p.status !== 'Completed');
                     return awardedProjects.length > 0 ? 
                       Math.round(awardedProjects.reduce((sum, p) => {
                         const progress = 'currentProgress' in p ? (p as any).currentProgress : (p as any).progress || 0;
@@ -1749,7 +1861,9 @@ function ContractorProjectsContent(): React.ReactElement {
               <div className="bg-neutral-dark p-6 rounded-lg border border-neutral-medium">
                 <div className="text-accent-amber text-sm font-mono mb-2">TOTAL VALUE</div>
                 <div className="text-2xl font-bold text-primary mb-1">
-                  {formatCurrency(contractorProjects.filter(p => p.project_status === 'awarded' || p.project_status === 'finalized' || !p.project_status).reduce((sum, p) => sum + (p.estimated_value || 0), 0))}
+                  {formatCurrency(contractorProjects
+                    .filter(p => (p.project_status === 'awarded' || p.project_status === 'finalized' || !p.project_status) && p.project_status !== 'completed' && p.status !== 'Completed')
+                    .reduce((sum, p) => sum + (p.estimated_value || 0), 0))}
                 </div>
                 <div className="text-xs text-secondary">Portfolio value</div>
               </div>
@@ -1991,8 +2105,11 @@ function ContractorProjectsContent(): React.ReactElement {
           {filteredProjects.length === 0 ? (
             <div className="p-8 bg-neutral-medium/20 rounded-lg text-center">
               <p className="text-secondary">
-                {mainTab === 'boq-quoting' ? 'No draft projects found. Create a new project to get started.' :
-                 'No awarded projects yet.'}
+                {mainTab === 'boq-quoting'
+                  ? 'No draft projects found. Create a new project to get started.'
+                  : mainTab === 'completed'
+                  ? 'No completed projects yet.'
+                  : 'No awarded projects yet.'}
               </p>
             </div>
           ) : (
@@ -2001,6 +2118,9 @@ function ContractorProjectsContent(): React.ReactElement {
                 const isGoogleSheetsProject = 'clientName' in project;
                 const clientName = isGoogleSheetsProject ? (project as any).clientName : (project.client_name || 'Unknown Client');
                 const projectStatus = project.project_status || project.status || 'draft';
+                const projectFinance = projectFinanceMap[project.id];
+                const fundedAmount = Number(projectFinance?.total_funded ?? 0);
+                const toRepayAmount = Number(projectFinance?.total_due ?? 0);
                 
                 return (
                   <div
@@ -2041,17 +2161,31 @@ function ContractorProjectsContent(): React.ReactElement {
                     <div className="space-y-2 text-sm">
                       <div className="flex justify-between">
                         <span className="text-secondary">Funded:</span>
-                        <span className="text-neutral-medium">-</span>
+                        <span className="text-primary font-medium">{formatCurrency(fundedAmount)}</span>
                       </div>
                       <div className="flex justify-between">
                         <span className="text-secondary">To Repay:</span>
-                        <span className="text-neutral-medium">-</span>
+                        <span className="text-warning font-medium">{formatCurrency(toRepayAmount)}</span>
                       </div>
                     </div>
                     
                     {/* Click Indicator */}
-                    <div className="mt-3 text-xs text-secondary group-hover:text-accent-amber transition-colors">
-                      Click to open project →
+                    <div className="mt-3 flex items-center justify-between gap-3">
+                      <div className="text-xs text-secondary group-hover:text-accent-amber transition-colors">
+                        Click to open project →
+                      </div>
+                      {mainTab === 'awarded' && projectStatus !== 'completed' && (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            markProjectCompleted(project.id);
+                          }}
+                          className="text-xs px-2 py-1 rounded border border-success text-success hover:bg-success/10 transition-colors"
+                        >
+                          Mark Completed
+                        </button>
+                      )}
                     </div>
                   </div>
                 );

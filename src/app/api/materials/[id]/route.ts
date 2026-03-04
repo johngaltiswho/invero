@@ -13,7 +13,12 @@ export async function PUT(
     
     // Extract update data
     const {
+      name,
+      description,
+      category,
+      unit,
       purchase_status,
+      hsn_code,
       finverno_rate,
       finverno_tax_percentage,
       finverno_tax_amount,
@@ -46,7 +51,12 @@ export async function PUT(
     };
 
     // Add fields that are provided
+    if (name !== undefined) updateData.name = String(name).trim();
+    if (description !== undefined) updateData.description = description ? String(description).trim() : null;
+    if (category !== undefined) updateData.category = String(category).trim();
+    if (unit !== undefined) updateData.unit = String(unit).trim();
     if (purchase_status) updateData.purchase_status = purchase_status;
+    if (hsn_code !== undefined) updateData.hsn_code = hsn_code ? String(hsn_code).trim() : null;
     if (finverno_rate !== undefined) updateData.finverno_rate = finverno_rate;
     if (finverno_tax_percentage !== undefined) updateData.finverno_tax_percentage = finverno_tax_percentage;
     if (finverno_tax_amount !== undefined) updateData.finverno_tax_amount = finverno_tax_amount;

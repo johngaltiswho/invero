@@ -43,7 +43,8 @@ export async function GET(request: NextRequest) {
           id,
           name,
           category,
-          unit
+          unit,
+          hsn_code
         )
       `)
       .eq('project_id', projectId)
@@ -96,7 +97,6 @@ export async function POST(request: NextRequest) {
       material_id,
       material_name,
       material_category,
-      material_description,
       quantity,
       unit,
       notes,
@@ -125,6 +125,8 @@ export async function POST(request: NextRequest) {
     if (!contractor) {
       return NextResponse.json({ error: 'Contractor not found' }, { status: 404 });
     }
+
+    const normalizedDescription = notes ? String(notes).trim() : null;
 
     // Ensure material exists (auto-create if missing and name provided)
     let resolvedMaterialId = material_id;
@@ -162,7 +164,7 @@ export async function POST(request: NextRequest) {
           .from('materials')
           .insert({
             name: material_name,
-            description: material_description || notes || null,
+            description: normalizedDescription,
             category: material_category || 'Uncategorized',
             unit,
             is_active: true,
@@ -194,7 +196,7 @@ export async function POST(request: NextRequest) {
         quantity: parseFloat(quantity),
         available_qty: 0,
         unit,
-        notes,
+        notes: normalizedDescription,
         // Add default values for new purchase workflow columns
         purchase_status: 'none',
         source_type: source_type,
@@ -206,7 +208,8 @@ export async function POST(request: NextRequest) {
           id,
           name,
           category,
-          unit
+          unit,
+          hsn_code
         )
       `)
       .single();
@@ -323,7 +326,8 @@ export async function PATCH(request: NextRequest) {
           id,
           name,
           category,
-          unit
+          unit,
+          hsn_code
         )
       `)
       .single();
@@ -419,7 +423,8 @@ export async function PUT(request: NextRequest) {
           id,
           name,
           category,
-          unit
+          unit,
+          hsn_code
         )
       `)
       .single();

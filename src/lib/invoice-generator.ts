@@ -232,7 +232,12 @@ export function generateInvoicePDF(params: InvoiceGenerationParams): Buffer {
   const totalBoxX = PAGE_W - MARGIN - totalBoxW;
   doc.rect(totalBoxX, y, totalBoxW, 23);
 
-  const effectiveTaxPercent = params.subtotal > 0 ? (params.totalTax / params.subtotal) * 100 : 0;
+  // Show GST rate over taxable base only (exclude non-taxable lines like platform fee)
+  const taxableBase = params.lineItems.reduce((sum, item) => {
+    const taxPct = Number(item.tax_percent) || 0;
+    return taxPct > 0 ? sum + (Number(item.amount) || 0) : sum;
+  }, 0);
+  const effectiveTaxPercent = taxableBase > 0 ? (params.totalTax / taxableBase) * 100 : 0;
   const totals = [
     ['Subtotal', formatMoney(params.subtotal)],
     [`GST @ ${effectiveTaxPercent.toFixed(2)}%`, formatMoney(params.totalTax)],

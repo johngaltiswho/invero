@@ -3,6 +3,7 @@
 export interface Material {
   id: string;
   name: string;
+  hsn_code?: string | null;
   description?: string;
   category: string;
   subcategory?: string;

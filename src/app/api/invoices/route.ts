@@ -24,6 +24,8 @@ type PurchaseRequestItem = {
   hsn_code?: string | null;
   item_description?: string | null;
   requested_qty?: number | string | null;
+  purchase_qty?: number | string | null;
+  purchase_unit?: string | null;
   unit_rate?: number | string | null;
   tax_percent?: number | string | null;
   project_materials?: {
@@ -164,6 +166,8 @@ export async function POST(request: NextRequest) {
           hsn_code,
           item_description,
           requested_qty,
+          purchase_qty,
+          purchase_unit,
           unit_rate,
           tax_percent,
           project_materials (
@@ -183,7 +187,9 @@ export async function POST(request: NextRequest) {
       prError &&
       (
         String(prError.message || '').includes('hsn_code') ||
-        String(prError.message || '').includes('item_description')
+        String(prError.message || '').includes('item_description') ||
+        String(prError.message || '').includes('purchase_qty') ||
+        String(prError.message || '').includes('purchase_unit')
       )
     ) {
       const fallbackQuery = await supabase
@@ -197,6 +203,8 @@ export async function POST(request: NextRequest) {
             id,
             hsn_code,
             requested_qty,
+            purchase_qty,
+            purchase_unit,
             unit_rate,
             tax_percent,
             project_materials (
@@ -218,13 +226,23 @@ export async function POST(request: NextRequest) {
     // Fetch contractor details
     const { data: contractor } = await supabase
       .from('contractors')
-      .select('id, company_name, gstin, email, platform_fee_rate, platform_fee_cap')
+      .select('id, company_name, gstin, email, platform_fee_rate, platform_fee_cap, business_address, city, state, pincode')
       .eq('id', pr.contractor_id)
       .single();
 
     if (!contractor) {
       return NextResponse.json({ error: 'Contractor not found' }, { status: 404 });
     }
+
+    const contractorAddress = [
+      contractor.business_address,
+      contractor.city,
+      contractor.state,
+      contractor.pincode
+    ]
+      .filter((part) => part && String(part).trim().length > 0)
+      .map((part) => String(part).trim())
+      .join(', ');
 
     // Fetch project name
     const { data: project } = await supabase
@@ -236,7 +254,7 @@ export async function POST(request: NextRequest) {
     // Build line items
     const lineItems: InvoiceLineItem[] = (pr.purchase_request_items || []).map((item: PurchaseRequestItem) => {
       const material = item.project_materials?.materials;
-      const qty = Number(item.requested_qty) || 0;
+      const qty = Number(item.purchase_qty ?? item.requested_qty) || 0;
       const rate = Number(item.unit_rate) || 0;
       const taxPct = Number(item.tax_percent) || 0;
       const amount = qty * rate;
@@ -245,7 +263,7 @@ export async function POST(request: NextRequest) {
         material_name: material?.name || 'Unknown Material',
         hsn_code: item.hsn_code || material?.hsn_code || null,
         item_description: item.item_description || null,
-        unit: material?.unit || 'nos',
+        unit: item.purchase_unit || material?.unit || 'nos',
         quantity: qty,
         unit_rate: rate,
         tax_percent: taxPct,
@@ -295,6 +313,7 @@ export async function POST(request: NextRequest) {
       projectName: project?.project_name || pr.project_id,
       contractorName: contractor.company_name,
       contractorGSTIN: contractor.gstin,
+      contractorAddress: contractorAddress || undefined,
       lineItems,
       subtotal,
       totalTax,

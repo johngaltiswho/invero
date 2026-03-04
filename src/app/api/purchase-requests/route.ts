@@ -170,6 +170,11 @@ export async function POST(request: NextRequest) {
       project_material_id: item.project_material_id,
       hsn_code: item.hsn_code?.trim() || null,
       item_description: item.item_description?.trim() || null,
+      site_unit: item.site_unit?.trim() || null,
+      purchase_unit: item.purchase_unit?.trim() || null,
+      conversion_factor: item.conversion_factor || null,
+      purchase_qty: item.purchase_qty || null,
+      normalized_qty: item.normalized_qty || null,
       requested_qty: item.requested_qty,
       unit_rate: item.unit_rate || null,
       tax_percent: item.tax_percent || 0,
@@ -178,10 +183,36 @@ export async function POST(request: NextRequest) {
       updated_at: new Date().toISOString()
     }));
 
-    const { data: createdItems, error: itemsError } = await supabase
+    let createdItems: any[] | null = null;
+    let itemsError: { message?: string } | null = null;
+
+    const insertWithConversion = await supabase
       .from('purchase_request_items')
       .insert(requestItems)
       .select();
+    createdItems = insertWithConversion.data;
+    itemsError = insertWithConversion.error;
+
+    if (itemsError && String(itemsError.message || '').includes('column')) {
+      const legacyItems = items.map((item) => ({
+        purchase_request_id: purchaseRequest.id,
+        project_material_id: item.project_material_id,
+        hsn_code: item.hsn_code?.trim() || null,
+        item_description: item.item_description?.trim() || null,
+        requested_qty: item.requested_qty,
+        unit_rate: item.unit_rate || null,
+        tax_percent: item.tax_percent || 0,
+        status: 'pending',
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      }));
+      const legacyInsert = await supabase
+        .from('purchase_request_items')
+        .insert(legacyItems)
+        .select();
+      createdItems = legacyInsert.data;
+      itemsError = legacyInsert.error;
+    }
 
     if (itemsError) {
       console.error('❌ Failed to create purchase request items:', itemsError);
@@ -197,7 +228,8 @@ export async function POST(request: NextRequest) {
       }, { status: 500 });
     }
 
-    console.log('✅ Purchase request items created:', createdItems.length);
+    const persistedItems = createdItems || [];
+    console.log('✅ Purchase request items created:', persistedItems.length);
 
     const { data: project } = await supabase
       .from('projects')
@@ -205,21 +237,22 @@ export async function POST(request: NextRequest) {
       .eq('id', project_id)
       .single();
 
-    const estimatedTotal = createdItems.reduce(
-      (sum, item) => sum + (Number(item.requested_qty) || 0) * (Number(item.unit_rate) || 0),
-      0
-    );
+    const estimatedTotal = persistedItems.reduce((sum, item) => {
+      const billableQty = Number((item as any).purchase_qty ?? item.requested_qty) || 0;
+      const rate = Number(item.unit_rate) || 0;
+      return sum + billableQty * rate;
+    }, 0);
 
     if (contractor?.email) {
       await sendEmail({
         to: contractor.email,
         subject: `Purchase request submitted · ${project?.project_name || 'Project'}`,
-        text: `Hi ${contractor.contact_person || contractor.company_name || 'there'},\n\nYour purchase request has been submitted successfully.\nProject: ${project?.project_name || project_id}\nItems: ${createdItems.length}\nEstimated value: ${formatCurrency(estimatedTotal)}\n\nWe will notify you once it is approved.`,
+        text: `Hi ${contractor.contact_person || contractor.company_name || 'there'},\n\nYour purchase request has been submitted successfully.\nProject: ${project?.project_name || project_id}\nItems: ${persistedItems.length}\nEstimated value: ${formatCurrency(estimatedTotal)}\n\nWe will notify you once it is approved.`,
         html: `
           <p>Hi ${contractor.contact_person || contractor.company_name || 'there'},</p>
           <p>Your purchase request has been submitted successfully.</p>
           <p><strong>Project:</strong> ${project?.project_name || project_id}<br/>
-          <strong>Items:</strong> ${createdItems.length}<br/>
+          <strong>Items:</strong> ${persistedItems.length}<br/>
           <strong>Estimated value:</strong> ${formatCurrency(estimatedTotal)}</p>
           <p>We will notify you once it is approved.</p>
         `
@@ -231,9 +264,9 @@ export async function POST(request: NextRequest) {
       success: true,
       data: {
         ...purchaseRequest,
-        items: createdItems,
-        total_items: createdItems.length,
-        total_requested_qty: createdItems.reduce((sum, item) => sum + item.requested_qty, 0)
+        items: persistedItems,
+        total_items: persistedItems.length,
+        total_requested_qty: persistedItems.reduce((sum, item) => sum + (Number(item.requested_qty) || 0), 0)
       }
     });
 

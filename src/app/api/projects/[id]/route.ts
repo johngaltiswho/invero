@@ -62,3 +62,83 @@ export async function GET(
     }, { status: 500 });
   }
 }
+
+// PUT /api/projects/[id] - Update project by ID (contractor-scoped)
+export async function PUT(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const { userId } = await auth();
+    if (!userId) {
+      return NextResponse.json({
+        success: false,
+        error: 'Authentication required'
+      }, { status: 401 });
+    }
+
+    const { id: projectId } = await params;
+    const body = await request.json();
+
+    const { data: contractor, error: contractorError } = await supabaseAdmin
+      .from('contractors')
+      .select('id')
+      .eq('clerk_user_id', userId)
+      .single();
+
+    if (contractorError || !contractor) {
+      return NextResponse.json({
+        success: false,
+        error: 'Contractor not found for authenticated user'
+      }, { status: 404 });
+    }
+
+    const allowedFields = new Set([
+      'project_name',
+      'client_name',
+      'project_status',
+      'status',
+      'estimated_value',
+      'po_number',
+      'funding_status',
+      'funding_required',
+      'actual_end_date',
+      'tender_submission_date'
+    ]);
+
+    const updateData: Record<string, unknown> = {};
+    Object.entries(body || {}).forEach(([key, value]) => {
+      if (allowedFields.has(key)) {
+        updateData[key] = value;
+      }
+    });
+    updateData.updated_at = new Date().toISOString();
+
+    const { data: updatedProject, error: updateError } = await supabaseAdmin
+      .from('projects')
+      .update(updateData)
+      .eq('id', projectId)
+      .eq('contractor_id', contractor.id)
+      .select('*')
+      .single();
+
+    if (updateError) {
+      console.error('Error updating project:', updateError);
+      return NextResponse.json({
+        success: false,
+        error: 'Failed to update project'
+      }, { status: 500 });
+    }
+
+    return NextResponse.json({
+      success: true,
+      data: updatedProject
+    });
+  } catch (error) {
+    console.error('Error updating project:', error);
+    return NextResponse.json({
+      success: false,
+      error: 'Failed to update project'
+    }, { status: 500 });
+  }
+}

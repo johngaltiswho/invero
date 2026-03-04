@@ -14,6 +14,7 @@ type PurchaseRequestRow = {
 type PurchaseRequestItemRow = {
   purchase_request_id: string;
   requested_qty: number | null;
+  purchase_qty: number | null;
   unit_rate: number | null;
   tax_percent: number | null;
 };
@@ -79,10 +80,24 @@ export async function GET() {
       });
     }
 
-    const { data: requestItems, error: itemsError } = await supabaseAdmin
+    let requestItems: PurchaseRequestItemRow[] | null = null;
+    let itemsError: { message?: string } | null = null;
+
+    const requestItemsWithPurchaseQty = await supabaseAdmin
       .from('purchase_request_items')
-      .select('purchase_request_id, requested_qty, unit_rate, tax_percent')
+      .select('purchase_request_id, requested_qty, purchase_qty, unit_rate, tax_percent')
       .in('purchase_request_id', requestIds);
+    requestItems = (requestItemsWithPurchaseQty.data as PurchaseRequestItemRow[] | null) ?? null;
+    itemsError = requestItemsWithPurchaseQty.error;
+
+    if (itemsError && String(itemsError.message || '').includes('purchase_qty')) {
+      const fallbackItems = await supabaseAdmin
+        .from('purchase_request_items')
+        .select('purchase_request_id, requested_qty, unit_rate, tax_percent')
+        .in('purchase_request_id', requestIds);
+      requestItems = (fallbackItems.data as PurchaseRequestItemRow[] | null) ?? null;
+      itemsError = fallbackItems.error;
+    }
 
     if (itemsError) {
       console.error('Failed to load purchase request items:', itemsError);
@@ -102,8 +117,8 @@ export async function GET() {
     }
 
     const requestTotals = new Map<string, number>();
-    (requestItems as PurchaseRequestItemRow[] | null)?.forEach((item) => {
-      const qty = Number(item.requested_qty ?? 0);
+    requestItems?.forEach((item) => {
+      const qty = Number(item.purchase_qty ?? item.requested_qty ?? 0);
       const rate = Number(item.unit_rate ?? 0);
       const taxPercent = Number(item.tax_percent ?? 0);
       const base = qty * rate;

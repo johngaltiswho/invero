@@ -13,6 +13,11 @@ type PurchaseRequestItemWithMaterial = {
   purchase_request_id: string;
   project_material_id: string;
   item_description: string | null;
+  site_unit: string | null;
+  purchase_unit: string | null;
+  conversion_factor: number | null;
+  purchase_qty: number | null;
+  normalized_qty: number | null;
   requested_qty: number;
   approved_qty: number | null;
   unit_rate: number | null;
@@ -79,13 +84,21 @@ export async function GET(_request: NextRequest, context: RouteContext) {
       return NextResponse.json({ error: 'Purchase request not found' }, { status: 404 });
     }
 
-    const { data: items, error: itemsError } = await supabase
+    let items: PurchaseRequestItemWithMaterial[] | null = null;
+    let itemsError: { message?: string } | null = null;
+
+    const itemsWithConversion = await supabase
       .from('purchase_request_items')
       .select(`
         id,
         purchase_request_id,
         project_material_id,
         item_description,
+        site_unit,
+        purchase_unit,
+        conversion_factor,
+        purchase_qty,
+        normalized_qty,
         requested_qty,
         approved_qty,
         unit_rate,
@@ -105,6 +118,39 @@ export async function GET(_request: NextRequest, context: RouteContext) {
       `)
       .eq('purchase_request_id', requestId)
       .order('created_at', { ascending: true });
+    items = (itemsWithConversion.data as PurchaseRequestItemWithMaterial[] | null) ?? null;
+    itemsError = itemsWithConversion.error;
+
+    if (itemsError && String(itemsError.message || '').includes('purchase_qty')) {
+      const fallbackItems = await supabase
+        .from('purchase_request_items')
+        .select(`
+          id,
+          purchase_request_id,
+          project_material_id,
+          item_description,
+          requested_qty,
+          approved_qty,
+          unit_rate,
+          tax_percent,
+          hsn_code,
+          status,
+          created_at,
+          updated_at,
+          project_materials(
+            id,
+            unit,
+            material_id,
+            materials(
+              name
+            )
+          )
+        `)
+        .eq('purchase_request_id', requestId)
+        .order('created_at', { ascending: true });
+      items = (fallbackItems.data as PurchaseRequestItemWithMaterial[] | null) ?? null;
+      itemsError = fallbackItems.error;
+    }
 
     if (itemsError) {
       console.error('Failed to load purchase request items:', itemsError);
@@ -202,9 +248,38 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
         return NextResponse.json({ error: 'Requested quantity must be greater than zero' }, { status: 400 });
       }
 
+      const conversionFactor =
+        item.conversion_factor === null || item.conversion_factor === undefined || item.conversion_factor === ''
+          ? null
+          : Number(item.conversion_factor);
+      if (conversionFactor !== null && (!Number.isFinite(conversionFactor) || conversionFactor <= 0)) {
+        return NextResponse.json({ error: 'Conversion factor must be greater than zero' }, { status: 400 });
+      }
+
+      const purchaseQty =
+        item.purchase_qty === null || item.purchase_qty === undefined || item.purchase_qty === ''
+          ? null
+          : Number(item.purchase_qty);
+      if (purchaseQty !== null && (!Number.isFinite(purchaseQty) || purchaseQty <= 0)) {
+        return NextResponse.json({ error: 'Purchase quantity must be greater than zero' }, { status: 400 });
+      }
+
+      const normalizedQty =
+        item.normalized_qty === null || item.normalized_qty === undefined || item.normalized_qty === ''
+          ? null
+          : Number(item.normalized_qty);
+      if (normalizedQty !== null && (!Number.isFinite(normalizedQty) || normalizedQty <= 0)) {
+        return NextResponse.json({ error: 'Normalized quantity must be greater than zero' }, { status: 400 });
+      }
+
       const updatePayload = {
         requested_qty: requestedQty,
         item_description: item.item_description?.toString().trim() || null,
+        site_unit: item.site_unit?.toString().trim() || null,
+        purchase_unit: item.purchase_unit?.toString().trim() || null,
+        conversion_factor: conversionFactor,
+        purchase_qty: purchaseQty,
+        normalized_qty: normalizedQty,
         unit_rate: item.unit_rate === null || item.unit_rate === '' ? null : Number(item.unit_rate),
         tax_percent: item.tax_percent === null || item.tax_percent === '' ? 0 : Number(item.tax_percent),
         hsn_code: item.hsn_code?.toString().trim() || null,

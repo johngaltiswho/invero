@@ -8,6 +8,7 @@ interface Material {
   id: string;
   material_code?: string;
   name: string;
+  hsn_code?: string | null;
   description?: string;
   category: string;
   subcategory?: string;
@@ -42,6 +43,25 @@ interface Vendor {
 }
 
 export default function MaterialsPage() {
+  const normalizeCategory = (value?: string) =>
+    (value || '').trim().toLowerCase().replace(/\s+/g, ' ');
+
+  const formatCategoryLabel = (value: string) =>
+    value
+      .split(' ')
+      .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+      .join(' ');
+
+  const defaultCategories = [
+    'Structural',
+    'Civil',
+    'Electrical',
+    'Plumbing',
+    'Finishing',
+    'Hardware',
+    'Facade',
+    'Fencing'
+  ];
   const [materials, setMaterials] = useState<Material[]>([]);
   const [materialRequests, setMaterialRequests] = useState<Material[]>([]);
   const [vendors, setVendors] = useState<Vendor[]>([]);
@@ -64,6 +84,7 @@ export default function MaterialsPage() {
 
   const [newRequest, setNewRequest] = useState({
     name: '',
+    hsn_code: '',
     description: '',
     category: '',
     unit: '',
@@ -89,8 +110,16 @@ export default function MaterialsPage() {
         
         if (materialsResult.success) {
           setMaterials(materialsResult.data);
-          const uniqueCategories = [...new Set(materialsResult.data.map((m: Material) => m.category))] as string[];
-          setCategories(uniqueCategories);
+          const merged = new Set<string>();
+          defaultCategories.forEach((category) => {
+            const key = normalizeCategory(category);
+            if (key) merged.add(key);
+          });
+          materialsResult.data.forEach((material: Material) => {
+            const key = normalizeCategory(material.category);
+            if (key) merged.add(key);
+          });
+          setCategories(Array.from(merged).sort((a, b) => a.localeCompare(b)));
         }
 
         // Fetch vendors for purchase status display
@@ -206,7 +235,7 @@ export default function MaterialsPage() {
     .filter(material => {
       const matchesSearch = !searchTerm || material.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
                            material.description?.toLowerCase().includes(searchTerm.toLowerCase());
-      const matchesCategory = !selectedCategory || material.category === selectedCategory;
+      const matchesCategory = !selectedCategory || normalizeCategory(material.category) === selectedCategory;
       return matchesSearch && matchesCategory;
     })
     .sort((a, b) => {
@@ -246,6 +275,7 @@ export default function MaterialsPage() {
       // Prepare request data with project context
       const requestData = {
         ...newRequest,
+        hsn_code: newRequest.hsn_code?.trim() || undefined,
         project_context: newRequest.project_id ? projects.find(p => p.id === newRequest.project_id)?.project_name : ''
       };
 
@@ -262,6 +292,7 @@ export default function MaterialsPage() {
         setShowRequestDialog(false);
         setNewRequest({
           name: '',
+          hsn_code: '',
           description: '',
           category: '',
           unit: '',
@@ -417,7 +448,7 @@ export default function MaterialsPage() {
               >
                 <option value="">All Categories</option>
                 {categories.map(category => (
-                  <option key={category} value={category}>{category}</option>
+                  <option key={category} value={category}>{formatCategoryLabel(category)}</option>
                 ))}
               </select>
             </div>
@@ -460,6 +491,7 @@ export default function MaterialsPage() {
                         )}
                       </div>
                     </th>
+                    <th className="px-4 py-3 text-left text-sm font-medium text-primary">HSN</th>
                     <th className="px-4 py-3 text-left text-sm font-medium text-primary">Description</th>
                   </tr>
                 </thead>
@@ -469,6 +501,7 @@ export default function MaterialsPage() {
                       <td className="px-4 py-3 text-sm font-medium text-primary">{material.name}</td>
                       <td className="px-4 py-3 text-sm text-secondary">{material.category}</td>
                       <td className="px-4 py-3 text-sm text-secondary">{material.unit}</td>
+                      <td className="px-4 py-3 text-sm text-secondary">{material.hsn_code || '-'}</td>
                       <td className="px-4 py-3 text-sm text-secondary max-w-xs truncate">
                         {material.description || '-'}
                       </td>
@@ -568,6 +601,7 @@ export default function MaterialsPage() {
                       )}
                     </div>
                   </th>
+                  <th className="px-4 py-3 text-left text-sm font-medium text-primary">HSN</th>
                   <th className="px-4 py-3 text-left text-sm font-medium text-primary">Price</th>
                   <th 
                     className="px-4 py-3 text-left text-sm font-medium text-primary cursor-pointer hover:bg-neutral-dark transition-colors"
@@ -603,6 +637,7 @@ export default function MaterialsPage() {
                         {request.urgency}
                       </span>
                     </td>
+                    <td className="px-4 py-3 text-sm text-secondary">{request.hsn_code || '-'}</td>
                     <td className="px-4 py-3 text-sm text-secondary">
                       {request.estimated_price ? `₹${request.estimated_price}/${request.unit}` : '-'}
                     </td>
@@ -916,6 +951,17 @@ export default function MaterialsPage() {
 
                 <div>
                   <label className="block text-sm font-medium text-primary mb-1">
+                    HSN Code
+                  </label>
+                  <Input
+                    value={newRequest.hsn_code}
+                    onChange={(e) => setNewRequest(prev => ({ ...prev, hsn_code: e.target.value }))}
+                    placeholder="Optional HSN/SAC"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-primary mb-1">
                     Category *
                   </label>
                   <select
@@ -925,7 +971,7 @@ export default function MaterialsPage() {
                   >
                     <option value="">Select category</option>
                     {categories.map(category => (
-                      <option key={category} value={category}>{category}</option>
+                      <option key={category} value={category}>{formatCategoryLabel(category)}</option>
                     ))}
                     <option value="Other">Other</option>
                   </select>

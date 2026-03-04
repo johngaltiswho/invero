@@ -15,6 +15,7 @@ interface MaterialRequest {
   id: string;
   requested_by: string;
   name: string;
+  hsn_code?: string | null;
   description?: string;
   category: string;
   unit: string;
@@ -35,6 +36,19 @@ interface MaterialRequest {
     email: string;
   };
 }
+
+interface MasterMaterial {
+  id: string;
+  name: string;
+  category: string;
+  unit: string;
+  hsn_code?: string | null;
+  description?: string | null;
+  approval_status?: string | null;
+  created_at?: string;
+}
+
+type EditableMaterialField = 'name' | 'category' | 'unit' | 'hsn_code';
 
 interface ParsedTakeoffRow {
   materialName?: string;
@@ -83,6 +97,11 @@ interface PurchaseRequestItemUI {
   project_material_id: string;
   hsn_code?: string | null;
   item_description?: string | null;
+  site_unit?: string | null;
+  purchase_unit?: string | null;
+  conversion_factor?: number | null;
+  purchase_qty?: number | null;
+  normalized_qty?: number | null;
   requested_qty: number;
   approved_qty?: number;
   unit_rate?: number;
@@ -181,6 +200,12 @@ export default function AdminVerificationDashboard(): React.ReactElement {
   });
   const [termsSaving, setTermsSaving] = useState(false);
   const [selectedMaterialRequest, setSelectedMaterialRequest] = useState<MaterialRequest | null>(null);
+  const [masterMaterials, setMasterMaterials] = useState<MasterMaterial[]>([]);
+  const [masterMaterialsLoading, setMasterMaterialsLoading] = useState(false);
+  const [masterMaterialsSearch, setMasterMaterialsSearch] = useState('');
+  const [editingCell, setEditingCell] = useState<{ materialId: string; field: EditableMaterialField } | null>(null);
+  const [editingCellValue, setEditingCellValue] = useState('');
+  const [savingCellKey, setSavingCellKey] = useState<string | null>(null);
   const [verifyingDoc, setVerifyingDoc] = useState<string | null>(null);
   const [reviewingMaterial, setReviewingMaterial] = useState<string | null>(null);
   const [reviewingTakeoff, setReviewingTakeoff] = useState<string | null>(null);
@@ -211,6 +236,7 @@ export default function AdminVerificationDashboard(): React.ReactElement {
       loadContractors();
     } else if (activeTab === 'materials') {
       loadMaterialRequests();
+      loadMasterMaterials();
     } else if (activeTab === 'takeoffs') {
       loadTakeoffItems();
     } else if (activeTab === 'purchases') {
@@ -343,6 +369,135 @@ export default function AdminVerificationDashboard(): React.ReactElement {
     } finally {
       setLoading(false);
     }
+  };
+
+  const loadMasterMaterials = async () => {
+    try {
+      setMasterMaterialsLoading(true);
+      const response = await fetch('/api/materials?include_pending=true&limit=500');
+      const result = await response.json();
+      if (response.ok && result?.success) {
+        setMasterMaterials(result.data || []);
+      } else {
+        console.error('Failed to load master materials:', result?.error || 'Unknown error');
+      }
+    } catch (error) {
+      console.error('Error loading master materials:', error);
+    } finally {
+      setMasterMaterialsLoading(false);
+    }
+  };
+
+  const startInlineEdit = (material: MasterMaterial, field: EditableMaterialField) => {
+    setEditingCell({ materialId: material.id, field });
+    setEditingCellValue(String(material[field] ?? ''));
+  };
+
+  const saveInlineEdit = async (material: MasterMaterial, field: EditableMaterialField) => {
+    const trimmedValue = editingCellValue.trim();
+
+    if (field !== 'hsn_code' && trimmedValue.length === 0) {
+      alert(`${field.replace('_', ' ')} cannot be empty`);
+      return;
+    }
+
+    const currentValue = String(material[field] ?? '').trim();
+    if (trimmedValue === currentValue) {
+      setEditingCell(null);
+      setEditingCellValue('');
+      return;
+    }
+
+    const cellKey = `${material.id}:${field}`;
+    setSavingCellKey(cellKey);
+
+    try {
+      const payload: Record<string, string | null> = {
+        [field]: field === 'hsn_code' ? (trimmedValue || null) : trimmedValue
+      };
+
+      const response = await fetch(`/api/materials/${material.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      const result = await response.json();
+      if (!response.ok || !result?.success) {
+        throw new Error(result?.error || 'Failed to update material');
+      }
+
+      setMasterMaterials((prev) =>
+        prev.map((row) =>
+          row.id === material.id
+            ? {
+                ...row,
+                [field]: field === 'hsn_code' ? (trimmedValue || null) : trimmedValue
+              }
+            : row
+        )
+      );
+
+      // Keep material request detail in sync if currently selected
+      if (selectedMaterialRequest?.id === material.id) {
+        setSelectedMaterialRequest((prev) => {
+          if (!prev) return prev;
+          if (field === 'name') return { ...prev, name: trimmedValue };
+          if (field === 'category') return { ...prev, category: trimmedValue };
+          if (field === 'unit') return { ...prev, unit: trimmedValue };
+          if (field === 'hsn_code') return { ...prev, hsn_code: trimmedValue || null };
+          return prev;
+        });
+      }
+    } catch (error) {
+      console.error('Failed to update material field:', error);
+      alert(error instanceof Error ? error.message : 'Failed to update material');
+    } finally {
+      setSavingCellKey(null);
+      setEditingCell(null);
+      setEditingCellValue('');
+    }
+  };
+
+  const renderEditableCell = (material: MasterMaterial, field: EditableMaterialField) => {
+    const isEditing = editingCell?.materialId === material.id && editingCell?.field === field;
+    const cellKey = `${material.id}:${field}`;
+    const isSaving = savingCellKey === cellKey;
+    const value = material[field];
+
+    if (isEditing) {
+      return (
+        <input
+          autoFocus
+          value={editingCellValue}
+          onChange={(e) => setEditingCellValue(e.target.value)}
+          onBlur={() => saveInlineEdit(material, field)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') {
+              e.preventDefault();
+              saveInlineEdit(material, field);
+            } else if (e.key === 'Escape') {
+              e.preventDefault();
+              setEditingCell(null);
+              setEditingCellValue('');
+            }
+          }}
+          disabled={isSaving}
+          className="w-full px-2 py-1 rounded border border-neutral-light bg-neutral-dark text-primary text-sm focus:outline-none focus:ring-2 focus:ring-accent-orange"
+        />
+      );
+    }
+
+    return (
+      <button
+        type="button"
+        className="w-full text-left text-sm text-secondary hover:text-primary hover:underline disabled:opacity-60"
+        onClick={() => startInlineEdit(material, field)}
+        disabled={isSaving}
+        title="Click to edit"
+      >
+        {isSaving ? 'Saving...' : (value || '-')}
+      </button>
+    );
   };
 
   const loadTakeoffItems = async () => {
@@ -1145,6 +1300,7 @@ export default function AdminVerificationDashboard(): React.ReactElement {
         </div>
       ) : activeTab === 'materials' ? (
         /* Material Requests Tab */
+        <>
         <div className="grid lg:grid-cols-3 gap-8">
           {/* Material Requests List */}
           <div className="lg:col-span-1">
@@ -1195,7 +1351,7 @@ export default function AdminVerificationDashboard(): React.ReactElement {
                         </div>
                       </div>
                       <div className="text-xs text-secondary">
-                        {request.category} • {request.unit}
+                        {request.category} • {request.unit}{request.hsn_code ? ` • HSN ${request.hsn_code}` : ''}
                       </div>
                       <div className="text-xs text-secondary mt-1">
                         {new Date(request.created_at).toLocaleDateString()}
@@ -1238,6 +1394,7 @@ export default function AdminVerificationDashboard(): React.ReactElement {
                       <div className="space-y-2 text-sm">
                         <div><strong>Category:</strong> {selectedMaterialRequest.category}</div>
                         <div><strong>Unit:</strong> {selectedMaterialRequest.unit}</div>
+                        <div><strong>HSN:</strong> {selectedMaterialRequest.hsn_code || '-'}</div>
                         {selectedMaterialRequest.estimated_price && (
                           <div><strong>Estimated Price:</strong> ₹{selectedMaterialRequest.estimated_price}/{selectedMaterialRequest.unit}</div>
                         )}
@@ -1339,6 +1496,66 @@ export default function AdminVerificationDashboard(): React.ReactElement {
             )}
           </div>
         </div>
+        <div className="mt-8 bg-neutral-dark rounded-lg border border-neutral-medium">
+          <div className="p-4 border-b border-neutral-medium flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+            <div>
+              <h2 className="text-lg font-semibold text-primary">Material Master</h2>
+              <p className="text-sm text-secondary">Edit existing catalog items</p>
+            </div>
+            <input
+              type="text"
+              value={masterMaterialsSearch}
+              onChange={(e) => setMasterMaterialsSearch(e.target.value)}
+              placeholder="Search materials..."
+              className="px-3 py-2 rounded border border-neutral-light bg-neutral-dark text-primary w-full md:w-72"
+            />
+          </div>
+          <div className="overflow-x-auto">
+            <table className="min-w-full divide-y divide-neutral-medium">
+              <thead className="bg-neutral-dark">
+                <tr>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-secondary uppercase tracking-wider">Name</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-secondary uppercase tracking-wider">Category</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-secondary uppercase tracking-wider">Unit</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-secondary uppercase tracking-wider">HSN</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-secondary uppercase tracking-wider">Status</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-neutral-medium">
+                {masterMaterialsLoading ? (
+                  <tr>
+                    <td className="px-4 py-6 text-secondary text-sm" colSpan={5}>Loading material master...</td>
+                  </tr>
+                ) : masterMaterials
+                    .filter((material) => {
+                      const q = masterMaterialsSearch.trim().toLowerCase();
+                      if (!q) return true;
+                      return (
+                        material.name.toLowerCase().includes(q) ||
+                        material.category.toLowerCase().includes(q) ||
+                        (material.hsn_code || '').toLowerCase().includes(q)
+                      );
+                    })
+                    .slice(0, 100)
+                    .map((material) => (
+                      <tr key={material.id}>
+                        <td className="px-4 py-3 text-sm text-primary">{renderEditableCell(material, 'name')}</td>
+                        <td className="px-4 py-3 text-sm text-secondary">{renderEditableCell(material, 'category')}</td>
+                        <td className="px-4 py-3 text-sm text-secondary">{renderEditableCell(material, 'unit')}</td>
+                        <td className="px-4 py-3 text-sm text-secondary">{renderEditableCell(material, 'hsn_code')}</td>
+                        <td className="px-4 py-3 text-sm text-secondary">{material.approval_status || 'approved'}</td>
+                      </tr>
+                    ))}
+                {!masterMaterialsLoading && masterMaterials.length === 0 && (
+                  <tr>
+                    <td className="px-4 py-6 text-secondary text-sm" colSpan={5}>No materials found in catalog.</td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+        </>
       ) : activeTab === 'takeoffs' ? (
         /* Quantity Takeoffs Tab */
         <div className="grid lg:grid-cols-3 gap-8">
@@ -1902,10 +2119,19 @@ export default function AdminVerificationDashboard(): React.ReactElement {
                           )}
                         </td>
                         <td className="p-2 text-center text-primary font-mono">{item.hsn_code || '-'}</td>
-                        <td className="p-2 text-center text-primary">{item.requested_qty}</td>
-                        <td className="p-2 text-center text-primary">{item.unit || 'units'}</td>
+                        <td className="p-2 text-center text-primary">
+                          {(item.purchase_qty ?? item.requested_qty ?? 0).toLocaleString(undefined, { maximumFractionDigits: 3 })}
+                        </td>
+                        <td className="p-2 text-center text-primary">{item.purchase_unit || item.unit || 'units'}</td>
                         <td className="p-2 text-center text-primary">₹{(item.unit_rate || 0).toLocaleString(undefined, { maximumFractionDigits: 2 })}</td>
-                        <td className="p-2 text-center text-secondary">{item.status.replace(/_/g, ' ').toUpperCase()}</td>
+                        <td className="p-2 text-center text-secondary">
+                          <div>{item.status.replace(/_/g, ' ').toUpperCase()}</div>
+                          {item.purchase_qty != null && item.purchase_unit && item.site_unit && (
+                            <div className="text-[11px] text-secondary mt-0.5">
+                              Site: {Number(item.requested_qty || 0).toLocaleString(undefined, { maximumFractionDigits: 3 })} {item.site_unit}
+                            </div>
+                          )}
+                        </td>
                       </tr>
                     ))}
                   </tbody>

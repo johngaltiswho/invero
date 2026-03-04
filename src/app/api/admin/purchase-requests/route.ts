@@ -19,6 +19,11 @@ type PurchaseRequestItemRow = {
   project_material_id: string;
   hsn_code?: string | null;
   item_description?: string | null;
+  site_unit?: string | null;
+  purchase_unit?: string | null;
+  conversion_factor?: number | null;
+  purchase_qty?: number | null;
+  normalized_qty?: number | null;
   requested_qty: number;
   approved_qty?: number | null;
   unit_rate?: number | null;
@@ -149,7 +154,10 @@ async function fetchPurchaseRequests(options: FetchOptions = {}) {
   const itemsByRequest = new Map<string, PurchaseRequestItemRow[]>();
 
   if (requestIds.length > 0) {
-    const { data: itemRows, error: itemsError } = await supabaseAdmin
+    let itemRows: PurchaseRequestItemRow[] | null = null;
+    let itemsError: { message?: string } | null = null;
+
+    const itemsWithConversion = await supabaseAdmin
       .from('purchase_request_items')
       .select(
         `
@@ -158,6 +166,11 @@ async function fetchPurchaseRequests(options: FetchOptions = {}) {
           project_material_id,
           hsn_code,
           item_description,
+          site_unit,
+          purchase_unit,
+          conversion_factor,
+          purchase_qty,
+          normalized_qty,
           requested_qty,
           approved_qty,
           unit_rate,
@@ -177,6 +190,41 @@ async function fetchPurchaseRequests(options: FetchOptions = {}) {
       )
       .in('purchase_request_id', requestIds)
       .order('created_at', { ascending: true });
+    itemRows = (itemsWithConversion.data as PurchaseRequestItemRow[] | null) ?? null;
+    itemsError = itemsWithConversion.error;
+
+    if (itemsError && String(itemsError.message || '').includes('purchase_qty')) {
+      const fallbackItems = await supabaseAdmin
+        .from('purchase_request_items')
+        .select(
+          `
+            id,
+            purchase_request_id,
+            project_material_id,
+            hsn_code,
+            item_description,
+            requested_qty,
+            approved_qty,
+            unit_rate,
+            tax_percent,
+            status,
+            created_at,
+            project_materials:project_material_id (
+              unit,
+              notes,
+              materials:material_id (
+                name,
+                description,
+                hsn_code
+              )
+            )
+          `
+        )
+        .in('purchase_request_id', requestIds)
+        .order('created_at', { ascending: true });
+      itemRows = (fallbackItems.data as PurchaseRequestItemRow[] | null) ?? null;
+      itemsError = fallbackItems.error;
+    }
 
     if (itemsError) {
       throw itemsError;
@@ -230,6 +278,11 @@ async function fetchPurchaseRequests(options: FetchOptions = {}) {
       project_material_id: item.project_material_id,
       hsn_code: item.hsn_code || item.project_materials?.materials?.hsn_code || null,
       item_description: item.item_description || null,
+      site_unit: item.site_unit || item.project_materials?.unit || null,
+      purchase_unit: item.purchase_unit || null,
+      conversion_factor: item.conversion_factor ?? null,
+      purchase_qty: item.purchase_qty ?? null,
+      normalized_qty: item.normalized_qty ?? null,
       requested_qty: item.requested_qty,
       approved_qty: item.approved_qty,
       unit_rate: item.unit_rate,
@@ -242,7 +295,7 @@ async function fetchPurchaseRequests(options: FetchOptions = {}) {
 
     const totalRequestedQty = items.reduce((sum, item) => sum + (item.requested_qty || 0), 0);
     const estimatedTotal = items.reduce((sum, item) => {
-      const qty = Number(item.requested_qty) || 0;
+      const qty = Number(item.purchase_qty ?? item.requested_qty) || 0;
       const rate = Number(item.unit_rate) || 0;
       const taxPercent = Number(item.tax_percent) || 0;
       const base = qty * rate;

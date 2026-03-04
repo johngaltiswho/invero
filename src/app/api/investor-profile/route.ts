@@ -316,16 +316,37 @@ export async function GET() {
     }
 
     if (projectIds.length > 0) {
-      const { data: purchaseRequestItems, error: purchaseRequestError } = await supabase
+      let purchaseRequestItems: any[] | null = null;
+      let purchaseRequestError: { message?: string } | null = null;
+
+      const purchaseItemsWithPurchaseQty = await supabase
         .from('purchase_request_items')
         .select(`
           requested_qty,
+          purchase_qty,
           unit_rate,
           purchase_requests!inner (
             project_id
           )
         `)
         .in('purchase_requests.project_id', projectIds);
+      purchaseRequestItems = purchaseItemsWithPurchaseQty.data as any[] | null;
+      purchaseRequestError = purchaseItemsWithPurchaseQty.error;
+
+      if (purchaseRequestError && String(purchaseRequestError.message || '').includes('purchase_qty')) {
+        const fallbackPurchaseItems = await supabase
+          .from('purchase_request_items')
+          .select(`
+            requested_qty,
+            unit_rate,
+            purchase_requests!inner (
+              project_id
+            )
+          `)
+          .in('purchase_requests.project_id', projectIds);
+        purchaseRequestItems = fallbackPurchaseItems.data as any[] | null;
+        purchaseRequestError = fallbackPurchaseItems.error;
+      }
 
       if (purchaseRequestError) {
         console.error('❌ Error fetching purchase request totals:', purchaseRequestError);
@@ -333,7 +354,7 @@ export async function GET() {
         purchaseRequestItems?.forEach((item: any) => {
           const projectId = item.purchase_requests?.project_id;
           if (!projectId) return;
-          const qty = Number(item.requested_qty) || 0;
+          const qty = Number(item.purchase_qty ?? item.requested_qty) || 0;
           const rate = Number(item.unit_rate) || 0;
           const amount = rate > 0 ? qty * rate : qty;
           const currentTotal = projectFundingMap.get(projectId) || 0;

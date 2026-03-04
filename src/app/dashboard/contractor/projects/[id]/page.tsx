@@ -84,6 +84,8 @@ function IndividualProjectContent(): React.ReactElement {
   const [purchaseHsn, setPurchaseHsn] = useState<{[key: string]: string}>({});
   const [purchaseRemarks, setPurchaseRemarks] = useState<{[key: string]: string}>({});
   const [purchaseQuantities, setPurchaseQuantities] = useState<{[key: string]: string}>({});
+  const [purchaseUnits, setPurchaseUnits] = useState<{[key: string]: string}>({});
+  const [purchaseConversions, setPurchaseConversions] = useState<{[key: string]: string}>({});
   const [selectedVendor, setSelectedVendor] = useState<any>(null);
   const [piFile, setPiFile] = useState<File | null>(null);
   const [rfqQuantities, setRfqQuantities] = useState<{[key: string]: string}>({});
@@ -91,6 +93,7 @@ function IndividualProjectContent(): React.ReactElement {
   const [materialsCatalog, setMaterialsCatalog] = useState<Array<{
     id: string;
     name: string;
+    hsn_code?: string | null;
     category?: string | null;
     unit?: string | null;
     description?: string | null;
@@ -110,11 +113,11 @@ function IndividualProjectContent(): React.ReactElement {
     materialSearch: '',
     quantity: '',
     unit: 'bags',
-    notes: ''
+    description: ''
   });
   const [showAddMaterial, setShowAddMaterial] = useState(false);
   const [showMiniRequestDialog, setShowMiniRequestDialog] = useState(false);
-  const [miniRequestForm, setMiniRequestForm] = useState({ name: '', category: '', unit: '' });
+  const [miniRequestForm, setMiniRequestForm] = useState({ name: '', hsn_code: '', category: '', unit: '' });
   const [miniRequestSubmitting, setMiniRequestSubmitting] = useState(false);
   const [miniRequestSuccess, setMiniRequestSuccess] = useState(false);
 
@@ -177,6 +180,29 @@ function IndividualProjectContent(): React.ReactElement {
 
     fetchMaterialsCatalog();
   }, [showAddMaterial]);
+
+  useEffect(() => {
+    if (!showBatchPurchaseDialog || selectedMaterials.size === 0) return;
+    setPurchaseUnits((prev) => {
+      const next = { ...prev };
+      selectedMaterials.forEach((materialId) => {
+        if (!next[materialId]) {
+          const material = projectMaterials.find((m) => m.id === materialId);
+          next[materialId] = material?.unit || 'units';
+        }
+      });
+      return next;
+    });
+    setPurchaseConversions((prev) => {
+      const next = { ...prev };
+      selectedMaterials.forEach((materialId) => {
+        if (!next[materialId]) {
+          next[materialId] = '1';
+        }
+      });
+      return next;
+    });
+  }, [showBatchPurchaseDialog, selectedMaterials, projectMaterials]);
 
   const fetchProjectData = async () => {
     try {
@@ -305,7 +331,7 @@ function IndividualProjectContent(): React.ReactElement {
           material_id: materialForm.materialId,
           quantity: quantityValue,
           unit: materialForm.unit.trim(),
-          notes: materialForm.notes.trim() || undefined,
+          notes: materialForm.description.trim() || undefined,
           source_type: 'manual'
         })
       });
@@ -320,7 +346,7 @@ function IndividualProjectContent(): React.ReactElement {
         materialSearch: '',
         quantity: '',
         unit: 'bags',
-        notes: ''
+        description: ''
       });
       setShowAddMaterial(false);
       await fetchProjectMaterials(project.id);
@@ -792,6 +818,29 @@ function IndividualProjectContent(): React.ReactElement {
     });
   };
 
+  const getRequiredQty = (materialId: string) => {
+    return parseFloat(purchaseQuantities[materialId] || '0') || 0;
+  };
+
+  const getConversionFactor = (materialId: string) => {
+    const parsed = parseFloat(purchaseConversions[materialId] || '1');
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : 1;
+  };
+
+  // Purchase qty is auto-derived and rounded up to avoid under-procurement.
+  const getComputedPurchaseQty = (materialId: string) => {
+    const requiredQty = getRequiredQty(materialId);
+    if (requiredQty <= 0) return 0;
+    const conversionFactor = getConversionFactor(materialId);
+    return Math.ceil(requiredQty / conversionFactor);
+  };
+
+  const getNormalizedCoverageQty = (materialId: string) => {
+    const purchaseQty = getComputedPurchaseQty(materialId);
+    const conversionFactor = getConversionFactor(materialId);
+    return purchaseQty * conversionFactor;
+  };
+
   const getStatusColor = (status: string) => {
     switch (status) {
       case 'draft': return 'bg-yellow-500/20 text-yellow-400';
@@ -1188,7 +1237,7 @@ function IndividualProjectContent(): React.ReactElement {
                   onSubmit={handleManualMaterialSubmit}
                   className="mb-6 bg-neutral-darker border border-neutral-medium rounded-lg p-4"
                 >
-                  <div className="grid md:grid-cols-5 gap-4">
+                  <div className="grid md:grid-cols-6 gap-4">
                     <div className="md:col-span-3 relative">
                       <label className="block text-xs text-secondary mb-1">Material *</label>
                       <input
@@ -1242,7 +1291,7 @@ function IndividualProjectContent(): React.ReactElement {
                               >
                                 <div className="font-medium">{material.name}</div>
                                 <div className="text-xs text-secondary">
-                                  {(material.category || 'Uncategorized')} • {material.unit || 'unit'}
+                                  {(material.category || 'Uncategorized')} • {material.unit || 'unit'}{material.hsn_code ? ` • HSN ${material.hsn_code}` : ''}
                                 </div>
                               </button>
                             ))}
@@ -1261,7 +1310,7 @@ function IndividualProjectContent(): React.ReactElement {
                               <button
                                 type="button"
                                 onClick={() => {
-                                  setMiniRequestForm({ name: materialForm.materialSearch, category: '', unit: '' });
+                                  setMiniRequestForm({ name: materialForm.materialSearch, hsn_code: '', category: '', unit: '' });
                                   setMiniRequestSuccess(false);
                                   setShowMiniRequestDialog(true);
                                 }}
@@ -1287,6 +1336,18 @@ function IndividualProjectContent(): React.ReactElement {
                       />
                     </div>
                     <div>
+                      <label className="block text-xs text-secondary mb-1">HSN</label>
+                      <input
+                        type="text"
+                        value={
+                          materialsCatalog.find((material) => material.id === materialForm.materialId)?.hsn_code || ''
+                        }
+                        readOnly
+                        className="w-full px-3 py-2 rounded-lg border border-neutral-medium bg-neutral-darker text-secondary"
+                        placeholder="Auto-filled"
+                      />
+                    </div>
+                    <div>
                       <label className="block text-xs text-secondary mb-1">Quantity *</label>
                       <input
                         type="number"
@@ -1300,23 +1361,31 @@ function IndividualProjectContent(): React.ReactElement {
                     </div>
                     <div>
                       <label className="block text-xs text-secondary mb-1">Unit *</label>
-                      <input
-                        type="text"
+                      <select
                         value={materialForm.unit}
                         onChange={(e) => setMaterialForm((prev) => ({ ...prev, unit: e.target.value }))}
                         className="w-full px-3 py-2 rounded-lg border border-neutral-medium bg-neutral-dark text-primary focus:outline-none focus:ring-2 focus:ring-accent-amber"
-                        placeholder="bags / kg / m"
                         required
-                      />
+                      >
+                        <option value="">Select unit</option>
+                        {materialForm.unit && !UNIT_OPTIONS.includes(materialForm.unit) && (
+                          <option value={materialForm.unit}>{materialForm.unit}</option>
+                        )}
+                        {UNIT_OPTIONS.map((u) => (
+                          <option key={u} value={u}>
+                            {u}
+                          </option>
+                        ))}
+                      </select>
                     </div>
-                    <div className="md:col-span-5">
-                      <label className="block text-xs text-secondary mb-1">Notes</label>
+                    <div className="md:col-span-6">
+                      <label className="block text-xs text-secondary mb-1">Description</label>
                       <input
                         type="text"
-                        value={materialForm.notes}
-                        onChange={(e) => setMaterialForm((prev) => ({ ...prev, notes: e.target.value }))}
+                        value={materialForm.description}
+                        onChange={(e) => setMaterialForm((prev) => ({ ...prev, description: e.target.value }))}
                         className="w-full px-3 py-2 rounded-lg border border-neutral-medium bg-neutral-dark text-primary focus:outline-none focus:ring-2 focus:ring-accent-amber"
-                        placeholder="Optional notes or context"
+                        placeholder="Brand / size / grade / specification"
                       />
                     </div>
                   </div>
@@ -1397,7 +1466,6 @@ function IndividualProjectContent(): React.ReactElement {
                           })();
 
                           const sourceText =
-                            material.notes ||
                             (material.source_file_name
                               ? `BOQ Summary from ${material.source_file_name}`
                               : material.source_type === 'boq_analysis'
@@ -1425,7 +1493,7 @@ function IndividualProjectContent(): React.ReactElement {
                                     {material.name || 'Unknown Material'}
                                   </div>
                                   <div className="text-xs text-secondary">
-                                    {material.description || 'No description'}
+                                    {material.notes || material.description || 'No description'}
                                   </div>
                                 </td>
                                 <td className="p-3 text-secondary text-xs">
@@ -1477,6 +1545,12 @@ function IndividualProjectContent(): React.ReactElement {
                                               <div className="text-secondary mt-1">
                                                 Qty Requested: {item.requested_qty}{' '}
                                                 {material.unit || 'units'}
+                                                {item.purchase_qty
+                                                  ? ` • Purchase: ${item.purchase_qty} ${item.purchase_unit || material.unit || 'units'}`
+                                                  : ''}
+                                                {item.normalized_qty
+                                                  ? ` • Coverage: ${item.normalized_qty} ${item.site_unit || material.unit || 'units'}`
+                                                  : ''}
                                                 {item.approved_qty ? ` • Approved: ${item.approved_qty}` : ''}
                                                 {item.hsn_code ? ` • HSN: ${item.hsn_code}` : ''}
                                               </div>
@@ -1883,6 +1957,9 @@ function IndividualProjectContent(): React.ReactElement {
                             <h5 className="font-medium text-primary">
                               {material.name || 'Unknown Material'}
                             </h5>
+                            <p className="text-xs text-secondary mt-1">
+                              {material.notes || material.description || 'No description'}
+                            </p>
                             <div className="text-xs text-secondary space-x-3 mt-1">
                               <span>Required: {material.required_qty || 0} {material.unit || 'units'}</span>
                               <span>Requested: {material.requested_qty || 0}</span>
@@ -1890,11 +1967,11 @@ function IndividualProjectContent(): React.ReactElement {
                             </div>
                           </div>
                           
-                          <div className="grid grid-cols-1 md:grid-cols-5 gap-3">
-                            {/* Quantity */}
+                          <div className="grid grid-cols-1 md:grid-cols-6 gap-3">
+                            {/* Required Quantity (site unit) */}
                             <div>
                               <label className="block text-xs font-medium text-secondary mb-1">
-                                Quantity *
+                                Required Qty ({material.unit || 'unit'}) *
                               </label>
                               <input
                                 type="number"
@@ -1907,6 +1984,63 @@ function IndividualProjectContent(): React.ReactElement {
                                 max={Math.max((material.required_qty || 0) - (material.requested_qty || 0), 0)}
                                 className="w-full px-2 py-1 bg-neutral-dark border border-neutral-medium rounded text-primary text-sm focus:border-accent-amber focus:outline-none"
                               />
+                            </div>
+
+                            {/* Purchase Unit */}
+                            <div>
+                              <label className="block text-xs font-medium text-secondary mb-1">
+                                Purchase Unit *
+                              </label>
+                              <select
+                                value={purchaseUnits[material.id] || ''}
+                                onChange={(e) => setPurchaseUnits(prev => ({
+                                  ...prev,
+                                  [material.id]: e.target.value
+                                }))}
+                                className="w-full px-2 py-1 bg-neutral-dark border border-neutral-medium rounded text-primary text-sm focus:border-accent-amber focus:outline-none"
+                              >
+                                <option value="">Select unit</option>
+                                {purchaseUnits[material.id] &&
+                                  !UNIT_OPTIONS.includes(purchaseUnits[material.id]) && (
+                                    <option value={purchaseUnits[material.id]}>
+                                      {purchaseUnits[material.id]}
+                                    </option>
+                                  )}
+                                {UNIT_OPTIONS.map((unitOption) => (
+                                  <option key={unitOption} value={unitOption}>
+                                    {unitOption}
+                                  </option>
+                                ))}
+                              </select>
+                            </div>
+
+                            {/* Conversion factor */}
+                            <div>
+                              <label className="block text-xs font-medium text-secondary mb-1">
+                                1 Unit = X {material.unit || 'unit'}
+                              </label>
+                              <input
+                                type="number"
+                                step="0.0001"
+                                min="0.0001"
+                                value={purchaseConversions[material.id] || ''}
+                                onChange={(e) => setPurchaseConversions(prev => ({
+                                  ...prev,
+                                  [material.id]: e.target.value
+                                }))}
+                                placeholder="e.g. 6"
+                                className="w-full px-2 py-1 bg-neutral-dark border border-neutral-medium rounded text-primary text-sm focus:border-accent-amber focus:outline-none"
+                              />
+                            </div>
+
+                            {/* Auto purchase qty */}
+                            <div>
+                              <label className="block text-xs font-medium text-secondary mb-1">
+                                Purchase Qty (Auto)
+                              </label>
+                              <div className="px-2 py-1 bg-neutral-medium/20 border border-neutral-medium rounded text-primary text-sm">
+                                {getComputedPurchaseQty(material.id).toLocaleString(undefined, { maximumFractionDigits: 3 })}
+                              </div>
                             </div>
                             
                             {/* Rate */}
@@ -1951,7 +2085,7 @@ function IndividualProjectContent(): React.ReactElement {
                               </label>
                               <input
                                 type="text"
-                                value={purchaseHsn[material.id] || ''}
+                                value={purchaseHsn[material.id] ?? material.hsn_code ?? ''}
                                 onChange={(e) => setPurchaseHsn(prev => ({
                                   ...prev,
                                   [material.id]: e.target.value.toUpperCase().slice(0, 16)
@@ -1969,20 +2103,25 @@ function IndividualProjectContent(): React.ReactElement {
                               <div className="px-2 py-1 bg-neutral-medium/20 border border-neutral-medium rounded text-primary text-sm">
                                 {(() => {
                                   const qty = parseFloat(purchaseQuantities[material.id] || '0');
+                                  const purchaseQty = getComputedPurchaseQty(material.id);
                                   const rate = purchaseRates[material.id] || 0;
                                   const tax = purchaseTax[material.id] || 0;
-                                  const subtotal = qty * rate;
+                                  const subtotal = purchaseQty * rate;
                                   const total = subtotal + (subtotal * tax / 100);
                                   return formatCurrency(total || 0);
                                 })()}
                               </div>
                             </div>
                           </div>
+
+                          <div className="mt-2 text-xs text-secondary">
+                            Coverage after rounding: {getNormalizedCoverageQty(material.id).toLocaleString(undefined, { maximumFractionDigits: 3 })} {material.unit || 'units'}
+                          </div>
                           
-                          {/* Remarks */}
+                          {/* Description / specs */}
                           <div className="mt-3">
                             <label className="block text-xs font-medium text-secondary mb-1">
-                              Remarks
+                              Description / Specs
                             </label>
                             <textarea
                               value={purchaseRemarks[material.id] || ''}
@@ -1990,7 +2129,7 @@ function IndividualProjectContent(): React.ReactElement {
                                 ...prev,
                                 [material.id]: e.target.value
                               }))}
-                              placeholder="Additional notes or specifications..."
+                              placeholder="Brand / size / grade / model / specification"
                               rows={2}
                               className="w-full px-2 py-1 bg-neutral-dark border border-neutral-medium rounded text-primary text-sm focus:border-accent-amber focus:outline-none resize-none"
                             />
@@ -2015,7 +2154,7 @@ function IndividualProjectContent(): React.ReactElement {
                       <span className="text-primary">
                         {(() => {
                           const total = Array.from(selectedMaterials).reduce((sum, materialId) => {
-                            const qty = parseFloat(purchaseQuantities[materialId] || '0');
+                            const qty = getComputedPurchaseQty(materialId);
                             const rate = purchaseRates[materialId] || 0;
                             const tax = purchaseTax[materialId] || 0;
                             const subtotal = qty * rate;
@@ -2038,6 +2177,8 @@ function IndividualProjectContent(): React.ReactElement {
                     setPurchaseTax({});
                     setPurchaseHsn({});
                     setPurchaseRemarks({});
+                    setPurchaseUnits({});
+                    setPurchaseConversions({});
                     setSelectedVendor(null);
                   }}
                   className="px-4 py-2 text-secondary hover:text-primary transition-colors"
@@ -2050,19 +2191,23 @@ function IndividualProjectContent(): React.ReactElement {
                     const missingData = Array.from(selectedMaterials).filter(materialId => 
                       !purchaseQuantities[materialId] || 
                       parseFloat(purchaseQuantities[materialId]) <= 0 ||
+                      !purchaseUnits[materialId] ||
+                      purchaseUnits[materialId].trim().length === 0 ||
+                      !purchaseConversions[materialId] ||
+                      parseFloat(purchaseConversions[materialId]) <= 0 ||
                       !purchaseRates[materialId] || 
                       purchaseRates[materialId] <= 0
                     );
                     
                     if (missingData.length > 0) {
-                      alert('Please fill in quantity, rate, and tax for all selected materials');
+                      alert('Please fill required qty, purchase unit, conversion, rate, and tax for all selected materials');
                       return;
                     }
                     
                     // Validate quantities don't exceed available quantities
-                    const invalidQuantities = Array.from(selectedMaterials).filter(materialId => {
+                      const invalidQuantities = Array.from(selectedMaterials).filter(materialId => {
                       const material = projectMaterials.find(m => m.id === materialId);
-                      const requestedQty = parseFloat(purchaseQuantities[materialId] || '0');
+                      const requestedQty = getRequiredQty(materialId);
                       const remainingQty = Math.max((material?.required_qty || 0) - (material?.requested_qty || 0), 0);
                       return requestedQty > remainingQty;
                     });
@@ -2087,10 +2232,27 @@ function IndividualProjectContent(): React.ReactElement {
                           purchaseRemarks[materialId] || ''
                         ).filter(remark => remark).join('; ') || null,
                         items: Array.from(selectedMaterials).map(materialId => ({
-                          project_material_id: materialId,
-                          hsn_code: purchaseHsn[materialId]?.trim() || undefined,
-                          item_description: purchaseRemarks[materialId]?.trim() || undefined,
-                          requested_qty: parseFloat(purchaseQuantities[materialId] || '0'),
+                          ...(() => {
+                            const material = projectMaterials.find(m => m.id === materialId);
+                            const typedDescription = purchaseRemarks[materialId]?.trim();
+                            const fallbackDescription = material?.notes || material?.description || undefined;
+                            const typedHsn = purchaseHsn[materialId]?.trim();
+                            const fallbackHsn = material?.hsn_code?.trim() || undefined;
+                            const conversionFactor = getConversionFactor(materialId);
+                            const requiredQty = getRequiredQty(materialId);
+                            const purchaseQty = getComputedPurchaseQty(materialId);
+                            return {
+                              project_material_id: materialId,
+                              hsn_code: typedHsn || fallbackHsn,
+                              item_description: typedDescription || fallbackDescription,
+                              site_unit: material?.unit || undefined,
+                              purchase_unit: purchaseUnits[materialId]?.trim() || material?.unit || undefined,
+                              conversion_factor: conversionFactor,
+                              purchase_qty: purchaseQty,
+                              normalized_qty: purchaseQty * conversionFactor,
+                              requested_qty: requiredQty,
+                            };
+                          })(),
                           unit_rate: purchaseRates[materialId] || 0,
                           tax_percent: purchaseTax[materialId] || 0
                         }))
@@ -2122,6 +2284,8 @@ function IndividualProjectContent(): React.ReactElement {
                         setPurchaseTax({});
                         setPurchaseHsn({});
                         setPurchaseRemarks({});
+                        setPurchaseUnits({});
+                        setPurchaseConversions({});
                         setSelectedVendor(null);
                       } else {
                         console.error('❌ Failed to create purchase request:', result);
@@ -2249,6 +2413,16 @@ function IndividualProjectContent(): React.ReactElement {
                     />
                   </div>
                   <div>
+                    <label className="block text-xs font-medium text-secondary mb-1">HSN Code</label>
+                    <input
+                      type="text"
+                      value={miniRequestForm.hsn_code}
+                      onChange={e => setMiniRequestForm(prev => ({ ...prev, hsn_code: e.target.value }))}
+                      placeholder="Optional HSN/SAC"
+                      className="w-full px-3 py-2 bg-neutral-darker border border-neutral-medium rounded-lg text-primary text-sm focus:border-accent-amber focus:outline-none"
+                    />
+                  </div>
+                  <div>
                     <label className="block text-xs font-medium text-secondary mb-1">Category *</label>
                     <input
                       type="text"
@@ -2288,6 +2462,7 @@ function IndividualProjectContent(): React.ReactElement {
                             headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify({
                               name: miniRequestForm.name.trim(),
+                              hsn_code: miniRequestForm.hsn_code?.trim() || undefined,
                               category: miniRequestForm.category.trim(),
                               unit: miniRequestForm.unit,
                               approval_status: 'pending',
