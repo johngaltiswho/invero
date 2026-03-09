@@ -232,7 +232,7 @@ export function generateInvoicePDF(params: InvoiceGenerationParams): Buffer {
   const totalBoxX = PAGE_W - MARGIN - totalBoxW;
   doc.rect(totalBoxX, y, totalBoxW, 23);
 
-  // Show GST rate over taxable base only (exclude non-taxable lines like platform fee)
+  // Show GST rate over taxable base only (sum of lines that carry tax_percent > 0)
   const taxableBase = params.lineItems.reduce((sum, item) => {
     const taxPct = Number(item.tax_percent) || 0;
     return taxPct > 0 ? sum + (Number(item.amount) || 0) : sum;

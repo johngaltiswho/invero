@@ -37,8 +37,11 @@ type PurchaseRequestRow = {
   id: string;
   project_id: string;
   contractor_id: string;
+  dispatched_at?: string | null;
   purchase_request_items?: PurchaseRequestItem[] | null;
 };
+
+const PLATFORM_FEE_GST_PERCENT = 18;
 
 function supabaseAdmin() {
   return createClient(
@@ -160,6 +163,7 @@ export async function POST(request: NextRequest) {
         id,
         project_id,
         contractor_id,
+        dispatched_at,
         remarks,
         purchase_request_items (
           id,
@@ -198,6 +202,7 @@ export async function POST(request: NextRequest) {
           id,
           project_id,
           contractor_id,
+          dispatched_at,
           remarks,
           purchase_request_items (
             id,
@@ -279,6 +284,7 @@ export async function POST(request: NextRequest) {
     const platformFeeAmount = Math.min(materialSubtotal * platformFeeRate, platformFeeCap);
 
     if (platformFeeAmount > 0) {
+      const platformFeeTaxAmount = platformFeeAmount * (PLATFORM_FEE_GST_PERCENT / 100);
       lineItems.push({
         material_name: 'Platform Fee',
         hsn_code: '996111',
@@ -286,10 +292,10 @@ export async function POST(request: NextRequest) {
         unit: 'service',
         quantity: 1,
         unit_rate: platformFeeAmount,
-        tax_percent: 0,
+        tax_percent: PLATFORM_FEE_GST_PERCENT,
         amount: platformFeeAmount,
-        tax_amount: 0,
-        total: platformFeeAmount,
+        tax_amount: platformFeeTaxAmount,
+        total: platformFeeAmount + platformFeeTaxAmount,
       });
     }
 
@@ -300,7 +306,7 @@ export async function POST(request: NextRequest) {
     // Preserve invoice number/id when force-regenerating an existing invoice
     const { data: invNumData } = await supabase.rpc('next_invoice_number');
     const invoiceNumber = existing?.invoice_number || invNumData || `INV-${Date.now()}`;
-    const invoiceDate = new Date();
+    const invoiceDate = pr.dispatched_at ? new Date(pr.dispatched_at) : new Date();
     const invoiceId = existing?.id || crypto.randomUUID();
 
     // Generate PDF
