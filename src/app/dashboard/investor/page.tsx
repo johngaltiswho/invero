@@ -2,9 +2,9 @@
 
 export const dynamic = 'force-dynamic';
 
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { DashboardLayout } from '@/components/DashboardLayout';
-import { LoadingSpinner } from '@/components';
+import { LoadingSpinner, AddCapitalModal } from '@/components';
 import { useUser } from '@clerk/nextjs';
 import { useRouter } from 'next/navigation';
 import { useInvestor } from '@/contexts/InvestorContext';
@@ -13,6 +13,7 @@ export default function InvestorDashboard(): React.ReactElement {
   const { user, isLoaded } = useUser();
   const router = useRouter();
   const { investor, loading: investorLoading, error } = useInvestor();
+  const [isAddCapitalModalOpen, setIsAddCapitalModalOpen] = useState(false);
 
   // Redirect if not authenticated
   useEffect(() => {
@@ -217,10 +218,23 @@ export default function InvestorDashboard(): React.ReactElement {
       <div className="p-4 sm:p-6">
         {/* Header */}
         <div className="mb-8">
-          <h1 className="text-2xl sm:text-3xl font-bold text-primary mb-2">Portfolio Overview</h1>
-          <p className="text-secondary mb-4">
-            Welcome back, {(investor as any)?.investorName || (investor as any)?.name || 'Investor'}! Real-time insights into your project financing investments
-          </p>
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-4">
+            <div>
+              <h1 className="text-2xl sm:text-3xl font-bold text-primary mb-2">Portfolio Overview</h1>
+              <p className="text-secondary">
+                Welcome back, {(investor as any)?.investorName || (investor as any)?.name || 'Investor'}! Real-time insights into your project financing investments
+              </p>
+            </div>
+            <button
+              onClick={() => setIsAddCapitalModalOpen(true)}
+              className="bg-accent-amber hover:bg-accent-amber/90 text-neutral-darker font-semibold px-6 py-3 rounded-lg transition-colors flex items-center justify-center gap-2 whitespace-nowrap"
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+              </svg>
+              Add Capital
+            </button>
+          </div>
         </div>
 
         {/* Key Metrics */}
@@ -440,6 +454,11 @@ export default function InvestorDashboard(): React.ReactElement {
           )}
         </div>
       </div>
+
+      <AddCapitalModal
+        isOpen={isAddCapitalModalOpen}
+        onClose={() => setIsAddCapitalModalOpen(false)}
+      />
     </DashboardLayout>
   );
 }

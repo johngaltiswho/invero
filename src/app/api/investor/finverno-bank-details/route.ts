@@ -9,7 +9,7 @@ const FINVERNO_BANK_DETAILS = {
   ifsc_code: 'SBIN0030495',
   account_type: 'Current Account',
   branch_name: '',
-  upi_id: '',
+  upi_id: 'finvernoprivatelimited@sbi',
 } as const;
 
 async function requireActiveInvestor() {
