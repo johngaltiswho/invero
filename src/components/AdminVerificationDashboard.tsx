@@ -219,6 +219,7 @@ export default function AdminVerificationDashboard(): React.ReactElement {
   const [assigningVendor, setAssigningVendor] = useState(false);
   const [dispatchLoading, setDispatchLoading] = useState(false);
   const [disputeWindowHours, setDisputeWindowHours] = useState(48);
+  const [generatingPO, setGeneratingPO] = useState(false);
   const [showPurchaseModal, setShowPurchaseModal] = useState(false);
   const [purchaseAdminNotes, setPurchaseAdminNotes] = useState('');
 
@@ -623,6 +624,47 @@ export default function AdminVerificationDashboard(): React.ReactElement {
       alert('Error assigning vendor');
     } finally {
       setAssigningVendor(false);
+    }
+  };
+
+  const handleGeneratePO = async () => {
+    if (!selectedPurchaseRequest) return;
+
+    if (!selectedPurchaseRequest.vendor_id) {
+      alert('Please assign a vendor before generating Purchase Order');
+      return;
+    }
+
+    const confirmed = confirm('Generate Purchase Order for this request?');
+    if (!confirmed) return;
+
+    setGeneratingPO(true);
+    try {
+      const response = await fetch(`/api/admin/purchase-orders/${selectedPurchaseRequest.id}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+      });
+
+      const result = await response.json();
+      if (result.success) {
+        alert(`Purchase Order ${result.data.po_number} generated successfully!`);
+
+        const refreshed = await loadPurchaseRequests();
+        const updated = (refreshed as PurchaseRequest[]).find(r => r.id === selectedPurchaseRequest.id) || null;
+        setSelectedPurchaseRequest(updated);
+
+        // Open PO in new tab
+        if (result.data.po_url) {
+          window.open(result.data.po_url, '_blank');
+        }
+      } else {
+        alert(result.error || 'Failed to generate Purchase Order');
+      }
+    } catch (err) {
+      console.error('Error generating PO:', err);
+      alert('Error generating Purchase Order');
+    } finally {
+      setGeneratingPO(false);
     }
   };
 
@@ -2177,6 +2219,22 @@ export default function AdminVerificationDashboard(): React.ReactElement {
                       Reject
                     </Button>
                   </div>
+                </div>
+              )}
+
+              {(['approved', 'funded'].includes(selectedPurchaseRequest.status)) && selectedPurchaseRequest.vendor_id && (
+                <div className="bg-green-500/5 border border-green-500/20 rounded-lg p-4">
+                  <h3 className="text-base font-semibold text-primary mb-2">Generate Purchase Order</h3>
+                  <p className="text-sm text-secondary mb-3">
+                    Create a Purchase Order PDF for the assigned vendor ({selectedPurchaseRequest.vendor_name}).
+                  </p>
+                  <Button
+                    variant="primary"
+                    onClick={handleGeneratePO}
+                    disabled={generatingPO}
+                  >
+                    {generatingPO ? 'Generating PO...' : 'Generate Purchase Order'}
+                  </Button>
                 </div>
               )}
 
