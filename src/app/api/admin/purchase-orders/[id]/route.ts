@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { auth } from '@clerk/nextjs/server';
+import { currentUser } from '@clerk/nextjs/server';
 import { createClient } from '@supabase/supabase-js';
+import { requireAdmin } from '@/lib/admin-auth';
 import {
   generatePOPDF,
   uploadPOPDF,
@@ -67,22 +68,14 @@ function supabaseAdmin() {
  */
 export async function POST(_request: NextRequest, context: RouteContext) {
   try {
-    const { userId } = await auth();
-    if (!userId) {
+    // Verify admin access
+    await requireAdmin();
+    const user = await currentUser();
+    if (!user) {
       return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
     }
 
-    // Verify admin role
     const supabase = supabaseAdmin();
-    const { data: admin } = await supabase
-      .from('admins')
-      .select('id')
-      .eq('clerk_user_id', userId)
-      .single();
-
-    if (!admin) {
-      return NextResponse.json({ error: 'Admin access required' }, { status: 403 });
-    }
 
     const { id: purchaseRequestId } = await context.params;
     if (!purchaseRequestId) {
@@ -243,7 +236,7 @@ export async function POST(_request: NextRequest, context: RouteContext) {
         line_items: lineItems,
         po_url: poUrl,
         status: 'generated',
-        generated_by: admin.id,
+        generated_by: user.id,
         created_at: poDate.toISOString(),
         updated_at: poDate.toISOString(),
       })
