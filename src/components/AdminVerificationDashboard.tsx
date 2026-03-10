@@ -2229,7 +2229,9 @@ export default function AdminVerificationDashboard(): React.ReactElement {
                 </div>
               )}
 
-              {(['approved', 'funded'].includes(selectedPurchaseRequest.status)) && selectedPurchaseRequest.vendor_id && (
+              {(['approved', 'funded', 'po_generated'].includes(selectedPurchaseRequest.status)) &&
+                selectedPurchaseRequest.vendor_id &&
+                (!selectedPurchaseRequest.delivery_status || selectedPurchaseRequest.delivery_status === 'not_dispatched') && (
                 <div className="bg-green-500/5 border border-green-500/20 rounded-lg p-4">
                   <h3 className="text-base font-semibold text-primary mb-2">Generate Purchase Order</h3>
                   <p className="text-sm text-secondary mb-3">

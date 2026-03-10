@@ -206,10 +206,27 @@ export async function POST(_request: NextRequest, context: RouteContext) {
     }
 
     // Build line items for PO
-    const lineItems: POLineItem[] = items.map((item) => {
-      const material = Array.isArray(item.project_materials?.materials)
-        ? item.project_materials.materials[0]
-        : null;
+    const lineItems: POLineItem[] = items.map((item, index) => {
+      console.log(`[PO Generation] Item ${index}:`, {
+        id: item.id,
+        project_materials: item.project_materials,
+        has_materials: !!item.project_materials?.materials,
+        materials_type: typeof item.project_materials?.materials,
+        materials_is_array: Array.isArray(item.project_materials?.materials),
+      });
+
+      // Handle different possible structures
+      let material = null;
+      if (item.project_materials) {
+        if (Array.isArray(item.project_materials.materials)) {
+          material = item.project_materials.materials[0];
+        } else if (item.project_materials.materials) {
+          // materials might be an object instead of array
+          material = item.project_materials.materials;
+        }
+      }
+
+      console.log(`[PO Generation] Item ${index} material:`, material);
 
       const qty = Number(item.normalized_qty || item.purchase_qty || item.requested_qty || 0);
       const rate = Number(item.unit_rate || 0);
@@ -260,20 +277,6 @@ export async function POST(_request: NextRequest, context: RouteContext) {
       grandTotal,
       remarks: typedPR.remarks || undefined,
     });
-
-    // Update purchase request status to 'po_generated'
-    const { error: prUpdateError } = await supabase
-      .from('purchase_requests')
-      .update({
-        status: 'po_generated',
-        updated_at: new Date().toISOString(),
-      })
-      .eq('id', purchaseRequestId);
-
-    if (prUpdateError) {
-      console.error('[PO Generation] Error updating purchase request status:', prUpdateError);
-      // Don't fail the request if status update fails
-    }
 
     console.log('[PO Generation] Successfully generated PO:', poNumber);
 
