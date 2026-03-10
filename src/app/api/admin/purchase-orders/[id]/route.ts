@@ -107,7 +107,7 @@ export async function POST(_request: NextRequest, context: RouteContext) {
 
     console.log('[PO Generation] Basic PR found:', prBasic);
 
-    // Fetch purchase request with all details
+    // Fetch purchase request with items, contractor, and vendor
     const { data: pr, error: prError } = await supabase
       .from('purchase_requests')
       .select(`
@@ -117,7 +117,7 @@ export async function POST(_request: NextRequest, context: RouteContext) {
         vendor_id,
         status,
         remarks,
-        purchase_request_items!inner (
+        purchase_request_items (
           id,
           hsn_code,
           item_description,
@@ -127,7 +127,7 @@ export async function POST(_request: NextRequest, context: RouteContext) {
           unit_rate,
           tax_percent,
           purchase_unit,
-          project_materials!inner (
+          project_materials (
             materials (
               name,
               unit,
@@ -135,10 +135,7 @@ export async function POST(_request: NextRequest, context: RouteContext) {
             )
           )
         ),
-        projects!inner (
-          project_name
-        ),
-        contractors!inner (
+        contractors (
           company_name,
           gstin,
           email
@@ -171,7 +168,17 @@ export async function POST(_request: NextRequest, context: RouteContext) {
 
     console.log('[PO Generation] Successfully fetched PR:', pr.id, 'Status:', pr.status);
 
-    const typedPR = pr as unknown as PurchaseRequestRow;
+    // Fetch project details separately (no FK relationship)
+    const { data: project } = await supabase
+      .from('projects')
+      .select('project_name, id')
+      .eq('id', pr.project_id)
+      .single();
+
+    const typedPR = {
+      ...pr,
+      projects: project ? { project_name: project.project_name } : null
+    } as unknown as PurchaseRequestRow;
 
     // Validate status - can only generate PO for approved or funded requests
     const validStatuses = ['approved', 'funded'];
