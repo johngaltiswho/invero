@@ -92,7 +92,7 @@ export async function POST(_request: NextRequest, context: RouteContext) {
     // First, verify the purchase request exists
     const { data: prBasic, error: prBasicError } = await supabase
       .from('purchase_requests')
-      .select('id, status, vendor_id, project_id, contractor_id')
+      .select('id, status, vendor_id, project_id, contractor_id, delivery_status')
       .eq('id', purchaseRequestId)
       .single();
 
@@ -179,11 +179,20 @@ export async function POST(_request: NextRequest, context: RouteContext) {
       projects: project ? { project_name: project.project_name } : null
     } as unknown as PurchaseRequestRow;
 
-    // Validate status - can only generate PO for approved or funded requests
-    const validStatuses = ['approved', 'funded'];
+    // Validate status - can generate PO for approved, funded, or po_generated (regenerate)
+    const validStatuses = ['approved', 'funded', 'po_generated'];
     if (!validStatuses.includes(typedPR.status)) {
       return NextResponse.json(
-        { error: `Cannot generate PO for purchase request in '${typedPR.status}' status. Must be 'approved' or 'funded'.` },
+        { error: `Cannot generate PO for purchase request in '${typedPR.status}' status. Must be 'approved', 'funded', or 'po_generated'.` },
+        { status: 400 }
+      );
+    }
+
+    // Don't allow PO generation after dispatch
+    const prWithDelivery = pr as any;
+    if (prWithDelivery.delivery_status && prWithDelivery.delivery_status !== 'not_dispatched') {
+      return NextResponse.json(
+        { error: 'Cannot generate PO after dispatch has started' },
         { status: 400 }
       );
     }
