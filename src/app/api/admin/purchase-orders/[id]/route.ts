@@ -58,7 +58,13 @@ type PurchaseRequestRow = {
 function supabaseAdmin() {
   return createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!
+    process.env.SUPABASE_SERVICE_ROLE_KEY!,
+    {
+      auth: {
+        autoRefreshToken: false,
+        persistSession: false
+      }
+    }
   );
 }
 
@@ -82,6 +88,25 @@ export async function POST(_request: NextRequest, context: RouteContext) {
       return NextResponse.json({ error: 'Purchase request ID required' }, { status: 400 });
     }
 
+    console.log('[PO Generation] Fetching purchase request:', purchaseRequestId);
+
+    // First, verify the purchase request exists
+    const { data: prBasic, error: prBasicError } = await supabase
+      .from('purchase_requests')
+      .select('id, status, vendor_id, project_id, contractor_id')
+      .eq('id', purchaseRequestId)
+      .single();
+
+    if (prBasicError || !prBasic) {
+      console.error('[PO Generation] PR not found in basic query:', prBasicError);
+      return NextResponse.json({
+        error: 'Purchase request not found',
+        details: prBasicError?.message || 'Purchase request does not exist'
+      }, { status: 404 });
+    }
+
+    console.log('[PO Generation] Basic PR found:', prBasic);
+
     // Fetch purchase request with all details
     const { data: pr, error: prError } = await supabase
       .from('purchase_requests')
@@ -92,7 +117,7 @@ export async function POST(_request: NextRequest, context: RouteContext) {
         vendor_id,
         status,
         remarks,
-        purchase_request_items (
+        purchase_request_items!inner (
           id,
           hsn_code,
           item_description,
@@ -102,7 +127,7 @@ export async function POST(_request: NextRequest, context: RouteContext) {
           unit_rate,
           tax_percent,
           purchase_unit,
-          project_materials (
+          project_materials!inner (
             materials (
               name,
               unit,
@@ -110,10 +135,10 @@ export async function POST(_request: NextRequest, context: RouteContext) {
             )
           )
         ),
-        projects (
+        projects!inner (
           project_name
         ),
-        contractors (
+        contractors!inner (
           company_name,
           gstin,
           email
@@ -131,9 +156,20 @@ export async function POST(_request: NextRequest, context: RouteContext) {
       .single();
 
     if (prError || !pr) {
-      console.error('Failed to fetch purchase request:', prError);
-      return NextResponse.json({ error: 'Purchase request not found' }, { status: 404 });
+      console.error('[PO Generation] Failed to fetch purchase request:', {
+        id: purchaseRequestId,
+        error: prError,
+        message: prError?.message,
+        details: prError?.details,
+        hint: prError?.hint,
+      });
+      return NextResponse.json({
+        error: 'Purchase request not found',
+        details: prError?.message || 'No additional details'
+      }, { status: 404 });
     }
+
+    console.log('[PO Generation] Successfully fetched PR:', pr.id, 'Status:', pr.status);
 
     const typedPR = pr as unknown as PurchaseRequestRow;
 
