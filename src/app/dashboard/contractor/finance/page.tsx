@@ -98,6 +98,7 @@ export default function ContractorFinancePage(): React.ReactElement {
   const [editingRequest, setEditingRequest] = useState<EditablePurchaseRequest | null>(null);
   const [editLoading, setEditLoading] = useState(false);
   const [savingEdit, setSavingEdit] = useState(false);
+  const [deletingRequestId, setDeletingRequestId] = useState<string | null>(null);
 
   const canEditRequest = (status: string) => {
     const normalized = status.toLowerCase();
@@ -203,6 +204,30 @@ export default function ContractorFinancePage(): React.ReactElement {
       setError(err instanceof Error ? err.message : 'Failed to update purchase request');
     } finally {
       setSavingEdit(false);
+    }
+  };
+
+  const deleteRequest = async (request: PurchaseRequestRow) => {
+    const displayId = `${request.id.slice(0, 8)}…`;
+    const confirmed = window.confirm(
+      `Delete purchase request ${displayId}?\n\nThis will remove the request and its line items. This cannot be undone.`
+    );
+    if (!confirmed) return;
+
+    try {
+      setDeletingRequestId(request.id);
+      const response = await fetch(`/api/purchase-requests/${request.id}`, {
+        method: 'DELETE'
+      });
+      const result = await response.json();
+      if (!response.ok || !result.success) {
+        throw new Error(result.error || 'Failed to delete purchase request');
+      }
+      await fetchOverview();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to delete purchase request');
+    } finally {
+      setDeletingRequestId(null);
     }
   };
 
@@ -367,6 +392,7 @@ export default function ContractorFinancePage(): React.ReactElement {
                       <th className="px-6 py-4">Platform Fee</th>
                       <th className="px-6 py-4">Project Participation Fee</th>
                       <th className="px-6 py-4">Total Due</th>
+                      <th className="px-6 py-4">Action</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-neutral-medium">
@@ -402,13 +428,23 @@ export default function ContractorFinancePage(): React.ReactElement {
                         </td>
                         <td className="px-6 py-4">
                           {canEditRequest(request.status) ? (
-                            <button
-                              type="button"
-                              onClick={() => openEditRequestModal(request.id)}
-                              className="px-3 py-1.5 text-xs font-medium rounded border border-accent-amber/40 text-accent-amber hover:bg-accent-amber/10 transition-colors"
-                            >
-                              Edit
-                            </button>
+                            <div className="flex items-center gap-2">
+                              <button
+                                type="button"
+                                onClick={() => openEditRequestModal(request.id)}
+                                className="px-3 py-1.5 text-xs font-medium rounded border border-accent-amber/40 text-accent-amber hover:bg-accent-amber/10 transition-colors"
+                              >
+                                Edit
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => deleteRequest(request)}
+                                disabled={deletingRequestId === request.id}
+                                className="px-3 py-1.5 text-xs font-medium rounded border border-error/40 text-error hover:bg-error/10 transition-colors disabled:opacity-60"
+                              >
+                                {deletingRequestId === request.id ? 'Deleting...' : 'Delete'}
+                              </button>
+                            </div>
                           ) : (
                             <span className="text-xs text-secondary">Locked</span>
                           )}
@@ -417,7 +453,7 @@ export default function ContractorFinancePage(): React.ReactElement {
                     ))}
                     {requests.length === 0 && (
                       <tr>
-                        <td className="px-6 py-6 text-center text-secondary" colSpan={9}>
+                        <td className="px-6 py-6 text-center text-secondary" colSpan={10}>
                           No purchase requests available yet.
                         </td>
                       </tr>

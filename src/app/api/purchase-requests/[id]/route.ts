@@ -33,7 +33,16 @@ type PurchaseRequestItemWithMaterial = {
     materials?: Array<{
       name: string | null;
     }> | null;
-  }> | null;
+  }> | {
+    id: string;
+    unit: string | null;
+    material_id: string | null;
+    materials?: Array<{
+      name: string | null;
+    }> | {
+      name: string | null;
+    } | null;
+  } | null;
 };
 
 function getSupabase() {
@@ -158,8 +167,13 @@ export async function GET(_request: NextRequest, context: RouteContext) {
     }
 
     const transformedItems = ((items || []) as PurchaseRequestItemWithMaterial[]).map((item) => {
-      const projectMaterial = item.project_materials?.[0];
-      const materialName = projectMaterial?.materials?.[0]?.name || 'Material';
+      const projectMaterial = Array.isArray(item.project_materials)
+        ? item.project_materials[0]
+        : item.project_materials;
+      const materialNode = Array.isArray(projectMaterial?.materials)
+        ? projectMaterial?.materials[0]
+        : projectMaterial?.materials;
+      const materialName = materialNode?.name || 'Material';
       return {
         ...item,
         material_name: materialName,
@@ -209,7 +223,7 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
 
     const { data: requestRow, error: requestError } = await supabase
       .from('purchase_requests')
-      .select('id, status, contractor_id')
+      .select('id, status, contractor_id, project_id')
       .eq('id', requestId)
       .eq('contractor_id', contractorId)
       .single();
@@ -228,7 +242,7 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
 
     const { data: existingItems, error: existingItemsError } = await supabase
       .from('purchase_request_items')
-      .select('id')
+      .select('id, project_material_id')
       .eq('purchase_request_id', requestId);
 
     if (existingItemsError) {
@@ -237,11 +251,21 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
     }
 
     const existingIds = new Set((existingItems || []).map((item) => item.id));
+    const existingItemRowsById = new Map((existingItems || []).map((item) => [item.id, item]));
+    const seenProjectMaterialIds = new Set<string>();
+    const newItems: any[] = [];
 
     for (const item of items) {
-      if (!item?.id || !existingIds.has(item.id)) {
-        return NextResponse.json({ error: 'Invalid purchase request item in payload' }, { status: 400 });
+      const itemId = item?.id?.toString() || '';
+      const projectMaterialId = item?.project_material_id?.toString() || existingItemRowsById.get(itemId)?.project_material_id || '';
+
+      if (!projectMaterialId) {
+        return NextResponse.json({ error: 'project_material_id is required for each item' }, { status: 400 });
       }
+      if (seenProjectMaterialIds.has(projectMaterialId)) {
+        return NextResponse.json({ error: 'Duplicate material entries are not allowed in a purchase request' }, { status: 400 });
+      }
+      seenProjectMaterialIds.add(projectMaterialId);
 
       const requestedQty = Number(item.requested_qty);
       if (!Number.isFinite(requestedQty) || requestedQty <= 0) {
@@ -273,6 +297,7 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
       }
 
       const updatePayload = {
+        project_material_id: projectMaterialId,
         requested_qty: requestedQty,
         item_description: item.item_description?.toString().trim() || null,
         site_unit: item.site_unit?.toString().trim() || null,
@@ -286,15 +311,89 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
         updated_at: new Date().toISOString()
       };
 
-      const { error: itemUpdateError } = await supabase
-        .from('purchase_request_items')
-        .update(updatePayload)
-        .eq('id', item.id)
-        .eq('purchase_request_id', requestId);
+      if (itemId && existingIds.has(itemId)) {
+        const { error: itemUpdateError } = await supabase
+          .from('purchase_request_items')
+          .update(updatePayload)
+          .eq('id', itemId)
+          .eq('purchase_request_id', requestId);
 
-      if (itemUpdateError) {
-        console.error('Failed to update purchase request item:', itemUpdateError);
-        return NextResponse.json({ error: 'Failed to update purchase request items' }, { status: 500 });
+        if (itemUpdateError) {
+          console.error('Failed to update purchase request item:', itemUpdateError);
+          return NextResponse.json({ error: 'Failed to update purchase request items' }, { status: 500 });
+        }
+      } else if (!itemId) {
+        newItems.push({
+          purchase_request_id: requestId,
+          project_material_id: projectMaterialId,
+          hsn_code: updatePayload.hsn_code,
+          item_description: updatePayload.item_description,
+          site_unit: updatePayload.site_unit,
+          purchase_unit: updatePayload.purchase_unit,
+          conversion_factor: updatePayload.conversion_factor,
+          purchase_qty: updatePayload.purchase_qty,
+          normalized_qty: updatePayload.normalized_qty,
+          requested_qty: updatePayload.requested_qty,
+          unit_rate: updatePayload.unit_rate,
+          tax_percent: updatePayload.tax_percent,
+          status: 'pending',
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        });
+      } else {
+        return NextResponse.json({ error: 'Invalid purchase request item in payload' }, { status: 400 });
+      }
+    }
+
+    if (newItems.length > 0) {
+      const newProjectMaterialIds = Array.from(new Set(newItems.map((item) => item.project_material_id)));
+
+      const { data: availabilityRows, error: availabilityError } = await supabase
+        .from('project_materials_with_totals')
+        .select('project_material_id, project_id, required_qty, requested_qty, available_qty')
+        .in('project_material_id', newProjectMaterialIds);
+
+      if (availabilityError) {
+        console.error('Failed to validate new purchase request items availability:', availabilityError);
+        return NextResponse.json({ error: 'Failed to validate material availability' }, { status: 500 });
+      }
+
+      const availabilityMap = new Map((availabilityRows || []).map((row: any) => [row.project_material_id, row]));
+
+      for (const item of newItems) {
+        const availability = availabilityMap.get(item.project_material_id);
+        if (!availability) {
+          return NextResponse.json({ error: 'Selected material is not part of this project' }, { status: 400 });
+        }
+        if (availability.project_id !== requestRow.project_id) {
+          return NextResponse.json({ error: 'Selected material does not belong to this purchase request project' }, { status: 400 });
+        }
+
+        const maxRequestable = Math.max(
+          Number(availability.required_qty || 0) -
+            Number(availability.requested_qty || 0) -
+            Number(availability.available_qty || 0),
+          0
+        );
+        const qty = Number(item.requested_qty || 0);
+        if (maxRequestable <= 0) {
+          return NextResponse.json({ error: 'Selected material has no available quantity left for requesting' }, { status: 400 });
+        }
+        if (qty > maxRequestable) {
+          return NextResponse.json(
+            { error: `Requested quantity for new material exceeds available quantity (${maxRequestable.toFixed(3)})` },
+            { status: 400 }
+          );
+        }
+      }
+
+      const { error: insertError } = await supabase
+        .from('purchase_request_items')
+        .insert(newItems);
+
+      if (insertError) {
+        console.error('Failed to insert new purchase request items:', insertError);
+        return NextResponse.json({ error: 'Failed to add new materials to purchase request' }, { status: 500 });
       }
     }
 
@@ -323,6 +422,92 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
     console.error('Error updating purchase request:', error);
     return NextResponse.json(
       { error: 'Failed to update purchase request' },
+      { status: 500 }
+    );
+  }
+}
+
+export async function DELETE(_request: NextRequest, context: RouteContext) {
+  try {
+    const user = await currentUser();
+    if (!user) {
+      return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
+    }
+
+    const { id: requestId } = await context.params;
+    if (!requestId) {
+      return NextResponse.json({ error: 'Purchase request ID required' }, { status: 400 });
+    }
+
+    const contractorId = await getContractorIdForUser(user.id);
+    if (!contractorId) {
+      return NextResponse.json({ error: 'Contractor not found' }, { status: 404 });
+    }
+
+    const supabase = getSupabase();
+
+    const { data: requestRow, error: requestError } = await supabase
+      .from('purchase_requests')
+      .select('id, status, contractor_id')
+      .eq('id', requestId)
+      .eq('contractor_id', contractorId)
+      .single();
+
+    if (requestError || !requestRow) {
+      return NextResponse.json({ error: 'Purchase request not found' }, { status: 404 });
+    }
+
+    const normalizedStatus = (requestRow.status || '').toLowerCase();
+    if (!EDITABLE_STATUSES.has(normalizedStatus)) {
+      return NextResponse.json(
+        { error: `Purchase request cannot be deleted in '${requestRow.status}' status` },
+        { status: 400 }
+      );
+    }
+
+    // Extra safety checks to avoid deleting requests already linked to downstream workflow records.
+    const [{ data: invoice }, { data: linkedTx }] = await Promise.all([
+      supabase
+        .from('invoices')
+        .select('id')
+        .eq('purchase_request_id', requestId)
+        .limit(1)
+        .maybeSingle(),
+      supabase
+        .from('capital_transactions')
+        .select('id')
+        .eq('purchase_request_id', requestId)
+        .limit(1)
+        .maybeSingle()
+    ]);
+
+    if (invoice || linkedTx) {
+      return NextResponse.json(
+        { error: 'Purchase request is already linked to invoices or capital transactions and cannot be deleted' },
+        { status: 400 }
+      );
+    }
+
+    // Items cascade via FK ON DELETE CASCADE.
+    const { error: deleteError } = await supabase
+      .from('purchase_requests')
+      .delete()
+      .eq('id', requestId)
+      .eq('contractor_id', contractorId);
+
+    if (deleteError) {
+      console.error('Failed to delete purchase request:', deleteError);
+      return NextResponse.json({ error: 'Failed to delete purchase request' }, { status: 500 });
+    }
+
+    return NextResponse.json({
+      success: true,
+      message: 'Purchase request deleted successfully'
+    });
+  } catch (error) {
+    console.error('Error deleting purchase request:', error);
+    return NextResponse.json(
+      { error: 'Failed to delete purchase request' },
       { status: 500 }
     );
   }

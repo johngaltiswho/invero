@@ -25,6 +25,26 @@ type ProjectMaterialWithStats = ProjectMaterialForUI & {
   purchase_status?: string | null;
 };
 
+type EditableProjectPurchaseRequestItem = {
+  id: string;
+  project_material_id: string;
+  item_description: string | null;
+  requested_qty: number;
+  unit_rate: number | null;
+  tax_percent: number | null;
+  hsn_code: string | null;
+  material_name: string;
+  unit: string;
+};
+
+type EditableProjectPurchaseRequest = {
+  id: string;
+  status: string;
+  remarks: string | null;
+  editable: boolean;
+  items: EditableProjectPurchaseRequestItem[];
+};
+
 function IndividualProjectContent(): React.ReactElement {
   const { isLoaded } = useUser();
   const router = useRouter();
@@ -35,7 +55,7 @@ function IndividualProjectContent(): React.ReactElement {
   // Project state
   const [project, setProject] = useState<any>(null);
   const [projectLoading, setProjectLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<'overview' | 'boq' | 'schedule' | 'materials' | 'files'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'boq' | 'schedule' | 'materials' | 'purchase_requests' | 'files'>('overview');
   const [refreshKey, setRefreshKey] = useState(0);
   
   // Enhanced project data state
@@ -86,6 +106,11 @@ function IndividualProjectContent(): React.ReactElement {
   const [purchaseQuantities, setPurchaseQuantities] = useState<{[key: string]: string}>({});
   const [purchaseUnits, setPurchaseUnits] = useState<{[key: string]: string}>({});
   const [purchaseConversions, setPurchaseConversions] = useState<{[key: string]: string}>({});
+  const [editingPurchaseRequest, setEditingPurchaseRequest] = useState<EditableProjectPurchaseRequest | null>(null);
+  const [editRequestLoading, setEditRequestLoading] = useState(false);
+  const [savingRequestEdit, setSavingRequestEdit] = useState(false);
+  const [deletingRequestId, setDeletingRequestId] = useState<string | null>(null);
+  const [newMaterialIdForRequest, setNewMaterialIdForRequest] = useState<string>('');
   const [selectedVendor, setSelectedVendor] = useState<any>(null);
   const [piFile, setPiFile] = useState<File | null>(null);
   const [rfqQuantities, setRfqQuantities] = useState<{[key: string]: string}>({});
@@ -260,16 +285,11 @@ function IndividualProjectContent(): React.ReactElement {
         material.available_qty ??
         0
       );
-      let available = Number(material.available_qty ?? 0);
       const requested = Number(material.requested_qty ?? 0);
       const ordered = Number(material.ordered_qty ?? 0);
       const pending = Math.max(requested - ordered, 0);
-
-      if (requiredBase > 0 && available === requiredBase && requested === 0) {
-        available = 0;
-      }
-
-      const maxRequestable = Math.max(requiredBase - available - pending, 0);
+      const committedQty = Math.max(requested, ordered, 0);
+      const maxRequestable = Math.max(requiredBase - committedQty, 0);
 
       return {
         ...material,
@@ -852,6 +872,240 @@ function IndividualProjectContent(): React.ReactElement {
     }
   };
 
+  const getPurchaseRequestStatusClass = (status: string) => {
+    const normalized = (status || '').toLowerCase();
+    switch (normalized) {
+      case 'draft':
+        return 'bg-yellow-500/20 text-yellow-400';
+      case 'submitted':
+        return 'bg-accent-amber/20 text-accent-amber';
+      case 'approved':
+        return 'bg-blue-500/20 text-blue-400';
+      case 'funded':
+        return 'bg-green-500/20 text-green-400';
+      case 'po_generated':
+        return 'bg-purple-500/20 text-purple-400';
+      case 'completed':
+        return 'bg-green-500/20 text-green-400';
+      case 'rejected':
+        return 'bg-red-500/20 text-red-400';
+      default:
+        return 'bg-gray-500/20 text-gray-400';
+    }
+  };
+
+  const canEditPurchaseRequest = (status: string) => {
+    const normalized = (status || '').toLowerCase();
+    return normalized === 'draft' || normalized === 'submitted' || normalized === 'rejected';
+  };
+
+  const projectPurchaseRequests = React.useMemo(() => {
+    const map = new Map<
+      string,
+      {
+        id: string;
+        status: string;
+        created_at: string;
+        line_items: number;
+        estimated_total: number;
+      }
+    >();
+
+    projectMaterials.forEach((material) => {
+      (material.request_history || []).forEach((item) => {
+        if (!item.purchase_request_id) return;
+        const existing = map.get(item.purchase_request_id);
+        const qty = Number((item as any).purchase_qty ?? item.requested_qty ?? 0) || 0;
+        const rate = Number(item.unit_rate ?? 0) || 0;
+        const taxPercent = Number(item.tax_percent ?? 0) || 0;
+        const base = qty * rate;
+        const total = base + (base * taxPercent) / 100;
+
+        if (!existing) {
+          map.set(item.purchase_request_id, {
+            id: item.purchase_request_id,
+            status: item.purchase_request?.status || item.status || 'submitted',
+            created_at: item.purchase_request?.created_at || item.created_at,
+            line_items: 1,
+            estimated_total: total
+          });
+          return;
+        }
+
+        existing.line_items += 1;
+        existing.estimated_total += total;
+        if (item.purchase_request?.status) {
+          existing.status = item.purchase_request.status;
+        }
+        const nextCreatedAt = item.purchase_request?.created_at || item.created_at;
+        if (nextCreatedAt && new Date(nextCreatedAt).getTime() < new Date(existing.created_at).getTime()) {
+          existing.created_at = nextCreatedAt;
+        }
+        map.set(item.purchase_request_id, existing);
+      });
+    });
+
+    return Array.from(map.values()).sort(
+      (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+    );
+  }, [projectMaterials]);
+
+  const addableMaterialsForEdit = React.useMemo(() => {
+    if (!editingPurchaseRequest) return [];
+    const existing = new Set(editingPurchaseRequest.items.map((item) => item.project_material_id));
+    return projectMaterials.filter(
+      (material) => !existing.has(material.id) && Number(material.max_requestable || 0) > 0
+    );
+  }, [editingPurchaseRequest, projectMaterials]);
+
+  const openEditPurchaseRequestModal = async (requestId: string) => {
+    try {
+      setEditRequestLoading(true);
+      const response = await fetch(`/api/purchase-requests/${requestId}`);
+      const result = await response.json();
+      if (!response.ok || !result.success) {
+        throw new Error(result.error || 'Failed to load purchase request');
+      }
+      setEditingPurchaseRequest(result.data);
+      setNewMaterialIdForRequest('');
+    } catch (error) {
+      console.error('Failed to load purchase request for edit:', error);
+      alert(error instanceof Error ? error.message : 'Failed to load purchase request');
+    } finally {
+      setEditRequestLoading(false);
+    }
+  };
+
+  const updateRequestEditItem = (
+    itemId: string,
+    field: keyof EditableProjectPurchaseRequestItem,
+    value: string
+  ) => {
+    if (!editingPurchaseRequest) return;
+    const nextItems = editingPurchaseRequest.items.map((item) => {
+      if (item.id !== itemId) return item;
+      if (field === 'hsn_code') {
+        return { ...item, hsn_code: value.toUpperCase().slice(0, 16) || null };
+      }
+      if (field === 'item_description') {
+        return { ...item, item_description: value || null };
+      }
+      if (field === 'requested_qty' || field === 'unit_rate' || field === 'tax_percent') {
+        const parsed = value === '' ? null : Number(value);
+        if (field === 'requested_qty') {
+          return { ...item, requested_qty: Number.isFinite(parsed as number) ? (parsed as number) : 0 };
+        }
+        return { ...item, [field]: Number.isFinite(parsed as number) ? (parsed as number) : null };
+      }
+      return item;
+    });
+    setEditingPurchaseRequest({ ...editingPurchaseRequest, items: nextItems });
+  };
+
+  const addMaterialToEditingRequest = () => {
+    if (!editingPurchaseRequest || !newMaterialIdForRequest) return;
+    const material = projectMaterials.find((m) => m.id === newMaterialIdForRequest);
+    if (!material) return;
+    if (editingPurchaseRequest.items.some((item) => item.project_material_id === material.id)) {
+      return;
+    }
+    if (Number(material.max_requestable || 0) <= 0) {
+      return;
+    }
+    const newRow: EditableProjectPurchaseRequestItem = {
+      id: `new-${Date.now()}`,
+      project_material_id: material.id,
+      item_description: material.notes || material.description || null,
+      requested_qty: Math.max(Math.min(material.max_requestable || 1, 1), 0.001),
+      unit_rate: 0,
+      tax_percent: 0,
+      hsn_code: material.hsn_code || null,
+      material_name: material.name || 'Material',
+      unit: material.unit || 'unit'
+    };
+
+    setEditingPurchaseRequest({
+      ...editingPurchaseRequest,
+      items: [...editingPurchaseRequest.items, newRow]
+    });
+    setNewMaterialIdForRequest('');
+  };
+
+  const removeMaterialFromEditingRequest = (itemId: string) => {
+    if (!editingPurchaseRequest) return;
+    setEditingPurchaseRequest({
+      ...editingPurchaseRequest,
+      items: editingPurchaseRequest.items.filter((item) => item.id !== itemId)
+    });
+  };
+
+  const saveEditedPurchaseRequest = async () => {
+    if (!editingPurchaseRequest) return;
+
+    const invalidItem = editingPurchaseRequest.items.find(
+      (item) => !Number.isFinite(item.requested_qty) || item.requested_qty <= 0
+    );
+    if (invalidItem) {
+      alert('Requested quantity must be greater than zero for all items');
+      return;
+    }
+
+    try {
+      setSavingRequestEdit(true);
+      const response = await fetch(`/api/purchase-requests/${editingPurchaseRequest.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          remarks: editingPurchaseRequest.remarks || null,
+          items: editingPurchaseRequest.items.map((item) => ({
+            ...(item.id.startsWith('new-') ? {} : { id: item.id }),
+            project_material_id: item.project_material_id,
+            item_description: item.item_description,
+            requested_qty: item.requested_qty,
+            unit_rate: item.unit_rate,
+            tax_percent: item.tax_percent,
+            hsn_code: item.hsn_code
+          }))
+        })
+      });
+
+      const result = await response.json();
+      if (!response.ok || !result.success) {
+        throw new Error(result.error || 'Failed to update purchase request');
+      }
+
+      setEditingPurchaseRequest(null);
+      await fetchProjectMaterials(projectId);
+    } catch (error) {
+      console.error('Failed to update purchase request:', error);
+      alert(error instanceof Error ? error.message : 'Failed to update purchase request');
+    } finally {
+      setSavingRequestEdit(false);
+    }
+  };
+
+  const deletePurchaseRequest = async (requestId: string) => {
+    const confirmed = window.confirm(
+      `Delete request #${requestId.slice(0, 8).toUpperCase()}?\n\nThis removes the request and all its line items.`
+    );
+    if (!confirmed) return;
+
+    try {
+      setDeletingRequestId(requestId);
+      const response = await fetch(`/api/purchase-requests/${requestId}`, { method: 'DELETE' });
+      const result = await response.json();
+      if (!response.ok || !result.success) {
+        throw new Error(result.error || 'Failed to delete purchase request');
+      }
+      await fetchProjectMaterials(projectId);
+    } catch (error) {
+      console.error('Failed to delete purchase request:', error);
+      alert(error instanceof Error ? error.message : 'Failed to delete purchase request');
+    } finally {
+      setDeletingRequestId(null);
+    }
+  };
+
   // Loading and error states
   if (!isLoaded || contractorLoading || projectLoading) {
     return (
@@ -958,6 +1212,16 @@ function IndividualProjectContent(): React.ReactElement {
             }`}
           >
             Materials
+          </button>
+          <button
+            onClick={() => setActiveTab('purchase_requests')}
+            className={`px-4 py-2 text-sm font-medium rounded-t-lg transition-all ${
+              activeTab === 'purchase_requests'
+                ? 'bg-accent-amber text-neutral-dark border-b-2 border-accent-amber'
+                : 'text-secondary hover:text-primary hover:bg-neutral-medium'
+            }`}
+          >
+            Purchase Requests
           </button>
           <button
             onClick={() => setActiveTab('files')}
@@ -1590,6 +1854,78 @@ function IndividualProjectContent(): React.ReactElement {
                 </div>
               )}
 
+            </div>
+          )}
+
+          {/* Purchase Requests Tab */}
+          {activeTab === 'purchase_requests' && (
+            <div className="p-6 space-y-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="text-lg font-semibold text-primary">Purchase Requests</h3>
+                  <p className="text-sm text-secondary">Manage purchase requests raised for this project</p>
+                </div>
+                <div className="text-sm text-secondary">{projectPurchaseRequests.length} requests</div>
+              </div>
+
+              <div className="bg-neutral-darker rounded-lg border border-neutral-medium">
+                {projectPurchaseRequests.length === 0 ? (
+                  <div className="p-4 text-sm text-secondary">No purchase requests raised for this project yet.</div>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm">
+                      <thead className="bg-neutral-dark border-b border-neutral-medium">
+                        <tr>
+                          <th className="p-3 text-left text-secondary">Request ID</th>
+                          <th className="p-3 text-left text-secondary">Status</th>
+                          <th className="p-3 text-left text-secondary">Line Items</th>
+                          <th className="p-3 text-left text-secondary">Estimated Value</th>
+                          <th className="p-3 text-left text-secondary">Raised</th>
+                          <th className="p-3 text-left text-secondary">Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {projectPurchaseRequests.map((request) => {
+                          const editable = canEditPurchaseRequest(request.status);
+                          return (
+                            <tr key={request.id} className="border-b border-neutral-medium/30 hover:bg-neutral-medium/10">
+                              <td className="p-3 text-primary font-medium">#{request.id.slice(0, 8).toUpperCase()}</td>
+                              <td className="p-3">
+                                <span className={`text-xs px-2 py-1 rounded ${getPurchaseRequestStatusClass(request.status)}`}>
+                                  {request.status.replace(/_/g, ' ')}
+                                </span>
+                              </td>
+                              <td className="p-3 text-secondary">{request.line_items}</td>
+                              <td className="p-3 text-primary">{formatCurrency(request.estimated_total)}</td>
+                              <td className="p-3 text-secondary">{formatDate(request.created_at)}</td>
+                              <td className="p-3">
+                                <div className="flex items-center gap-2">
+                                  <button
+                                    onClick={() => openEditPurchaseRequestModal(request.id)}
+                                    disabled={!editable || editRequestLoading}
+                                    className="text-xs px-3 py-1 rounded border border-neutral-medium text-primary hover:bg-neutral-medium/30 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                                  >
+                                    {editable ? 'Edit' : 'View'}
+                                  </button>
+                                  {editable && (
+                                    <button
+                                      onClick={() => deletePurchaseRequest(request.id)}
+                                      disabled={deletingRequestId === request.id}
+                                      className="text-xs px-3 py-1 rounded border border-red-500/50 text-red-300 hover:bg-red-500/10 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                                    >
+                                      {deletingRequestId === request.id ? 'Deleting...' : 'Delete'}
+                                    </button>
+                                  )}
+                                </div>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
             </div>
           )}
 
@@ -2302,6 +2638,222 @@ function IndividualProjectContent(): React.ReactElement {
                   Submit Request
                 </Button>
               </div>
+            </div>
+          </div>
+        )}
+
+        {/* Edit Purchase Request Modal */}
+        {(editRequestLoading || editingPurchaseRequest) && (
+          <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
+            <div className="bg-neutral-dark rounded-lg border border-neutral-medium w-full max-w-6xl max-h-[90vh] overflow-hidden">
+              <div className="px-6 py-4 border-b border-neutral-medium flex items-center justify-between">
+                <div>
+                  <h3 className="text-lg font-semibold text-primary">
+                    {editRequestLoading
+                      ? 'Loading Purchase Request...'
+                      : `${editingPurchaseRequest?.editable ? 'Edit' : 'View'} Purchase Request #${editingPurchaseRequest?.id.slice(0, 8).toUpperCase()}`}
+                  </h3>
+                  {!editRequestLoading && editingPurchaseRequest && (
+                    <p className="text-xs text-secondary mt-1">
+                      Status: {editingPurchaseRequest.status.replace(/_/g, ' ')}
+                    </p>
+                  )}
+                </div>
+                <button
+                  onClick={() => {
+                    if (savingRequestEdit) return;
+                    setEditingPurchaseRequest(null);
+                    setNewMaterialIdForRequest('');
+                  }}
+                  className="text-secondary hover:text-primary text-sm"
+                >
+                  Close
+                </button>
+              </div>
+
+              {editRequestLoading || !editingPurchaseRequest ? (
+                <div className="p-6 flex items-center gap-2 text-secondary">
+                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-accent-amber" />
+                  Loading...
+                </div>
+              ) : (
+                <div className="p-6 space-y-4 overflow-y-auto max-h-[calc(90vh-160px)]">
+                  {!editingPurchaseRequest.editable && (
+                    <div className="p-3 rounded border border-neutral-medium bg-neutral-darker text-xs text-secondary">
+                      This request is no longer editable in its current status.
+                    </div>
+                  )}
+
+                  <div className="grid md:grid-cols-3 gap-3">
+                    <div className="md:col-span-2">
+                      <label className="block text-xs font-medium text-secondary mb-1">Remarks</label>
+                      <input
+                        type="text"
+                        value={editingPurchaseRequest.remarks || ''}
+                        disabled={!editingPurchaseRequest.editable}
+                        onChange={(e) =>
+                          setEditingPurchaseRequest({
+                            ...editingPurchaseRequest,
+                            remarks: e.target.value
+                          })
+                        }
+                        className="w-full px-3 py-2 rounded-lg border border-neutral-medium bg-neutral-darker text-primary focus:outline-none focus:ring-2 focus:ring-accent-amber disabled:opacity-50"
+                        placeholder="Optional remarks"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-secondary mb-1">Add Material</label>
+                      <div className="flex gap-2">
+                        <select
+                          value={newMaterialIdForRequest}
+                          disabled={!editingPurchaseRequest.editable}
+                          onChange={(e) => setNewMaterialIdForRequest(e.target.value)}
+                          className="flex-1 px-3 py-2 rounded-lg border border-neutral-medium bg-neutral-darker text-primary focus:outline-none focus:ring-2 focus:ring-accent-amber disabled:opacity-50"
+                        >
+                          <option value="">Select material</option>
+                          {addableMaterialsForEdit.map((material) => (
+                            <option key={material.id} value={material.id}>
+                              {material.name} ({material.max_requestable.toLocaleString(undefined, {
+                                maximumFractionDigits: 3
+                              })} {material.unit || 'unit'} available)
+                            </option>
+                          ))}
+                        </select>
+                        <button
+                          type="button"
+                          onClick={addMaterialToEditingRequest}
+                          disabled={!editingPurchaseRequest.editable || !newMaterialIdForRequest}
+                          className="px-3 py-2 rounded-lg bg-accent-amber text-neutral-dark text-sm font-medium hover:bg-accent-amber/90 disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          Add
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="overflow-x-auto border border-neutral-medium rounded-lg">
+                    <table className="w-full text-sm">
+                      <thead className="bg-neutral-darker border-b border-neutral-medium">
+                        <tr>
+                          <th className="p-3 text-left text-secondary">Item</th>
+                          <th className="p-3 text-left text-secondary">Qty</th>
+                          <th className="p-3 text-left text-secondary">Unit</th>
+                          <th className="p-3 text-left text-secondary">Rate</th>
+                          <th className="p-3 text-left text-secondary">Tax %</th>
+                          <th className="p-3 text-left text-secondary">HSN</th>
+                          <th className="p-3 text-left text-secondary">Description / Specs</th>
+                          <th className="p-3 text-left text-secondary">Action</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {editingPurchaseRequest.items.map((item) => {
+                          const addableMaterial = projectMaterials.find((m) => m.id === item.project_material_id);
+                          const maxQty = addableMaterial ? Number(addableMaterial.max_requestable || 0) : null;
+                          const isNewItem = item.id.startsWith('new-');
+                          return (
+                            <tr key={item.id} className="border-b border-neutral-medium/30">
+                              <td className="p-3 align-top min-w-[220px]">
+                                <div className="text-primary font-medium">{item.material_name || 'Material'}</div>
+                                {maxQty !== null && maxQty > 0 && (
+                                  <div className="text-xs text-secondary mt-1">
+                                    Max addable now: {maxQty.toLocaleString(undefined, { maximumFractionDigits: 3 })}{' '}
+                                    {item.unit || 'unit'}
+                                  </div>
+                                )}
+                              </td>
+                              <td className="p-3 align-top min-w-[120px]">
+                                <input
+                                  type="number"
+                                  min="0.001"
+                                  step="0.001"
+                                  value={item.requested_qty}
+                                  disabled={!editingPurchaseRequest.editable}
+                                  onChange={(e) => updateRequestEditItem(item.id, 'requested_qty', e.target.value)}
+                                  className="w-full px-2 py-1 rounded border border-neutral-medium bg-neutral-darker text-primary focus:outline-none focus:ring-2 focus:ring-accent-amber disabled:opacity-50"
+                                />
+                              </td>
+                              <td className="p-3 align-top min-w-[120px] text-secondary">{item.unit || 'unit'}</td>
+                              <td className="p-3 align-top min-w-[120px]">
+                                <input
+                                  type="number"
+                                  min="0"
+                                  step="0.01"
+                                  value={item.unit_rate ?? ''}
+                                  disabled={!editingPurchaseRequest.editable}
+                                  onChange={(e) => updateRequestEditItem(item.id, 'unit_rate', e.target.value)}
+                                  className="w-full px-2 py-1 rounded border border-neutral-medium bg-neutral-darker text-primary focus:outline-none focus:ring-2 focus:ring-accent-amber disabled:opacity-50"
+                                />
+                              </td>
+                              <td className="p-3 align-top min-w-[100px]">
+                                <input
+                                  type="number"
+                                  min="0"
+                                  step="0.01"
+                                  value={item.tax_percent ?? 0}
+                                  disabled={!editingPurchaseRequest.editable}
+                                  onChange={(e) => updateRequestEditItem(item.id, 'tax_percent', e.target.value)}
+                                  className="w-full px-2 py-1 rounded border border-neutral-medium bg-neutral-darker text-primary focus:outline-none focus:ring-2 focus:ring-accent-amber disabled:opacity-50"
+                                />
+                              </td>
+                              <td className="p-3 align-top min-w-[140px]">
+                                <input
+                                  type="text"
+                                  value={item.hsn_code || ''}
+                                  disabled={!editingPurchaseRequest.editable}
+                                  onChange={(e) => updateRequestEditItem(item.id, 'hsn_code', e.target.value)}
+                                  className="w-full px-2 py-1 rounded border border-neutral-medium bg-neutral-darker text-primary focus:outline-none focus:ring-2 focus:ring-accent-amber disabled:opacity-50"
+                                  placeholder="HSN code"
+                                />
+                              </td>
+                              <td className="p-3 align-top min-w-[280px]">
+                                <textarea
+                                  rows={2}
+                                  value={item.item_description || ''}
+                                  disabled={!editingPurchaseRequest.editable}
+                                  onChange={(e) =>
+                                    updateRequestEditItem(item.id, 'item_description', e.target.value)
+                                  }
+                                  className="w-full px-2 py-1 rounded border border-neutral-medium bg-neutral-darker text-primary focus:outline-none focus:ring-2 focus:ring-accent-amber disabled:opacity-50"
+                                  placeholder="Brand / size / specification"
+                                />
+                              </td>
+                              <td className="p-3 align-top">
+                                {editingPurchaseRequest.editable && isNewItem ? (
+                                  <button
+                                    onClick={() => removeMaterialFromEditingRequest(item.id)}
+                                    className="text-xs px-2 py-1 rounded border border-red-500/50 text-red-300 hover:bg-red-500/10"
+                                  >
+                                    Remove
+                                  </button>
+                                ) : (
+                                  <span className="text-xs text-secondary">-</span>
+                                )}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+
+                  <div className="flex justify-end gap-3">
+                    <button
+                      onClick={() => setEditingPurchaseRequest(null)}
+                      disabled={savingRequestEdit}
+                      className="px-4 py-2 text-secondary hover:text-primary disabled:opacity-50"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      onClick={saveEditedPurchaseRequest}
+                      disabled={!editingPurchaseRequest.editable || savingRequestEdit}
+                      className="px-4 py-2 rounded bg-accent-amber text-neutral-dark font-medium hover:bg-accent-amber/90 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      {savingRequestEdit ? 'Saving...' : 'Save Changes'}
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         )}
