@@ -642,24 +642,31 @@ export default function AdminVerificationDashboard(): React.ReactElement {
     try {
       const response = await fetch(`/api/admin/purchase-orders/${selectedPurchaseRequest.id}`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
       });
 
-      const result = await response.json();
-      if (result.success) {
-        alert(`Purchase Order ${result.data.po_number} generated successfully!`);
-
-        const refreshed = await loadPurchaseRequests();
-        const updated = (refreshed as PurchaseRequest[]).find(r => r.id === selectedPurchaseRequest.id) || null;
-        setSelectedPurchaseRequest(updated);
-
-        // Open PO in new tab
-        if (result.data.po_url) {
-          window.open(result.data.po_url, '_blank');
-        }
-      } else {
+      if (!response.ok) {
+        const result = await response.json();
         alert(result.error || 'Failed to generate Purchase Order');
+        return;
       }
+
+      // Download PDF
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `PO_${selectedPurchaseRequest.id.slice(0, 8)}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      window.URL.revokeObjectURL(url);
+
+      alert('Purchase Order generated and downloaded successfully!');
+
+      // Refresh to update status
+      const refreshed = await loadPurchaseRequests();
+      const updated = (refreshed as PurchaseRequest[]).find(r => r.id === selectedPurchaseRequest.id) || null;
+      setSelectedPurchaseRequest(updated);
     } catch (err) {
       console.error('Error generating PO:', err);
       alert('Error generating Purchase Order');

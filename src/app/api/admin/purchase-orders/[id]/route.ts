@@ -4,7 +4,6 @@ import { createClient } from '@supabase/supabase-js';
 import { requireAdmin } from '@/lib/admin-auth';
 import {
   generatePOPDF,
-  uploadPOPDF,
   type POLineItem,
 } from '@/lib/po-generator';
 
@@ -240,7 +239,6 @@ export async function POST(_request: NextRequest, context: RouteContext) {
     const { data: poNumData } = await supabase.rpc('next_po_number');
     const poNumber = poNumData || `PO-${Date.now()}`;
     const poDate = new Date();
-    const poId = crypto.randomUUID();
 
     // Generate PDF
     const pdfBuffer = generatePOPDF({
@@ -263,37 +261,6 @@ export async function POST(_request: NextRequest, context: RouteContext) {
       remarks: typedPR.remarks || undefined,
     });
 
-    // Upload PDF to storage
-    const poUrl = await uploadPOPDF(pdfBuffer, purchaseRequestId, poId);
-
-    // Store PO record in database
-    const { data: poRecord, error: poInsertError } = await supabase
-      .from('purchase_orders')
-      .insert({
-        id: poId,
-        po_number: poNumber,
-        purchase_request_id: purchaseRequestId,
-        vendor_id: typedPR.vendor_id,
-        po_date: poDate.toISOString(),
-        total_amount: grandTotal,
-        line_items: lineItems,
-        po_url: poUrl,
-        status: 'generated',
-        generated_by: user.id,
-        created_at: poDate.toISOString(),
-        updated_at: poDate.toISOString(),
-      })
-      .select('id, po_number, po_url')
-      .single();
-
-    if (poInsertError) {
-      console.error('Error inserting PO record:', poInsertError);
-      return NextResponse.json(
-        { error: 'Failed to save PO record' },
-        { status: 500 }
-      );
-    }
-
     // Update purchase request status to 'po_generated'
     const { error: prUpdateError } = await supabase
       .from('purchase_requests')
@@ -304,14 +271,21 @@ export async function POST(_request: NextRequest, context: RouteContext) {
       .eq('id', purchaseRequestId);
 
     if (prUpdateError) {
-      console.error('Error updating purchase request status:', prUpdateError);
+      console.error('[PO Generation] Error updating purchase request status:', prUpdateError);
       // Don't fail the request if status update fails
     }
 
-    return NextResponse.json({
-      success: true,
-      message: 'Purchase Order generated successfully',
-      data: poRecord,
+    console.log('[PO Generation] Successfully generated PO:', poNumber);
+
+    // Return PDF as downloadable file
+    const fileName = `${poNumber}_${typedPR.vendors.name?.replace(/[^a-zA-Z0-9]/g, '_')}.pdf`;
+
+    return new NextResponse(pdfBuffer, {
+      headers: {
+        'Content-Type': 'application/pdf',
+        'Content-Disposition': `attachment; filename="${fileName}"`,
+        'Content-Length': pdfBuffer.length.toString(),
+      },
     });
   } catch (error) {
     console.error('Error generating PO:', error);
