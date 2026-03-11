@@ -4,6 +4,7 @@ import { sendEmail, formatCurrency } from '@/lib/email';
 import { createSignedUrlWithFallback } from '@/lib/storage-url';
 import { auditPurchaseRequest, auditVendorAssignment } from '@/lib/audit';
 import { currentUser } from '@clerk/nextjs/server';
+import { validateRequestBody, updatePurchaseRequestSchema } from '@/lib/validations';
 
 type PurchaseSummary = {
   draft: number;
@@ -467,27 +468,19 @@ export async function PUT(request: NextRequest) {
     const userRole = user?.publicMetadata?.role as string || user?.privateMetadata?.role as string || 'admin';
 
     const body = await request.json();
+
+    // Validate request body
+    const validation = await validateRequestBody(updatePurchaseRequestSchema, body);
+    if (!validation.success) {
+      return validation.response;
+    }
+
     const {
       purchase_request_id,
       action,
-      admin_notes
-    } = body;
-    // vendor_id read from body directly below when needed
-
-    if (!purchase_request_id) {
-      return NextResponse.json(
-        { error: 'purchase_request_id is required' },
-        { status: 400 }
-      );
-    }
-
-    const validActions = ['approve_for_purchase', 'approve_for_funding', 'reject', 'assign_vendor'] as const;
-    if (!action || !validActions.includes(action)) {
-      return NextResponse.json(
-        { error: `Invalid action. Must be one of: ${validActions.join(', ')}` },
-        { status: 400 }
-      );
-    }
+      admin_notes,
+      vendor_id
+    } = validation.data;
 
     const { data: existingRequest, error: fetchError } = await supabaseAdmin
       .from('purchase_requests')
@@ -504,6 +497,10 @@ export async function PUT(request: NextRequest) {
 
     // Handle vendor assignment separately — no item status change needed
     if (action === 'assign_vendor') {
+      if (!vendor_id) {
+        return NextResponse.json({ error: 'vendor_id is required for assign_vendor' }, { status: 400 });
+      }
+
       const lockedStatuses = ['funded', 'po_generated', 'completed'];
       if (lockedStatuses.includes(existingRequest.status)) {
         return NextResponse.json(
@@ -517,11 +514,6 @@ export async function PUT(request: NextRequest) {
           { error: `Vendor cannot be changed once delivery is ${existingRequest.delivery_status}` },
           { status: 409 }
         );
-      }
-
-      const { vendor_id } = body;
-      if (!vendor_id) {
-        return NextResponse.json({ error: 'vendor_id is required for assign_vendor' }, { status: 400 });
       }
       const { error: vendorError } = await supabaseAdmin
         .from('purchase_requests')

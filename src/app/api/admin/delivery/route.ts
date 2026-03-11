@@ -3,6 +3,7 @@ import { requireAdmin } from '@/lib/admin-auth';
 import { createClient } from '@supabase/supabase-js';
 import { auditDeliveryStatus } from '@/lib/audit';
 import { currentUser } from '@clerk/nextjs/server';
+import { validateRequestBody, dispatchPurchaseRequestSchema } from '@/lib/validations';
 
 function supabaseAdmin() {
   return createClient(
@@ -31,13 +32,15 @@ export async function POST(request: NextRequest) {
     const userRole = user?.publicMetadata?.role as string || user?.privateMetadata?.role as string || 'admin';
 
     const body = await request.json();
-    const { purchase_request_id, dispute_window_hours = 48 } = body;
 
-    if (!purchase_request_id) {
-      return NextResponse.json({ error: 'purchase_request_id is required' }, { status: 400 });
+    // Validate request body
+    const validation = await validateRequestBody(dispatchPurchaseRequestSchema, body);
+    if (!validation.success) {
+      return validation.response;
     }
 
-    const hours = Math.min(Math.max(Number(dispute_window_hours) || 48, 24), 72);
+    const { purchase_request_id, dispute_window_hours } = validation.data;
+    const hours = dispute_window_hours;
 
     const supabase = supabaseAdmin();
 

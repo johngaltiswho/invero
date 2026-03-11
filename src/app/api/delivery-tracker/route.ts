@@ -3,6 +3,7 @@ import { auth, currentUser } from '@clerk/nextjs/server';
 import { createClient } from '@supabase/supabase-js';
 import { createSignedUrlWithFallback } from '@/lib/storage-url';
 import { auditDeliveryStatus } from '@/lib/audit';
+import { validateRequestBody, raiseDisputeSchema, confirmDeliverySchema } from '@/lib/validations';
 
 function supabaseAdmin() {
   return createClient(
@@ -125,14 +126,14 @@ export async function POST(request: NextRequest) {
     const userName = user?.firstName && user?.lastName ? `${user?.firstName} ${user?.lastName}` : user?.username;
 
     const body = await request.json();
-    const { purchase_request_id, dispute_reason } = body;
 
-    if (!purchase_request_id || !dispute_reason?.trim()) {
-      return NextResponse.json(
-        { error: 'purchase_request_id and dispute_reason are required' },
-        { status: 400 }
-      );
+    // Validate request body
+    const validation = await validateRequestBody(raiseDisputeSchema, body);
+    if (!validation.success) {
+      return validation.response;
     }
+
+    const { purchase_request_id, dispute_reason } = validation.data;
 
     const supabase = supabaseAdmin();
 
@@ -222,11 +223,14 @@ export async function PATCH(request: NextRequest) {
     const userName = user?.firstName && user?.lastName ? `${user?.firstName} ${user?.lastName}` : user?.username;
 
     const body = await request.json();
-    const { purchase_request_id, action } = body;
 
-    if (!purchase_request_id || action !== 'confirm') {
-      return NextResponse.json({ error: 'purchase_request_id and action=confirm are required' }, { status: 400 });
+    // Validate request body
+    const validation = await validateRequestBody(confirmDeliverySchema, body);
+    if (!validation.success) {
+      return validation.response;
     }
+
+    const { purchase_request_id } = validation.data;
 
     const supabase = supabaseAdmin();
 

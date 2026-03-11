@@ -304,10 +304,13 @@ export async function POST(request: NextRequest) {
     const totalTax = lineItems.reduce((s, i) => s + i.tax_amount, 0);
     const grandTotal = subtotal + totalTax;
 
-    // Preserve invoice number/id when force-regenerating an existing invoice
-    const { data: invNumData } = await supabase.rpc('next_invoice_number');
-    const invoiceNumber = existing?.invoice_number || invNumData || `INV-${Date.now()}`;
     const invoiceDate = pr.dispatched_at ? new Date(pr.dispatched_at) : new Date();
+    // Preserve invoice number/id when force-regenerating an existing invoice.
+    // New invoices should be numbered based on invoice date (not generation date).
+    const { data: invNumData } = await supabase.rpc('next_invoice_number', {
+      p_invoice_date: invoiceDate.toISOString()
+    });
+    const invoiceNumber = existing?.invoice_number || invNumData || `INV-${Date.now()}`;
     const invoiceId = existing?.id || crypto.randomUUID();
 
     // Generate PDF
