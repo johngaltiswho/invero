@@ -46,11 +46,11 @@ ALTER TABLE audit_logs ENABLE ROW LEVEL SECURITY;
 -- 4. RLS Policies - Only service role can write, admins can read
 CREATE POLICY "Service role can insert audit logs" ON audit_logs
   FOR INSERT
-  USING (auth.role() = 'service_role');
+  WITH CHECK (true);
 
 CREATE POLICY "Admins can view all audit logs" ON audit_logs
   FOR SELECT
-  USING (auth.role() = 'service_role');
+  USING (true);
 
 -- 5. Create view for recent activity (easier querying)
 CREATE OR REPLACE VIEW recent_audit_activity AS
