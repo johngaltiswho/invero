@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAdmin } from '@/lib/admin-auth';
 import { createClient } from '@supabase/supabase-js';
+import { auditDeliveryStatus } from '@/lib/audit';
+import { currentUser } from '@clerk/nextjs/server';
 
 function supabaseAdmin() {
   return createClient(
@@ -20,6 +22,13 @@ function supabaseAdmin() {
 export async function POST(request: NextRequest) {
   try {
     await requireAdmin();
+
+    // Get user info for audit logging
+    const user = await currentUser();
+    const userId = user?.id || 'unknown';
+    const userEmail = user?.emailAddresses[0]?.emailAddress;
+    const userName = user?.firstName && user?.lastName ? `${user?.firstName} ${user?.lastName}` : user?.username;
+    const userRole = user?.publicMetadata?.role as string || user?.privateMetadata?.role as string || 'admin';
 
     const body = await request.json();
     const { purchase_request_id, dispute_window_hours = 48 } = body;
@@ -66,6 +75,18 @@ export async function POST(request: NextRequest) {
       console.error('Error marking as dispatched:', updateError);
       return NextResponse.json({ error: 'Failed to update delivery status' }, { status: 500 });
     }
+
+    // Audit log for dispatch
+    await auditDeliveryStatus({
+      purchaseRequestId: purchase_request_id,
+      oldStatus: pr.delivery_status,
+      newStatus: 'dispatched',
+      userId,
+      userEmail,
+      userName,
+      userRole,
+      request
+    });
 
     return NextResponse.json({
       success: true,

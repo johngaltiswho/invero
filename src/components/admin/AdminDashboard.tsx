@@ -404,6 +404,15 @@ const AdminDashboard: React.FC = () => {
                   </div>
                 </div>
               </Link>
+
+              <Link href="/admin/audit-logs" className="group">
+                <div className="bg-neutral-medium/20 hover:bg-neutral-medium/40 p-4 rounded-lg transition-colors">
+                  <div className="text-lg mb-2">📋</div>
+                  <div className="text-sm font-medium text-primary group-hover:text-accent-orange">
+                    View Audit Trail
+                  </div>
+                </div>
+              </Link>
             </div>
           </div>
         </div>

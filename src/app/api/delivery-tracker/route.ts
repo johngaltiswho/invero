@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { auth } from '@clerk/nextjs/server';
+import { auth, currentUser } from '@clerk/nextjs/server';
 import { createClient } from '@supabase/supabase-js';
 import { createSignedUrlWithFallback } from '@/lib/storage-url';
+import { auditDeliveryStatus } from '@/lib/audit';
 
 function supabaseAdmin() {
   return createClient(
@@ -118,6 +119,11 @@ export async function POST(request: NextRequest) {
     const contractor = await getContractor(userId);
     if (!contractor) return NextResponse.json({ error: 'Contractor not found' }, { status: 404 });
 
+    // Get user info for audit logging
+    const user = await currentUser();
+    const userEmail = user?.emailAddresses[0]?.emailAddress;
+    const userName = user?.firstName && user?.lastName ? `${user?.firstName} ${user?.lastName}` : user?.username;
+
     const body = await request.json();
     const { purchase_request_id, dispute_reason } = body;
 
@@ -174,6 +180,19 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Failed to raise dispute' }, { status: 500 });
     }
 
+    // Audit log for dispute
+    await auditDeliveryStatus({
+      purchaseRequestId: purchase_request_id,
+      oldStatus: pr.delivery_status,
+      newStatus: 'disputed',
+      userId,
+      userEmail,
+      userName,
+      userRole: 'contractor',
+      disputeReason: dispute_reason.trim(),
+      request
+    });
+
     return NextResponse.json({
       success: true,
       message: 'Dispute raised successfully. Our team will review and contact you shortly.',
@@ -196,6 +215,11 @@ export async function PATCH(request: NextRequest) {
 
     const contractor = await getContractor(userId);
     if (!contractor) return NextResponse.json({ error: 'Contractor not found' }, { status: 404 });
+
+    // Get user info for audit logging
+    const user = await currentUser();
+    const userEmail = user?.emailAddresses[0]?.emailAddress;
+    const userName = user?.firstName && user?.lastName ? `${user?.firstName} ${user?.lastName}` : user?.username;
 
     const body = await request.json();
     const { purchase_request_id, action } = body;
@@ -240,6 +264,18 @@ export async function PATCH(request: NextRequest) {
       console.error('Error confirming delivery:', updateError);
       return NextResponse.json({ error: 'Failed to confirm delivery' }, { status: 500 });
     }
+
+    // Audit log for delivery confirmation
+    await auditDeliveryStatus({
+      purchaseRequestId: purchase_request_id,
+      oldStatus: pr.delivery_status,
+      newStatus: 'delivered',
+      userId,
+      userEmail,
+      userName,
+      userRole: 'contractor',
+      request
+    });
 
     // Trigger invoice generation inline
     try {

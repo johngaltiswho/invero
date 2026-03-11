@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase';
 import { sendEmail, formatCurrency } from '@/lib/email';
 import { createSignedUrlWithFallback } from '@/lib/storage-url';
+import { auditPurchaseRequest, auditVendorAssignment } from '@/lib/audit';
+import { currentUser } from '@clerk/nextjs/server';
 
 type PurchaseSummary = {
   draft: number;
@@ -457,6 +459,13 @@ export async function GET(request: NextRequest) {
 
 export async function PUT(request: NextRequest) {
   try {
+    // Get user info for audit logging
+    const user = await currentUser();
+    const userId = user?.id || 'unknown';
+    const userEmail = user?.emailAddresses[0]?.emailAddress;
+    const userName = user?.firstName && user?.lastName ? `${user?.firstName} ${user?.lastName}` : user?.username;
+    const userRole = user?.publicMetadata?.role as string || user?.privateMetadata?.role as string || 'admin';
+
     const body = await request.json();
     const {
       purchase_request_id,
@@ -523,6 +532,26 @@ export async function PUT(request: NextRequest) {
         console.error('Failed to assign vendor:', vendorError);
         return NextResponse.json({ error: 'Failed to assign vendor. Run the add-vendor-to-purchase-requests migration first.', details: vendorError.message }, { status: 500 });
       }
+
+      // Audit log for vendor assignment
+      const { data: vendorData } = await supabaseAdmin
+        .from('vendors')
+        .select('name')
+        .eq('id', vendor_id)
+        .single();
+
+      await auditVendorAssignment({
+        purchaseRequestId: purchase_request_id,
+        vendorId: vendor_id,
+        vendorName: vendorData?.name,
+        userId,
+        userEmail,
+        userName,
+        userRole,
+        oldVendorId: existingRequest.vendor_id || undefined,
+        request
+      });
+
       const { requests } = await fetchPurchaseRequests({ ids: [purchase_request_id] });
       return NextResponse.json({ success: true, data: requests[0] || null, message: 'Vendor assigned successfully' });
     }
@@ -623,13 +652,35 @@ export async function PUT(request: NextRequest) {
     const projectName = updatedRequest?.project?.name || updatedRequest?.project_id;
     const estimatedTotal = Number(updatedRequest?.estimated_total || 0);
 
+    // Audit log for status change
+    const auditAction = action === 'reject' ? 'reject' : 'approve';
+    const actionLabel =
+      action === 'approve_for_purchase'
+        ? 'approved'
+        : action === 'approve_for_funding'
+        ? 'funded'
+        : 'rejected';
+
+    await auditPurchaseRequest({
+      action: auditAction,
+      purchaseRequestId: purchase_request_id,
+      userId,
+      userEmail,
+      userName,
+      userRole,
+      oldStatus: existingRequest.status,
+      newStatus: updates.status!,
+      description: `${actionLabel} purchase request${admin_notes ? ': ' + admin_notes : ''}`,
+      metadata: {
+        estimated_total: estimatedTotal,
+        project_name: projectName,
+        contractor_email: contractorEmail,
+        action_type: action
+      },
+      request
+    });
+
     if (contractorEmail && updatedRequest) {
-      const actionLabel =
-        action === 'approve_for_purchase'
-          ? 'approved'
-          : action === 'approve_for_funding'
-          ? 'funded'
-          : 'rejected';
 
       await sendEmail({
         to: contractorEmail,

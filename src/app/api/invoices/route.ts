@@ -7,6 +7,7 @@ import {
   type InvoiceLineItem,
 } from '@/lib/invoice-generator';
 import { createSignedUrlWithFallback } from '@/lib/storage-url';
+import { auditInvoice } from '@/lib/audit';
 
 type InvoiceRow = {
   id: string;
@@ -387,6 +388,27 @@ export async function POST(request: NextRequest) {
         delivered_at: invoiceDate.toISOString(),
       })
       .eq('id', purchase_request_id);
+
+    // Audit log for invoice generation
+    await auditInvoice({
+      action: existing ? 'update' : 'generate',
+      invoiceId: invoiceRecord?.id || invoiceId,
+      invoiceNumber,
+      userId: 'system',
+      userEmail: 'system@invero.app',
+      userName: 'System',
+      userRole: 'system',
+      description: existing ? `Regenerated invoice ${invoiceNumber}` : `Generated invoice ${invoiceNumber}`,
+      metadata: {
+        purchase_request_id: pr.id,
+        contractor_id: contractor.id,
+        project_id: pr.project_id,
+        project_name: project?.project_name,
+        total_amount: grandTotal,
+        force_regenerate: !!existing
+      },
+      request
+    });
 
     return NextResponse.json({
       success: true,
