@@ -2,6 +2,10 @@
 const nextConfig = {
   // Add empty turbopack config to silence the warning
   turbopack: {},
+  // Enable instrumentation for Sentry and other monitoring
+  experimental: {
+    instrumentationHook: true,
+  },
   // Disable webpack polyfills for Node.js modules in client-side bundles
   webpack: (config, { isServer }) => {
     if (!isServer) {

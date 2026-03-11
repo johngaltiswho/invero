@@ -1,0 +1,11 @@
+# Sentry CLI Configuration
+# Copy this file to .sentryclirc and fill in your details
+# DO NOT commit .sentryclirc to version control (already in .gitignore)
+
+[auth]
+token=your-sentry-auth-token-here
+
+[defaults]
+url=https://sentry.io/
+org=your-org-name
+project=your-project-name

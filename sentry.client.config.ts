@@ -27,14 +27,33 @@ if (process.env.NEXT_PUBLIC_SENTRY_DSN) {
       }),
     ],
 
-    // Filter out non-actionable errors
+    // Add custom context and filter errors
     beforeSend(event, hint) {
-      // Filter out network errors (can't fix these)
+      // Add browser context
+      event.contexts = event.contexts || {};
+      event.contexts.browser_info = {
+        viewport: {
+          width: window.innerWidth,
+          height: window.innerHeight,
+        },
+        screen: {
+          width: window.screen.width,
+          height: window.screen.height,
+        },
+      };
+
+      // Filter out non-actionable errors
       const error = hint?.originalException as Error;
       if (error?.message?.includes('Failed to fetch') ||
           error?.message?.includes('NetworkError')) {
         return null;
       }
+
+      // Filter out validation errors (these are expected and handled)
+      if (event.exception?.values?.[0]?.type === 'ValidationError') {
+        return null;
+      }
+
       return event;
     },
 
