@@ -130,7 +130,9 @@ export async function POST(request: NextRequest) {
     // Validate request body
     const validation = await validateRequestBody(raiseDisputeSchema, body);
     if (!validation.success) {
-      return validation.response;
+      return 'response' in validation
+        ? validation.response
+        : NextResponse.json({ error: 'Validation failed' }, { status: 400 });
     }
 
     const { purchase_request_id, dispute_reason } = validation.data;
@@ -227,7 +229,9 @@ export async function PATCH(request: NextRequest) {
     // Validate request body
     const validation = await validateRequestBody(confirmDeliverySchema, body);
     if (!validation.success) {
-      return validation.response;
+      return 'response' in validation
+        ? validation.response
+        : NextResponse.json({ error: 'Validation failed' }, { status: 400 });
     }
 
     const { purchase_request_id } = validation.data;

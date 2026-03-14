@@ -37,7 +37,7 @@ export const purchaseRequestActions = [
 export const updatePurchaseRequestSchema = z.object({
   purchase_request_id: z.string().uuid('Invalid purchase request ID format'),
   action: z.enum(purchaseRequestActions, {
-    errorMap: () => ({ message: 'Invalid action. Must be approve_for_purchase, approve_for_funding, reject, or assign_vendor' })
+    message: 'Invalid action. Must be approve_for_purchase, approve_for_funding, reject, or assign_vendor'
   }),
   admin_notes: z.string().max(1000, 'Admin notes cannot exceed 1000 characters').optional(),
   vendor_id: z.number().int().positive('Vendor ID must be a positive integer').optional(),

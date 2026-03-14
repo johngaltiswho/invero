@@ -68,7 +68,7 @@ export const recordWithdrawalSchema = z.object({
 export const updateTransactionStatusSchema = z.object({
   transaction_id: z.string().uuid('Invalid transaction ID format'),
   status: z.enum(capitalTransactionStatuses, {
-    errorMap: () => ({ message: 'Invalid status. Must be pending, completed, or cancelled' })
+    message: 'Invalid status. Must be pending, completed, or cancelled'
   }),
   notes: z.string().max(1000, 'Notes cannot exceed 1000 characters').optional(),
 });

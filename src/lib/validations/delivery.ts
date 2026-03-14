@@ -33,9 +33,7 @@ export const raiseDisputeSchema = z.object({
  */
 export const confirmDeliverySchema = z.object({
   purchase_request_id: z.string().uuid('Invalid purchase request ID format'),
-  action: z.literal('confirm', {
-    errorMap: () => ({ message: 'Action must be "confirm"' })
-  }),
+  action: z.literal('confirm'),
 });
 
 /**
@@ -44,7 +42,7 @@ export const confirmDeliverySchema = z.object({
 export const resolveDisputeSchema = z.object({
   purchase_request_id: z.string().uuid('Invalid purchase request ID format'),
   resolution: z.enum(['approve_delivery', 'reject_delivery'], {
-    errorMap: () => ({ message: 'Resolution must be approve_delivery or reject_delivery' })
+    message: 'Resolution must be approve_delivery or reject_delivery'
   }),
   resolution_notes: z.string()
     .min(10, 'Resolution notes must be at least 10 characters')

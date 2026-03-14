@@ -36,7 +36,9 @@ export async function POST(request: NextRequest) {
     // Validate request body
     const validation = await validateRequestBody(dispatchPurchaseRequestSchema, body);
     if (!validation.success) {
-      return validation.response;
+      return 'response' in validation
+        ? validation.response
+        : NextResponse.json({ error: 'Validation failed' }, { status: 400 });
     }
 
     const { purchase_request_id, dispute_window_hours } = validation.data;

@@ -256,13 +256,20 @@ export function addBreadcrumb(message: string, category?: string, data?: Record<
 }
 
 /**
- * Start a performance transaction
+ * Start a performance span (replaces deprecated startTransaction)
  */
-export function startTransaction(name: string, op: string) {
-  return Sentry.startTransaction({
-    name,
-    op,
-  });
+export function startSpan<T>(
+  name: string,
+  op: string,
+  callback: () => T
+): T {
+  return Sentry.startSpan(
+    {
+      name,
+      op,
+    },
+    callback
+  );
 }
 
 /**
@@ -273,31 +280,36 @@ export async function trackDatabaseQuery<T>(
   queryFn: () => Promise<T>,
   slowThreshold: number = 1000 // milliseconds
 ): Promise<T> {
-  const startTime = Date.now();
-  const transaction = startTransaction(queryName, 'db.query');
+  return Sentry.startSpan(
+    {
+      name: queryName,
+      op: 'db.query',
+    },
+    async () => {
+      const startTime = Date.now();
 
-  try {
-    const result = await queryFn();
-    const duration = Date.now() - startTime;
+      try {
+        const result = await queryFn();
+        const duration = Date.now() - startTime;
 
-    if (duration > slowThreshold) {
-      captureMessage(`Slow database query: ${queryName}`, 'warning', {
-        tags: {
-          query_name: queryName,
-          duration,
-        },
-        extra: {
-          duration,
-          threshold: slowThreshold,
-        },
-      });
+        if (duration > slowThreshold) {
+          captureMessage(`Slow database query: ${queryName}`, 'warning', {
+            tags: {
+              query_name: queryName,
+              duration,
+            },
+            extra: {
+              duration,
+              threshold: slowThreshold,
+            },
+          });
+        }
+
+        return result;
+      } catch (error) {
+        captureDatabaseError(error as Error, queryName);
+        throw error;
+      }
     }
-
-    transaction.finish();
-    return result;
-  } catch (error) {
-    transaction.finish();
-    captureDatabaseError(error as Error, queryName);
-    throw error;
-  }
+  );
 }
