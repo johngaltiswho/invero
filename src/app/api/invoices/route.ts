@@ -8,6 +8,7 @@ import {
 } from '@/lib/invoice-generator';
 import { createSignedUrlWithFallback } from '@/lib/storage-url';
 import { auditInvoice } from '@/lib/audit';
+import { rateLimit, RateLimitPresets } from '@/lib/rate-limit';
 
 type InvoiceRow = {
   id: string;
@@ -38,6 +39,7 @@ type PurchaseRequestRow = {
   id: string;
   project_id: string;
   contractor_id: string;
+  shipping_location?: string | null;
   dispatched_at?: string | null;
   purchase_request_items?: PurchaseRequestItem[] | null;
 };
@@ -57,6 +59,10 @@ function supabaseAdmin() {
  * Query params: status, project_id
  */
 export async function GET(request: NextRequest) {
+  // Apply rate limiting for read operations
+  const rateLimitResult = await rateLimit(request, RateLimitPresets.READ_ONLY);
+  if (rateLimitResult) return rateLimitResult;
+
   try {
     const { userId } = await auth();
     if (!userId) return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
@@ -122,6 +128,17 @@ export async function GET(request: NextRequest) {
  * Body: { purchase_request_id: string }
  */
 export async function POST(request: NextRequest) {
+  // Rate limit with skip for internal calls
+  const rateLimitResult = await rateLimit(request, {
+    ...RateLimitPresets.MUTATION,
+    skip: (req) => {
+      const secret = req.headers.get('x-internal-secret');
+      const expectedSecret = process.env.CRON_SECRET;
+      return !!expectedSecret && secret === expectedSecret; // Skip rate limiting for internal calls
+    }
+  });
+  if (rateLimitResult) return rateLimitResult;
+
   // Verify this is an internal call.
   // In development, allow missing secret to keep local flows working.
   const secret = request.headers.get('x-internal-secret');
@@ -164,6 +181,7 @@ export async function POST(request: NextRequest) {
         id,
         project_id,
         contractor_id,
+        shipping_location,
         dispatched_at,
         remarks,
         purchase_request_items (
@@ -203,6 +221,7 @@ export async function POST(request: NextRequest) {
           id,
           project_id,
           contractor_id,
+          shipping_location,
           dispatched_at,
           remarks,
           purchase_request_items (
@@ -253,9 +272,15 @@ export async function POST(request: NextRequest) {
     // Fetch project name
     const { data: project } = await supabase
       .from('projects')
-      .select('id, project_name, client_name')
+      .select('id, project_name, client_name, project_address, location')
       .eq('id', pr.project_id)
       .single();
+
+    const shipToAddress =
+      pr.shipping_location?.trim() ||
+      project?.project_address?.trim() ||
+      project?.location?.trim() ||
+      undefined;
 
     // Build line items
     const lineItems: InvoiceLineItem[] = (pr.purchase_request_items || []).map((item: PurchaseRequestItem) => {
@@ -321,9 +346,11 @@ export async function POST(request: NextRequest) {
       contractorId: contractor.id,
       projectId: pr.project_id,
       projectName: project?.project_name || pr.project_id,
+      clientName: project?.client_name || undefined,
       contractorName: contractor.company_name,
       contractorGSTIN: contractor.gstin,
       contractorAddress: contractorAddress || undefined,
+      shipToAddress,
       lineItems,
       subtotal,
       totalTax,

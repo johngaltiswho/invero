@@ -3,9 +3,57 @@ import { currentUser } from '@clerk/nextjs/server';
 import { createClient } from '@supabase/supabase-js';
 import type { CreatePurchaseRequestPayload } from '@/types/purchase-requests';
 import { sendEmail, formatCurrency } from '@/lib/email';
+import { rateLimit, RateLimitPresets } from '@/lib/rate-limit';
+
+async function resolveShippingLocation(
+  supabase: any,
+  projectId: string,
+  explicitShippingLocation?: string | null
+) {
+  const trimmedExplicit = explicitShippingLocation?.trim();
+  if (trimmedExplicit) return trimmedExplicit;
+
+  const { data: project } = await supabase
+    .from('projects')
+    .select('id, contractor_id, project_address, location, client_id, client_name')
+    .eq('id', projectId)
+    .maybeSingle() as { data: any };
+
+  if (!project) return null;
+
+  const projectShipping = project.project_address?.trim();
+  if (projectShipping) return projectShipping;
+
+  if (project.client_id) {
+    const { data: client } = await supabase
+      .from('clients')
+      .select('address')
+      .eq('id', project.client_id)
+      .maybeSingle() as { data: any };
+    const clientAddress = client?.address?.trim();
+    if (clientAddress) return clientAddress;
+  }
+
+  if (project.client_name) {
+    const { data: clientByName } = await supabase
+      .from('clients')
+      .select('address')
+      .eq('contractor_id', project.contractor_id)
+      .ilike('name', project.client_name)
+      .maybeSingle() as { data: any };
+    const clientAddress = clientByName?.address?.trim();
+    if (clientAddress) return clientAddress;
+  }
+
+  return project.location?.trim() || null;
+}
 
 // GET - Fetch purchase requests for contractor
 export async function GET(request: NextRequest) {
+  // Apply rate limiting for read operations
+  const rateLimitResult = await rateLimit(request, RateLimitPresets.READ_ONLY);
+  if (rateLimitResult) return rateLimitResult;
+
   try {
     const user = await currentUser();
     if (!user) {
@@ -39,6 +87,7 @@ export async function GET(request: NextRequest) {
         id,
         project_id,
         contractor_id,
+        shipping_location,
         status,
         created_by,
         remarks,
@@ -98,6 +147,10 @@ export async function GET(request: NextRequest) {
 
 // POST - Create new purchase request
 export async function POST(request: NextRequest) {
+  // Apply rate limiting for mutation operations
+  const rateLimitResult = await rateLimit(request, RateLimitPresets.MUTATION);
+  if (rateLimitResult) return rateLimitResult;
+
   try {
     const user = await currentUser();
     if (!user) {
@@ -105,7 +158,7 @@ export async function POST(request: NextRequest) {
     }
 
     const body: CreatePurchaseRequestPayload = await request.json();
-    const { project_id, contractor_id, remarks, items } = body;
+    const { project_id, contractor_id, remarks, items, shipping_location } = body;
 
     if (!project_id || !items || !Array.isArray(items) || items.length === 0) {
       return NextResponse.json({ 
@@ -134,6 +187,8 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
     }
 
+    const resolvedShippingLocation = await resolveShippingLocation(supabase, project_id, shipping_location || null);
+
     console.log('🚀 Creating purchase request for contractor:', contractor.id);
     console.log('📄 Request details:', { project_id, items: items.length, remarks });
 
@@ -146,6 +201,7 @@ export async function POST(request: NextRequest) {
         contractor_id: contractor.id,
         status: 'submitted',
         created_by: contractor.id,
+        shipping_location: resolvedShippingLocation,
         remarks: remarks || null,
         created_at: now,
         updated_at: now,
@@ -284,6 +340,10 @@ export async function POST(request: NextRequest) {
 
 // PUT - Submit purchase request
 export async function PUT(request: NextRequest) {
+  // Apply rate limiting for mutation operations
+  const rateLimitResult = await rateLimit(request, RateLimitPresets.MUTATION);
+  if (rateLimitResult) return rateLimitResult;
+
   try {
     const user = await currentUser();
     if (!user) {

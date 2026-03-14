@@ -1,9 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase';
 import { auth } from '@clerk/nextjs/server';
+import { rateLimit, RateLimitPresets } from '@/lib/rate-limit';
 
 // POST - Create new project
 export async function POST(request: NextRequest) {
+  // Apply rate limiting for project creation
+  const rateLimitResult = await rateLimit(request, RateLimitPresets.MUTATION);
+  if (rateLimitResult) return rateLimitResult;
+
   try {
     // Check authentication
     const { userId } = await auth();
@@ -27,7 +32,9 @@ export async function POST(request: NextRequest) {
       projectData = {
         contractor_id: body.contractor_id,
         project_name: body.project_name,
+        client_id: body.client_id || null,
         client_name: body.client_name,
+        project_address: body.project_address || null,
         estimated_value: 0, // Default for simple projects
         funding_status: 'pending',
         project_status: body.project_status || 'draft',
@@ -42,7 +49,9 @@ export async function POST(request: NextRequest) {
       projectData = {
         contractor_id: formData.get('contractor_id') as string,
         project_name: formData.get('project_name') as string,
+        client_id: formData.get('client_id') as string || null,
         client_name: formData.get('client_name') as string,
+        project_address: formData.get('project_address') as string || null,
         estimated_value: parseFloat(formData.get('project_value') as string),
         po_number: formData.get('po_wo_number') as string || null,
         funding_status: formData.get('funding_status') as string || 'pending',
@@ -222,6 +231,10 @@ export async function POST(request: NextRequest) {
 
 // GET - Fetch contractor's projects
 export async function GET(request: NextRequest) {
+  // Apply rate limiting for read operations
+  const rateLimitResult = await rateLimit(request, RateLimitPresets.READ_ONLY);
+  if (rateLimitResult) return rateLimitResult;
+
   try {
     // Check authentication
     const { userId } = await auth();
