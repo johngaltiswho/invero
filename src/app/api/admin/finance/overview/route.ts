@@ -116,9 +116,16 @@ export async function GET() {
   try {
     await requireAdmin();
 
+    // Get all purchase requests for historical data
     const { data: purchaseRequests, error: purchaseRequestError } = await supabaseAdmin
       .from('purchase_requests')
       .select('id, project_id, contractor_id, status');
+
+    // Also get only requests that need funding (submitted/approved, not yet fully funded)
+    const { data: openRequests, error: openRequestsError } = await supabaseAdmin
+      .from('purchase_requests')
+      .select('id, project_id, contractor_id, status')
+      .in('status', ['submitted', 'approved']);
 
     if (purchaseRequestError) {
       console.error('Failed to load purchase requests:', purchaseRequestError);
@@ -210,6 +217,7 @@ export async function GET() {
           total_funded: 0,
           total_returns: 0,
           total_outstanding: 0,
+          funding_required: 0,
           total_projects: 0,
           total_contractors: 0
         },
@@ -454,6 +462,16 @@ export async function GET() {
     let totalReturns = 0;
     let totalPlatformFee = 0;
     let totalParticipationFee = 0;
+    let fundingRequired = 0; // Only for open (submitted/approved) requests
+
+    // Calculate funding required for open requests only
+    const openRequestIds = new Set((openRequests || []).map(r => r.id));
+    openRequestIds.forEach((requestId) => {
+      const requestTotal = requestTotals.get(requestId) || 0;
+      const funded = fundedTotals.get(requestId) || 0;
+      // Funding required = requested - already funded
+      fundingRequired += Math.max(requestTotal - funded, 0);
+    });
 
     requests.forEach((request) => {
       if (!request.project_id) return;
@@ -515,6 +533,7 @@ export async function GET() {
         total_platform_fee: totalPlatformFee,
         total_participation_fee: totalParticipationFee,
         total_outstanding: totalOutstanding,
+        funding_required: fundingRequired, // Only open requests that need funding
         total_projects: projectTotals.size,
         total_contractors: contractorIds.length
       },

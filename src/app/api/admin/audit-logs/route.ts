@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAdmin } from '@/lib/admin-auth';
 import { createClient } from '@supabase/supabase-js';
+import { rateLimit, RateLimitPresets } from '@/lib/rate-limit';
 
 function supabaseAdmin() {
   return createClient(
@@ -27,6 +28,10 @@ function supabaseAdmin() {
  * - offset: pagination offset (default 0)
  */
 export async function GET(request: NextRequest) {
+  // Apply rate limiting for admin read operations
+  const rateLimitResult = await rateLimit(request, RateLimitPresets.READ_ONLY);
+  if (rateLimitResult) return rateLimitResult;
+
   try {
     await requireAdmin();
 

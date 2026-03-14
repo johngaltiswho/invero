@@ -12,6 +12,7 @@ type FinanceSummary = {
   total_platform_fee?: number;
   total_participation_fee?: number;
   total_outstanding: number;
+  funding_required: number; // Only open requests that need funding
   total_projects: number;
   total_contractors: number;
 };
@@ -149,10 +150,10 @@ const AdminFinanceDashboard: React.FC = () => {
           <div className="bg-neutral-dark p-6 rounded-lg border border-neutral-medium">
             <div className="text-accent-amber text-sm font-mono mb-2">FUNDING REQUIRED</div>
             <div className="text-2xl font-bold text-accent-amber mb-1">
-              {formatCurrency(summary.total_requested_value)}
+              {formatCurrency(summary.funding_required || 0)}
             </div>
             <div className="text-xs text-secondary">
-              {summary.total_projects} projects · {summary.total_contractors} contractors
+              Open requests needing funding
             </div>
           </div>
         </div>
