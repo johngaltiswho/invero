@@ -2,10 +2,6 @@
 const nextConfig = {
   // Add empty turbopack config to silence the warning
   turbopack: {},
-  // Enable instrumentation for Sentry and other monitoring
-  experimental: {
-    instrumentationHook: true,
-  },
   // Security headers for enterprise-grade protection
   async headers() {
     return [
