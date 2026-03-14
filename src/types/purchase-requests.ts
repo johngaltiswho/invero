@@ -4,6 +4,7 @@ export interface PurchaseRequest {
   id: string;
   project_id: string;
   contractor_id: string;
+  shipping_location?: string | null;
   status: 'draft' | 'submitted' | 'approved' | 'funded' | 'po_generated' | 'completed' | 'rejected';
   created_by?: string;
   remarks?: string;
@@ -64,6 +65,7 @@ export interface ProjectMaterialForUI {
 export interface CreatePurchaseRequestPayload {
   project_id: string;
   contractor_id: string;
+  shipping_location?: string;
   remarks?: string;
   items: Array<{
     project_material_id: string;

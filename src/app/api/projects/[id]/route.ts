@@ -95,7 +95,9 @@ export async function PUT(
 
     const allowedFields = new Set([
       'project_name',
+      'client_id',
       'client_name',
+      'project_address',
       'project_status',
       'status',
       'estimated_value',

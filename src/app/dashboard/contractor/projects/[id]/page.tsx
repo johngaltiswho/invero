@@ -41,6 +41,7 @@ type EditableProjectPurchaseRequest = {
   id: string;
   status: string;
   remarks: string | null;
+  shipping_location: string | null;
   editable: boolean;
   items: EditableProjectPurchaseRequestItem[];
 };
@@ -55,6 +56,13 @@ function IndividualProjectContent(): React.ReactElement {
   // Project state
   const [project, setProject] = useState<any>(null);
   const [projectLoading, setProjectLoading] = useState(true);
+  const [showEditProjectDialog, setShowEditProjectDialog] = useState(false);
+  const [savingProjectDetails, setSavingProjectDetails] = useState(false);
+  const [projectForm, setProjectForm] = useState({
+    project_name: '',
+    client_name: '',
+    project_address: ''
+  });
   const [activeTab, setActiveTab] = useState<'overview' | 'boq' | 'schedule' | 'materials' | 'purchase_requests' | 'files'>('overview');
   const [refreshKey, setRefreshKey] = useState(0);
   
@@ -106,6 +114,7 @@ function IndividualProjectContent(): React.ReactElement {
   const [purchaseQuantities, setPurchaseQuantities] = useState<{[key: string]: string}>({});
   const [purchaseUnits, setPurchaseUnits] = useState<{[key: string]: string}>({});
   const [purchaseConversions, setPurchaseConversions] = useState<{[key: string]: string}>({});
+  const [purchaseShippingLocation, setPurchaseShippingLocation] = useState('');
   const [editingPurchaseRequest, setEditingPurchaseRequest] = useState<EditableProjectPurchaseRequest | null>(null);
   const [editRequestLoading, setEditRequestLoading] = useState(false);
   const [savingRequestEdit, setSavingRequestEdit] = useState(false);
@@ -229,6 +238,11 @@ function IndividualProjectContent(): React.ReactElement {
     });
   }, [showBatchPurchaseDialog, selectedMaterials, projectMaterials]);
 
+  useEffect(() => {
+    if (!showBatchPurchaseDialog) return;
+    setPurchaseShippingLocation((prev) => prev || project?.project_address || project?.location || '');
+  }, [showBatchPurchaseDialog, project?.project_address, project?.location]);
+
   const fetchProjectData = async () => {
     try {
       setProjectLoading(true);
@@ -242,6 +256,11 @@ function IndividualProjectContent(): React.ReactElement {
         if (data.success && data.data) {
           setProject(data.data);
           setEnhancedProjectData(data.data);
+          setProjectForm({
+            project_name: data.data.project_name || '',
+            client_name: data.data.client_name || '',
+            project_address: data.data.project_address || data.data.location || ''
+          });
           
           // Load project materials, files, etc.
           await Promise.all([
@@ -387,6 +406,41 @@ function IndividualProjectContent(): React.ReactElement {
       }
     } catch (error) {
       console.error('Error fetching project files:', error);
+    }
+  };
+
+  const saveProjectDetails = async () => {
+    if (!project?.id) return;
+
+    try {
+      setSavingProjectDetails(true);
+      const response = await fetch(`/api/projects/${project.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          project_name: projectForm.project_name,
+          project_address: projectForm.project_address
+        })
+      });
+
+      const result = await response.json();
+      if (!response.ok || !result.success) {
+        throw new Error(result.error || 'Failed to update project');
+      }
+
+      setProject(result.data);
+      setEnhancedProjectData(result.data);
+      setProjectForm({
+        project_name: result.data.project_name || '',
+        client_name: result.data.client_name || '',
+        project_address: result.data.project_address || result.data.location || ''
+      });
+      setShowEditProjectDialog(false);
+    } catch (error) {
+      console.error('Failed to update project:', error);
+      alert(error instanceof Error ? error.message : 'Failed to update project');
+    } finally {
+      setSavingProjectDetails(false);
     }
   };
 
@@ -1057,6 +1111,7 @@ function IndividualProjectContent(): React.ReactElement {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           remarks: editingPurchaseRequest.remarks || null,
+          shipping_location: editingPurchaseRequest.shipping_location || null,
           items: editingPurchaseRequest.items.map((item) => ({
             ...(item.id.startsWith('new-') ? {} : { id: item.id }),
             project_material_id: item.project_material_id,
@@ -1168,6 +1223,12 @@ function IndividualProjectContent(): React.ReactElement {
                 Value: {formatCurrency(project.estimated_value)}
               </span>
             )}
+            <button
+              onClick={() => setShowEditProjectDialog(true)}
+              className="text-sm px-3 py-1 rounded border border-neutral-medium text-primary hover:bg-neutral-medium rounded-lg transition-colors"
+            >
+              Edit Project
+            </button>
           </div>
         </div>
 
@@ -1265,6 +1326,12 @@ function IndividualProjectContent(): React.ReactElement {
                   <div className="text-xs text-secondary mb-1">Materials</div>
                   <div className="text-lg font-bold text-primary">
                     {projectMaterials.length} items
+                  </div>
+                </div>
+                <div className="bg-neutral-darker p-4 rounded-lg md:col-span-3">
+                  <div className="text-xs text-secondary mb-1">Project Address</div>
+                  <div className="text-sm text-primary whitespace-pre-line">
+                    {project.project_address || project.location || 'Not specified'}
                   </div>
                 </div>
               </div>
@@ -2479,6 +2546,21 @@ function IndividualProjectContent(): React.ReactElement {
                 
                 {/* Summary */}
                 <div className="bg-neutral-darker p-3 rounded-lg border border-neutral-medium">
+                  <div className="mb-3">
+                    <label className="block text-xs font-medium text-secondary mb-1">
+                      Shipping Location
+                    </label>
+                    <textarea
+                      value={purchaseShippingLocation}
+                      onChange={(e) => setPurchaseShippingLocation(e.target.value)}
+                      placeholder="Project/site shipping address"
+                      rows={2}
+                      className="w-full px-3 py-2 bg-neutral-dark border border-neutral-medium rounded text-primary text-sm focus:border-accent-amber focus:outline-none resize-none"
+                    />
+                    <div className="text-[11px] text-secondary mt-1">
+                      Auto-filled from project address when available.
+                    </div>
+                  </div>
                   <h5 className="font-medium text-primary mb-2">Request Summary</h5>
                   <div className="grid grid-cols-2 gap-4 text-sm">
                     <div>
@@ -2512,10 +2594,11 @@ function IndividualProjectContent(): React.ReactElement {
                     setPurchaseRates({});
                     setPurchaseTax({});
                     setPurchaseHsn({});
-                    setPurchaseRemarks({});
-                    setPurchaseUnits({});
-                    setPurchaseConversions({});
-                    setSelectedVendor(null);
+                          setPurchaseRemarks({});
+                          setPurchaseUnits({});
+                          setPurchaseConversions({});
+                          setPurchaseShippingLocation('');
+                          setSelectedVendor(null);
                   }}
                   className="px-4 py-2 text-secondary hover:text-primary transition-colors"
                 >
@@ -2567,6 +2650,7 @@ function IndividualProjectContent(): React.ReactElement {
                         remarks: Array.from(selectedMaterials).map(materialId => 
                           purchaseRemarks[materialId] || ''
                         ).filter(remark => remark).join('; ') || null,
+                        shipping_location: purchaseShippingLocation.trim() || null,
                         items: Array.from(selectedMaterials).map(materialId => ({
                           ...(() => {
                             const material = projectMaterials.find(m => m.id === materialId);
@@ -2622,6 +2706,7 @@ function IndividualProjectContent(): React.ReactElement {
                         setPurchaseRemarks({});
                         setPurchaseUnits({});
                         setPurchaseConversions({});
+                        setPurchaseShippingLocation('');
                         setSelectedVendor(null);
                       } else {
                         console.error('❌ Failed to create purchase request:', result);
@@ -2729,6 +2814,23 @@ function IndividualProjectContent(): React.ReactElement {
                         </button>
                       </div>
                     </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-medium text-secondary mb-1">Shipping Location</label>
+                    <textarea
+                      value={editingPurchaseRequest.shipping_location || ''}
+                      disabled={!editingPurchaseRequest.editable}
+                      onChange={(e) =>
+                        setEditingPurchaseRequest({
+                          ...editingPurchaseRequest,
+                          shipping_location: e.target.value
+                        })
+                      }
+                      className="w-full px-3 py-2 rounded-lg border border-neutral-medium bg-neutral-darker text-primary focus:outline-none focus:ring-2 focus:ring-accent-amber disabled:opacity-50 resize-none"
+                      placeholder="Project/site shipping address"
+                      rows={2}
+                    />
                   </div>
 
                   <div className="overflow-x-auto border border-neutral-medium rounded-lg">
@@ -3045,6 +3147,67 @@ function IndividualProjectContent(): React.ReactElement {
         </div>
       )}
 
+        {showEditProjectDialog && (
+          <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
+            <div className="bg-neutral-dark rounded-lg border border-neutral-medium w-full max-w-2xl">
+              <div className="px-6 py-4 border-b border-neutral-medium flex items-center justify-between">
+                <h3 className="text-lg font-semibold text-primary">Edit Project</h3>
+                <button
+                  onClick={() => !savingProjectDetails && setShowEditProjectDialog(false)}
+                  className="text-secondary hover:text-primary text-sm"
+                >
+                  Close
+                </button>
+              </div>
+              <div className="p-6 space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-primary mb-2">Project Name</label>
+                  <input
+                    type="text"
+                    value={projectForm.project_name}
+                    onChange={(e) => setProjectForm(prev => ({ ...prev, project_name: e.target.value }))}
+                    className="w-full px-3 py-2 border border-neutral-medium rounded-lg bg-neutral-darker text-primary focus:outline-none focus:ring-2 focus:ring-accent-amber"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-primary mb-2">Client</label>
+                  <input
+                    type="text"
+                    value={projectForm.client_name}
+                    disabled
+                    className="w-full px-3 py-2 border border-neutral-medium rounded-lg bg-neutral-darker text-secondary opacity-70"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-primary mb-2">Project Address</label>
+                  <textarea
+                    value={projectForm.project_address}
+                    onChange={(e) => setProjectForm(prev => ({ ...prev, project_address: e.target.value }))}
+                    rows={4}
+                    placeholder="Enter the project/site address"
+                    className="w-full px-3 py-2 border border-neutral-medium rounded-lg bg-neutral-darker text-primary focus:outline-none focus:ring-2 focus:ring-accent-amber resize-none"
+                  />
+                </div>
+              </div>
+              <div className="px-6 py-4 border-t border-neutral-medium flex justify-end gap-3">
+                <button
+                  onClick={() => setShowEditProjectDialog(false)}
+                  disabled={savingProjectDetails}
+                  className="px-4 py-2 border border-neutral-medium text-primary rounded-lg hover:bg-neutral-medium/20 transition-colors disabled:opacity-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={saveProjectDetails}
+                  disabled={savingProjectDetails || !projectForm.project_name.trim()}
+                  className="px-4 py-2 bg-accent-amber text-neutral-dark rounded-lg hover:bg-accent-amber/90 transition-colors disabled:opacity-50"
+                >
+                  {savingProjectDetails ? 'Saving...' : 'Save Changes'}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </ContractorDashboardLayout>
   );

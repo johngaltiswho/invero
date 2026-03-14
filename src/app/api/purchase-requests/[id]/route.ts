@@ -84,7 +84,7 @@ export async function GET(_request: NextRequest, context: RouteContext) {
 
     const { data: requestRow, error: requestError } = await supabase
       .from('purchase_requests')
-      .select('id, project_id, contractor_id, status, remarks, created_at, updated_at, submitted_at, approved_at, funded_at')
+      .select('id, project_id, contractor_id, status, remarks, shipping_location, created_at, updated_at, submitted_at, approved_at, funded_at')
       .eq('id', requestId)
       .eq('contractor_id', contractorId)
       .single();
@@ -212,6 +212,7 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
 
     const body = await request.json();
     const remarks = typeof body.remarks === 'string' ? body.remarks : null;
+    const shippingLocation = typeof body.shipping_location === 'string' ? body.shipping_location.trim() || null : null;
     const items = Array.isArray(body.items) ? body.items : [];
 
     const contractorId = await getContractorIdForUser(user.id);
@@ -223,7 +224,7 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
 
     const { data: requestRow, error: requestError } = await supabase
       .from('purchase_requests')
-      .select('id, status, contractor_id, project_id')
+      .select('id, status, contractor_id, project_id, shipping_location')
       .eq('id', requestId)
       .eq('contractor_id', contractorId)
       .single();
@@ -401,11 +402,12 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
       .from('purchase_requests')
       .update({
         remarks,
+        shipping_location: shippingLocation,
         updated_at: new Date().toISOString(),
       })
       .eq('id', requestId)
       .eq('contractor_id', contractorId)
-      .select('id, project_id, contractor_id, status, remarks, updated_at')
+      .select('id, project_id, contractor_id, status, remarks, shipping_location, updated_at')
       .single();
 
     if (requestUpdateError || !updatedRequest) {

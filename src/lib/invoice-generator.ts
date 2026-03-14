@@ -27,9 +27,11 @@ export interface InvoiceGenerationParams {
   contractorId: string;
   projectId: string;
   projectName: string;
+  clientName?: string;
   contractorName: string;
   contractorGSTIN?: string;
   contractorAddress?: string;
+  shipToAddress?: string;
   lineItems: InvoiceLineItem[];
   subtotal: number;
   totalTax: number;
@@ -150,6 +152,26 @@ export function generateInvoicePDF(params: InvoiceGenerationParams): Buffer {
   }
 
   y += partyBoxHeight + 5;
+
+  if (params.shipToAddress || params.clientName || params.projectName) {
+    const shipToLines = [
+      params.clientName?.trim() || '',
+      params.projectName?.trim() || '',
+      ...(params.shipToAddress
+        ? (doc.splitTextToSize(params.shipToAddress, CONTENT_W - 8) as string[])
+        : []),
+    ].filter((line) => line && line.trim().length > 0);
+
+    const shipToHeight = Math.max(14, shipToLines.length * 4 + 6);
+    doc.rect(MARGIN, y, CONTENT_W, shipToHeight);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(9);
+    doc.text('Ship To:', MARGIN + 3, y + 5);
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(8);
+    doc.text(shipToLines, MARGIN + 3, y + 10);
+    y += shipToHeight + 5;
+  }
 
   // Line items table
   doc.rect(MARGIN, y, CONTENT_W, 8);

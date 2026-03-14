@@ -59,6 +59,7 @@ function ContractorProjectsContent(): React.ReactElement {
   const [newProject, setNewProject] = useState({
     project_name: '',
     client_id: '',
+    project_address: '',
     description: '',
     tender_submission_date: ''
   });
@@ -115,6 +116,7 @@ function ContractorProjectsContent(): React.ReactElement {
   const [awardedProjectForm, setAwardedProjectForm] = useState({
     project_name: '',
     client_id: '',
+    project_address: '',
     estimated_value: '',
     po_number: '',
     funding_required: '',
@@ -153,8 +155,10 @@ function ContractorProjectsContent(): React.ReactElement {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           contractor_id: contractor.id,
+          client_id: selectedClient.id,
           project_name: newProject.project_name,
           client_name: selectedClient.name,
+          project_address: newProject.project_address || selectedClient.address || '',
           project_status: 'draft',
           tender_submission_date: newProject.tender_submission_date || null
         })
@@ -163,7 +167,7 @@ function ContractorProjectsContent(): React.ReactElement {
       if (response.ok) {
         const result = await response.json();
         setRefreshKey(prev => prev + 1); // Refresh projects list
-        setNewProject({ project_name: '', client_id: '', description: '', tender_submission_date: '' });
+        setNewProject({ project_name: '', client_id: '', project_address: '', description: '', tender_submission_date: '' });
         setShowCreateProject(false);
         // Optionally select the new project
         setSelectedProject(result.data?.id || result.data?.project?.id);
@@ -1319,8 +1323,10 @@ function ContractorProjectsContent(): React.ReactElement {
       // Create FormData for the API (to support file upload)
       const formData = new FormData();
       formData.append('contractor_id', contractor.id);
+      formData.append('client_id', selectedClient.id);
       formData.append('project_name', awardedProjectForm.project_name);
       formData.append('client_name', selectedClient.name);
+      formData.append('project_address', awardedProjectForm.project_address || selectedClient.address || '');
       formData.append('project_value', awardedProjectForm.estimated_value);
       formData.append('po_wo_number', awardedProjectForm.po_number);
       formData.append('funding_status', awardedProjectForm.funding_status);
@@ -1345,6 +1351,7 @@ function ContractorProjectsContent(): React.ReactElement {
         setAwardedProjectForm({
           project_name: '',
           client_id: '',
+          project_address: '',
           estimated_value: '',
           po_number: '',
           funding_required: '',
@@ -1902,7 +1909,14 @@ function ContractorProjectsContent(): React.ReactElement {
                     <label className="block text-sm font-medium text-primary mb-2">Client</label>
                     <select
                       value={newProject.client_id}
-                      onChange={(e) => setNewProject(prev => ({ ...prev, client_id: e.target.value }))}
+                      onChange={(e) => {
+                        const selectedClient = clients.find(client => client.id === e.target.value);
+                        setNewProject(prev => ({
+                          ...prev,
+                          client_id: e.target.value,
+                          project_address: selectedClient?.address || prev.project_address || ''
+                        }));
+                      }}
                       className="w-full px-3 py-2 border border-neutral-medium rounded-lg bg-neutral-dark text-primary focus:outline-none focus:ring-2 focus:ring-accent-blue"
                     >
                       <option value="">Select a client</option>
@@ -1917,6 +1931,16 @@ function ContractorProjectsContent(): React.ReactElement {
                         No clients found. <a href="/dashboard/contractor/network" className="text-accent-blue hover:underline">Add clients in Network tab</a>
                       </p>
                     )}
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-primary mb-2">Project Address</label>
+                    <textarea
+                      value={newProject.project_address}
+                      onChange={(e) => setNewProject(prev => ({ ...prev, project_address: e.target.value }))}
+                      className="w-full px-3 py-2 border border-neutral-medium rounded-lg bg-neutral-dark text-primary focus:outline-none focus:ring-2 focus:ring-accent-blue"
+                      rows={3}
+                      placeholder="Project/site address"
+                    />
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-primary mb-2">Tender Submission Date</label>
@@ -1990,7 +2014,14 @@ function ContractorProjectsContent(): React.ReactElement {
                       <label className="block text-sm font-medium text-primary mb-2">Client *</label>
                       <select
                         value={awardedProjectForm.client_id}
-                        onChange={(e) => setAwardedProjectForm(prev => ({ ...prev, client_id: e.target.value }))}
+                        onChange={(e) => {
+                          const selectedClient = clients.find(client => client.id === e.target.value);
+                          setAwardedProjectForm(prev => ({
+                            ...prev,
+                            client_id: e.target.value,
+                            project_address: selectedClient?.address || prev.project_address || ''
+                          }));
+                        }}
                         className="w-full px-3 py-2 border border-neutral-medium rounded-lg bg-neutral-dark text-primary focus:outline-none focus:ring-2 focus:ring-accent-blue"
                       >
                         <option value="">Select a client</option>
@@ -2002,6 +2033,18 @@ function ContractorProjectsContent(): React.ReactElement {
                       </select>
                     </div>
                   </div>
+                  
+                  <div>
+                    <label className="block text-sm font-medium text-primary mb-2">Project Address</label>
+                    <textarea
+                      value={awardedProjectForm.project_address}
+                      onChange={(e) => setAwardedProjectForm(prev => ({ ...prev, project_address: e.target.value }))}
+                      className="w-full px-3 py-2 border border-neutral-medium rounded-lg bg-neutral-dark text-primary focus:outline-none focus:ring-2 focus:ring-accent-blue"
+                      rows={3}
+                      placeholder="Project/site address"
+                    />
+                  </div>
+                  <div />
                   
                   <div className="grid md:grid-cols-2 gap-4">
                     <div>
@@ -2079,6 +2122,7 @@ function ContractorProjectsContent(): React.ReactElement {
                       setAwardedProjectForm({
                         project_name: '',
                         client_id: '',
+                        project_address: '',
                         estimated_value: '',
                         po_number: '',
                         funding_required: '',

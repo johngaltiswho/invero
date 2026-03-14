@@ -116,6 +116,7 @@ interface PurchaseRequest {
   id: string;
   project_id: string;
   contractor_id: string;
+  shipping_location?: string | null;
   status: 'draft' | 'submitted' | 'approved' | 'funded' | 'po_generated' | 'completed' | 'rejected';
   remarks?: string | null;
   approval_notes?: string | null;
@@ -145,6 +146,8 @@ interface PurchaseRequest {
   };
   project?: {
     name?: string;
+    client_name?: string | null;
+    project_address?: string | null;
     location?: string;
   };
   purchase_request_items: PurchaseRequestItemUI[];
@@ -2107,6 +2110,22 @@ export default function AdminVerificationDashboard(): React.ReactElement {
                   <div className="text-primary font-medium mt-1">₹{(selectedPurchaseRequest.estimated_total || 0).toLocaleString(undefined, { maximumFractionDigits: 2 })}</div>
                 </div>
               </div>
+
+              {(selectedPurchaseRequest.shipping_location || selectedPurchaseRequest.project?.project_address || selectedPurchaseRequest.project?.location) && (
+                <div className="bg-neutral-darker border border-neutral-medium rounded-lg p-4">
+                  <h3 className="text-base font-semibold text-primary mb-2">Shipping Location</h3>
+                  <div className="text-sm text-secondary">
+                    {selectedPurchaseRequest.project?.client_name && (
+                      <div className="text-primary font-medium mb-1">{selectedPurchaseRequest.project.client_name}</div>
+                    )}
+                    <div>
+                      {selectedPurchaseRequest.shipping_location ||
+                        selectedPurchaseRequest.project?.project_address ||
+                        selectedPurchaseRequest.project?.location}
+                    </div>
+                  </div>
+                </div>
+              )}
 
               <div className="bg-neutral-darker border border-neutral-medium rounded-lg p-4">
                 <h3 className="text-base font-semibold text-primary mb-3">Vendor Assignment</h3>
