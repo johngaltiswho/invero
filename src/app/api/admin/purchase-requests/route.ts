@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase';
-import { sendEmail, formatCurrency } from '@/lib/email';
+import { sendEmail } from '@/lib/email';
+import { purchaseRequestStatusEmail } from '@/lib/notifications/email-templates';
 import { createSignedUrlWithFallback } from '@/lib/storage-url';
 import { auditPurchaseRequest, auditVendorAssignment } from '@/lib/audit';
 import { currentUser } from '@clerk/nextjs/server';
@@ -689,19 +690,20 @@ export async function PUT(request: NextRequest) {
     });
 
     if (contractorEmail && updatedRequest) {
-
-      await sendEmail({
-        to: contractorEmail,
-        subject: `Purchase request ${actionLabel} · ${projectName || 'Project'}`,
-        text: `Hi ${contractorName || 'there'},\n\nYour purchase request has been ${actionLabel}.\nProject: ${projectName || updatedRequest.project_id}\nEstimated value: ${formatCurrency(estimatedTotal)}\n\nPR ID: ${updatedRequest.id}`,
-        html: `
-          <p>Hi ${contractorName || 'there'},</p>
-          <p>Your purchase request has been <strong>${actionLabel}</strong>.</p>
-          <p><strong>Project:</strong> ${projectName || updatedRequest.project_id}<br/>
-          <strong>Estimated value:</strong> ${formatCurrency(estimatedTotal)}</p>
-          <p><strong>PR ID:</strong> ${updatedRequest.id}</p>
-        `
-      });
+      try {
+        await sendEmail({
+          to: contractorEmail,
+          ...purchaseRequestStatusEmail({
+            recipientName: contractorName || 'there',
+            projectName: projectName || updatedRequest.project_id,
+            statusLabel: actionLabel,
+            estimatedValue: estimatedTotal,
+            purchaseRequestId: updatedRequest.id,
+          }),
+        });
+      } catch (emailError) {
+        console.error('Failed to send purchase request status email:', emailError);
+      }
     }
 
     return NextResponse.json({

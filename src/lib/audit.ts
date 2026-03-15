@@ -19,7 +19,11 @@ export type AuditAction =
   | 'deliver'
   | 'view'
   | 'export'
-  | 'upload';
+  | 'upload'
+  | 'issue'
+  | 'send'
+  | 'execute'
+  | 'void';
 
 export type EntityType =
   | 'purchase_request'
@@ -32,7 +36,9 @@ export type EntityType =
   | 'project'
   | 'material'
   | 'delivery'
-  | 'purchase_order';
+  | 'purchase_order'
+  | 'investor_agreement'
+  | 'agreement_delivery';
 
 export interface AuditLogEntry {
   userId: string;

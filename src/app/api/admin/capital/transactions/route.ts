@@ -2,6 +2,11 @@ import { NextRequest, NextResponse } from 'next/server';
 import { requireAdmin, getAdminUser } from '@/lib/admin-auth';
 import { createClient } from '@supabase/supabase-js';
 import { sendEmail, formatCurrency } from '@/lib/email';
+import {
+  capitalReturnProcessedEmail,
+  capitalUpdateInvestorEmail,
+  contractorFundsDeployedEmail,
+} from '@/lib/notifications/email-templates';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -414,16 +419,19 @@ export async function POST(request: NextRequest) {
           if (!investorEmail) return;
           const investorName = returnTxn?.investor?.name || 'Investor';
           const projectName = returnTxn?.project?.project_name || returnTxn.project_id || 'Project';
-          await sendEmail({
-            to: investorEmail,
-            subject: `Capital return processed · ${projectName}`,
-            text: `Hi ${investorName},\n\nWe have processed a capital return of ${formatCurrency(Number(returnTxn.amount) || 0)} for ${projectName}.\nReference: ${returnTxn.reference_number || '—'}`,
-            html: `
-              <p>Hi ${investorName},</p>
-              <p>We have processed a capital return of <strong>${formatCurrency(Number(returnTxn.amount) || 0)}</strong> for <strong>${projectName}</strong>.</p>
-              <p>Reference: ${returnTxn.reference_number || '—'}</p>
-            `
-          });
+          try {
+            await sendEmail({
+              to: investorEmail,
+              ...capitalReturnProcessedEmail({
+                recipientName: investorName,
+                projectName,
+                amount: Number(returnTxn.amount) || 0,
+                referenceNumber: returnTxn.reference_number,
+              }),
+            });
+          } catch (emailError) {
+            console.error('Failed to send capital return email:', emailError);
+          }
         })
       );
 
@@ -631,24 +639,20 @@ export async function POST(request: NextRequest) {
     const projectName = data?.project?.project_name || data?.project_name || 'Project';
 
     if (investorEmail) {
-      const subjectMap: Record<string, string> = {
-        inflow: `Capital received · ${projectName}`,
-        deployment: `Capital deployed · ${projectName}`,
-        return: `Capital return processed · ${projectName}`,
-        withdrawal: `Capital withdrawal processed · ${projectName}`
-      };
-      const subject = subjectMap[transaction_type] || `Capital update · ${projectName}`;
-      await sendEmail({
-        to: investorEmail,
-        subject,
-        text: `Hi ${investorName},\n\n${description.trim()}\nAmount: ${formatCurrency(numAmount)}\nProject: ${projectName}`,
-        html: `
-          <p>Hi ${investorName},</p>
-          <p>${description.trim()}</p>
-          <p><strong>Amount:</strong> ${formatCurrency(numAmount)}<br/>
-          <strong>Project:</strong> ${projectName}</p>
-        `
-      });
+      try {
+        await sendEmail({
+          to: investorEmail,
+          ...capitalUpdateInvestorEmail({
+            recipientName: investorName,
+            projectName,
+            description: description.trim(),
+            amount: numAmount,
+            transactionType: transaction_type,
+          }),
+        });
+      } catch (emailError) {
+        console.error('Failed to send investor capital update email:', emailError);
+      }
     }
 
     // If this is a deployment, create a project deployment record
@@ -705,16 +709,19 @@ export async function POST(request: NextRequest) {
         .single();
 
       if (contractor?.email) {
-        await sendEmail({
-          to: contractor.email,
-          subject: `Funds deployed · ${projectName}`,
-          text: `Hi ${contractor.contact_person || contractor.company_name || 'there'},\n\nFunds have been deployed for ${projectName}.\nAmount: ${formatCurrency(numAmount)}\n${linkedPurchaseRequestId ? `PR ID: ${linkedPurchaseRequestId}` : ''}`,
-          html: `
-            <p>Hi ${contractor.contact_person || contractor.company_name || 'there'},</p>
-            <p>Funds have been deployed for <strong>${projectName}</strong>.</p>
-            <p><strong>Amount:</strong> ${formatCurrency(numAmount)}${linkedPurchaseRequestId ? `<br/><strong>PR ID:</strong> ${linkedPurchaseRequestId}` : ''}</p>
-          `
-        });
+        try {
+          await sendEmail({
+            to: contractor.email,
+            ...contractorFundsDeployedEmail({
+              recipientName: contractor.contact_person || contractor.company_name || 'there',
+              projectName,
+              amount: numAmount,
+              purchaseRequestId: linkedPurchaseRequestId,
+            }),
+          });
+        } catch (emailError) {
+          console.error('Failed to send contractor deployment email:', emailError);
+        }
       }
     }
 

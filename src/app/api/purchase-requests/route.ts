@@ -2,7 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { currentUser } from '@clerk/nextjs/server';
 import { createClient } from '@supabase/supabase-js';
 import type { CreatePurchaseRequestPayload } from '@/types/purchase-requests';
-import { sendEmail, formatCurrency } from '@/lib/email';
+import { sendEmail } from '@/lib/email';
+import { purchaseRequestSubmittedEmail } from '@/lib/notifications/email-templates';
 import { rateLimit, RateLimitPresets } from '@/lib/rate-limit';
 
 async function resolveShippingLocation(
@@ -300,19 +301,19 @@ export async function POST(request: NextRequest) {
     }, 0);
 
     if (contractor?.email) {
-      await sendEmail({
-        to: contractor.email,
-        subject: `Purchase request submitted · ${project?.project_name || 'Project'}`,
-        text: `Hi ${contractor.contact_person || contractor.company_name || 'there'},\n\nYour purchase request has been submitted successfully.\nProject: ${project?.project_name || project_id}\nItems: ${persistedItems.length}\nEstimated value: ${formatCurrency(estimatedTotal)}\n\nWe will notify you once it is approved.`,
-        html: `
-          <p>Hi ${contractor.contact_person || contractor.company_name || 'there'},</p>
-          <p>Your purchase request has been submitted successfully.</p>
-          <p><strong>Project:</strong> ${project?.project_name || project_id}<br/>
-          <strong>Items:</strong> ${persistedItems.length}<br/>
-          <strong>Estimated value:</strong> ${formatCurrency(estimatedTotal)}</p>
-          <p>We will notify you once it is approved.</p>
-        `
-      });
+      try {
+        await sendEmail({
+          to: contractor.email,
+          ...purchaseRequestSubmittedEmail({
+            recipientName: contractor.contact_person || contractor.company_name || 'there',
+            projectName: project?.project_name || project_id,
+            itemCount: persistedItems.length,
+            estimatedValue: estimatedTotal,
+          }),
+        });
+      } catch (emailError) {
+        console.error('Failed to send purchase request submission email:', emailError);
+      }
     }
 
     // Return the full purchase request with items

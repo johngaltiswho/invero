@@ -13,6 +13,7 @@
     "test:coverage": "jest --coverage"
   },
   "dependencies": {
+    "@aws-sdk/client-sesv2": "^3.1009.0",
     "@clerk/nextjs": "^6.28.1",
     "@sentry/nextjs": "^10.38.0",
     "@supabase/supabase-js": "^2.45.4",

@@ -2,6 +2,7 @@ export const INVESTOR_AGREEMENT_STATUSES = [
   'draft',
   'generated',
   'issued',
+  'investor_signed',
   'signed_copy_received',
   'executed',
   'voided',
@@ -17,6 +18,8 @@ export type InvestorAgreement = {
   status: InvestorAgreementStatus;
   commitment_amount: number;
   agreement_date: string;
+  investor_pan?: string | null;
+  investor_address?: string | null;
   template_key: string;
   template_version: string;
   payload_snapshot: AgreementTemplatePayload | null;
@@ -24,6 +27,16 @@ export type InvestorAgreement = {
   draft_pdf_path?: string | null;
   signed_pdf_path?: string | null;
   executed_pdf_path?: string | null;
+  investor_signed_name?: string | null;
+  investor_signed_email?: string | null;
+  investor_signed_at?: string | null;
+  investor_signed_ip?: string | null;
+  investor_signed_user_agent?: string | null;
+  investor_acceptance?: {
+    own_funds?: boolean;
+    private_investment?: boolean;
+    risk_disclosure?: boolean;
+  } | null;
   company_signatory_name?: string | null;
   company_signatory_title?: string | null;
   issued_at?: string | null;
@@ -56,6 +69,10 @@ export type AgreementTemplatePayload = {
   investorEmail: string;
   investorType: string;
   investorPhone?: string | null;
+  investorPan?: string | null;
+  investorAddress?: string | null;
+  investorSignedName?: string | null;
+  investorSignedAtLabel?: string | null;
   commitmentAmount: number;
   commitmentAmountLabel: string;
   companyName: string;

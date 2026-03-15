@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { Button } from '@/components';
+import InvestorAgreementPanel from '@/components/admin/InvestorAgreementPanel';
 
 interface Investor {
   id: string;
@@ -9,8 +10,13 @@ interface Investor {
   name: string;
   investor_type: 'Individual' | 'HNI' | 'Family Office' | 'Institutional';
   phone?: string;
+  pan_number?: string | null;
+  address?: string | null;
   status: 'pending' | 'active' | 'suspended';
   notes?: string;
+  agreement_status?: string | null;
+  agreement_completed_at?: string | null;
+  activation_status?: string | null;
   created_at: string;
   updated_at: string;
   created_by?: string;
@@ -414,6 +420,27 @@ const InvestorManagement: React.FC = () => {
                   </div>
                 )}
 
+                <div className="mb-6">
+                  <div className="grid md:grid-cols-3 gap-4 text-sm">
+                    <div className="bg-neutral-medium/30 p-4 rounded-lg">
+                      <div className="text-secondary mb-1">Agreement Status</div>
+                      <div className="text-primary font-medium capitalize">{selectedInvestor.agreement_status || 'not_started'}</div>
+                    </div>
+                    <div className="bg-neutral-medium/30 p-4 rounded-lg">
+                      <div className="text-secondary mb-1">Activation</div>
+                      <div className="text-primary font-medium capitalize">{selectedInvestor.activation_status || 'inactive'}</div>
+                    </div>
+                    <div className="bg-neutral-medium/30 p-4 rounded-lg">
+                      <div className="text-secondary mb-1">Agreement Completed</div>
+                      <div className="text-primary font-medium">
+                        {selectedInvestor.agreement_completed_at
+                          ? new Date(selectedInvestor.agreement_completed_at).toLocaleDateString()
+                          : '—'}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
                 {/* Action Buttons */}
                 <div className="bg-accent-amber/5 border border-accent-amber/20 rounded-lg p-6">
                   <h3 className="text-lg font-semibold text-primary mb-4">Actions</h3>
@@ -451,6 +478,8 @@ const InvestorManagement: React.FC = () => {
                     </Button>
                   </div>
                 </div>
+
+                <InvestorAgreementPanel investor={selectedInvestor} />
               </div>
             </div>
           ) : (

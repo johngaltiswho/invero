@@ -2,6 +2,7 @@
 
 import React, { useState } from 'react';
 import Link from 'next/link';
+import { SignOutButton } from '@clerk/nextjs';
 import { Button } from './Button';
 import { useInvestor } from '@/contexts/InvestorContext';
 
@@ -16,12 +17,13 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children, acti
   const [profileOpen, setProfileOpen] = useState(false);
   
   const sidebarItems = [
-    { id: 'overview', label: 'Portfolio Overview', icon: '📊', href: '/dashboard/investor' },
-    { id: 'opportunities', label: 'Investment Opportunities', icon: '🎯', href: '/dashboard/investor/opportunities' },
-    { id: 'projects', label: 'Project Monitoring', icon: '📈', href: '/dashboard/investor/projects' },
-    { id: 'financials', label: 'Financials', icon: '💰', href: '/dashboard/investor/financials' },
-    { id: 'documents', label: 'Documents', icon: '📄', href: '/dashboard/investor/documents' },
-    { id: 'drawings', label: 'Drawings', icon: '🗺️', href: '/dashboard/investor/drawings' },
+    { id: 'overview', label: 'Portfolio Overview', href: '/dashboard/investor' },
+    { id: 'opportunities', label: 'Investment Opportunities', href: '/dashboard/investor/opportunities' },
+    { id: 'projects', label: 'Project Monitoring', href: '/dashboard/investor/projects' },
+    { id: 'financials', label: 'Financials', href: '/dashboard/investor/financials' },
+    { id: 'profile', label: 'Profile', href: '/dashboard/investor/profile' },
+    { id: 'agreement', label: 'Agreement', href: '/dashboard/investor/agreement' },
+    { id: 'documents', label: 'Documents', href: '/dashboard/investor/documents' },
   ];
 
   return (
@@ -70,33 +72,21 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children, acti
                   </div>
                   <div className="py-2">
                     <Link
-                      href="/dashboard/investor"
+                      href="/dashboard/investor/profile"
                       className="block px-4 py-2 text-sm text-secondary hover:text-primary hover:bg-neutral-medium/40"
                       onClick={() => setProfileOpen(false)}
                     >
-                      Portfolio Overview
+                      Profile
                     </Link>
-                    <Link
-                      href="/dashboard/investor/projects"
-                      className="block px-4 py-2 text-sm text-secondary hover:text-primary hover:bg-neutral-medium/40"
-                      onClick={() => setProfileOpen(false)}
-                    >
-                      Project Monitoring
-                    </Link>
-                    <Link
-                      href="/dashboard/investor/opportunities"
-                      className="block px-4 py-2 text-sm text-secondary hover:text-primary hover:bg-neutral-medium/40"
-                      onClick={() => setProfileOpen(false)}
-                    >
-                      Investment Opportunities
-                    </Link>
-                    <Link
-                      href="/"
-                      className="block px-4 py-2 text-sm text-secondary hover:text-primary hover:bg-neutral-medium/40"
-                      onClick={() => setProfileOpen(false)}
-                    >
-                      Back to Home
-                    </Link>
+                    <SignOutButton>
+                      <button
+                        type="button"
+                        className="block w-full px-4 py-2 text-left text-sm text-secondary hover:bg-neutral-medium/40 hover:text-primary"
+                        onClick={() => setProfileOpen(false)}
+                      >
+                        Sign Out
+                      </button>
+                    </SignOutButton>
                   </div>
                 </div>
               )}
@@ -146,33 +136,21 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children, acti
                   </div>
                   <div className="py-2">
                     <Link
-                      href="/dashboard/investor"
+                      href="/dashboard/investor/profile"
                       className="block px-4 py-2 text-sm text-secondary hover:text-primary hover:bg-neutral-medium/40"
                       onClick={() => setProfileOpen(false)}
                     >
-                      Portfolio Overview
+                      Profile
                     </Link>
-                    <Link
-                      href="/dashboard/investor/projects"
-                      className="block px-4 py-2 text-sm text-secondary hover:text-primary hover:bg-neutral-medium/40"
-                      onClick={() => setProfileOpen(false)}
-                    >
-                      Project Monitoring
-                    </Link>
-                    <Link
-                      href="/dashboard/investor/opportunities"
-                      className="block px-4 py-2 text-sm text-secondary hover:text-primary hover:bg-neutral-medium/40"
-                      onClick={() => setProfileOpen(false)}
-                    >
-                      Investment Opportunities
-                    </Link>
-                    <Link
-                      href="/"
-                      className="block px-4 py-2 text-sm text-secondary hover:text-primary hover:bg-neutral-medium/40"
-                      onClick={() => setProfileOpen(false)}
-                    >
-                      Back to Home
-                    </Link>
+                    <SignOutButton>
+                      <button
+                        type="button"
+                        className="block w-full px-4 py-2 text-left text-sm text-secondary hover:bg-neutral-medium/40 hover:text-primary"
+                        onClick={() => setProfileOpen(false)}
+                      >
+                        Sign Out
+                      </button>
+                    </SignOutButton>
                   </div>
                 </div>
               )}
@@ -190,13 +168,12 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children, acti
                 <Link
                   key={item.id}
                   href={item.href}
-                  className={`flex items-center space-x-3 px-4 py-3 rounded-lg transition-colors ${
+                  className={`flex items-center px-4 py-3 rounded-lg transition-colors ${
                     activeTab === item.id
                       ? 'bg-accent-amber/10 text-accent-amber border border-accent-amber/20'
                       : 'text-secondary hover:text-primary hover:bg-neutral-medium'
                   }`}
                 >
-                  <span className="text-lg">{item.icon}</span>
                   <span className="font-medium text-sm">{item.label}</span>
                 </Link>
               ))}
@@ -233,13 +210,12 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children, acti
                       key={item.id}
                       href={item.href}
                       onClick={() => setMobileNavOpen(false)}
-                      className={`flex items-center space-x-3 px-4 py-3 rounded-lg transition-colors ${
+                      className={`flex items-center px-4 py-3 rounded-lg transition-colors ${
                         activeTab === item.id
                           ? 'bg-accent-amber/10 text-accent-amber border border-accent-amber/20'
                           : 'text-secondary hover:text-primary hover:bg-neutral-medium'
                       }`}
                     >
-                      <span className="text-lg">{item.icon}</span>
                       <span className="font-medium text-sm">{item.label}</span>
                     </Link>
                   ))}
