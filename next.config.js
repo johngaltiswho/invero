@@ -52,17 +52,17 @@ const nextConfig = {
               // Default to same origin
               "default-src 'self'",
               // Scripts: Allow self, Clerk, Sentry, Next.js, and inline with nonce
-              "script-src 'self' 'unsafe-eval' 'unsafe-inline' https://*.clerk.accounts.dev https://*.clerk.com https://challenges.cloudflare.com https://js.sentry-cdn.com",
+              "script-src 'self' 'unsafe-eval' 'unsafe-inline' https://*.clerk.accounts.dev https://*.clerk.com https://clerk.finverno.com https://challenges.cloudflare.com https://js.sentry-cdn.com",
               // Styles: Allow self and inline styles (required for Tailwind)
-              "style-src 'self' 'unsafe-inline'",
+              "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
               // Images: Allow self, data URIs, blob, Clerk, Supabase storage
-              "img-src 'self' data: blob: https://*.clerk.accounts.dev https://*.clerk.com https://*.supabase.co https://*.supabase.in",
-              // Fonts: Allow self and data URIs
-              "font-src 'self' data:",
+              "img-src 'self' data: blob: https://*.clerk.accounts.dev https://*.clerk.com https://clerk.finverno.com https://*.supabase.co https://*.supabase.in",
+              // Fonts: Allow self, data URIs, and Google Fonts
+              "font-src 'self' data: https://fonts.gstatic.com",
               // Connect (API calls): Allow self, Clerk, Supabase, Sentry
-              "connect-src 'self' https://*.clerk.accounts.dev https://api.clerk.com https://*.clerk.com https://*.supabase.co https://*.supabase.in https://*.sentry.io https://sentry.io wss://*.supabase.co",
+              "connect-src 'self' https://*.clerk.accounts.dev https://api.clerk.com https://*.clerk.com https://clerk.finverno.com https://*.supabase.co https://*.supabase.in https://*.sentry.io https://sentry.io wss://*.supabase.co",
               // Frames: Allow Clerk and Cloudflare
-              "frame-src 'self' https://*.clerk.accounts.dev https://*.clerk.com https://challenges.cloudflare.com",
+              "frame-src 'self' https://*.clerk.accounts.dev https://*.clerk.com https://clerk.finverno.com https://challenges.cloudflare.com",
               // Media: Allow self and blob
               "media-src 'self' blob:",
               // Objects: Disallow plugins
