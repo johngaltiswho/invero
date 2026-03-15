@@ -130,3 +130,6 @@ Proprietary - All rights reserved
 ## CI/CD Pipeline Testing
 
 Testing automated CI/CD workflows with GitHub Actions.
+# CI/CD Pipeline
+
+This project uses automated CI/CD with GitHub Actions and Vercel.
