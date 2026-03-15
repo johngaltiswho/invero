@@ -1,0 +1,49 @@
+name: Production Health Check
+
+on:
+  schedule:
+    # Run every 6 hours
+    - cron: '0 */6 * * *'
+  workflow_dispatch: # Allow manual trigger
+
+jobs:
+  health-check:
+    name: Check Production Health
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check main site
+        run: |
+          STATUS=$(curl -s -o /dev/null -w "%{http_code}" https://invero.vercel.app)
+
+          if [ "$STATUS" -eq "200" ]; then
+            echo "✅ Main site is UP (Status: $STATUS)"
+          else
+            echo "❌ Main site is DOWN (Status: $STATUS)"
+            exit 1
+          fi
+
+      - name: Check API health
+        run: |
+          # Add your production URL here
+          API_STATUS=$(curl -s -o /dev/null -w "%{http_code}" https://invero.vercel.app/api/health || echo "000")
+
+          if [ "$API_STATUS" -eq "200" ] || [ "$API_STATUS" -eq "404" ]; then
+            echo "✅ API is responsive"
+          else
+            echo "⚠️ API health check returned: $API_STATUS"
+          fi
+
+      - name: Report health status
+        if: always()
+        run: |
+          echo "### 🏥 Health Check Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Timestamp**: $(date -u)" >> $GITHUB_STEP_SUMMARY
+          echo "**Status**: ${{ job.status }}" >> $GITHUB_STEP_SUMMARY
+
+      # Optional: Send notification on failure
+      # - name: Notify on failure
+      #   if: failure()
+      #   run: |
+      #     echo "Send alert to Slack/Email here"
