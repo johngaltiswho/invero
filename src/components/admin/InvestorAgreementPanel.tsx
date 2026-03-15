@@ -198,28 +198,18 @@ export default function InvestorAgreementPanel({ investor }: Props): React.React
     }
   };
 
-  const handleIssue = async () => {
+  const handleIssueAndSend = async () => {
     if (!agreement) return;
     try {
-      setProcessing('issue');
-      await requestJson(`/api/admin/investor-agreements/${agreement.id}/issue`, { method: 'POST' });
-      await loadAgreement();
-    } catch (err) {
-      alert(err instanceof Error ? err.message : 'Failed to issue agreement');
-    } finally {
-      setProcessing(null);
-    }
-  };
-
-  const handleSend = async () => {
-    if (!agreement) return;
-    try {
-      setProcessing('send');
+      setProcessing('issue-send');
+      if (agreement.status === 'generated') {
+        await requestJson(`/api/admin/investor-agreements/${agreement.id}/issue`, { method: 'POST' });
+      }
       await requestJson(`/api/admin/investor-agreements/${agreement.id}/send`, { method: 'POST' });
       await loadAgreement();
-      alert(`Agreement email sent to ${investor.email}`);
+      alert(`Agreement notification sent to ${investor.email}`);
     } catch (err) {
-      alert(err instanceof Error ? err.message : 'Failed to send agreement');
+      alert(err instanceof Error ? err.message : 'Failed to notify investor');
     } finally {
       setProcessing(null);
     }
@@ -332,10 +322,9 @@ export default function InvestorAgreementPanel({ investor }: Props): React.React
                   <div className="text-sm text-secondary">
                     1. Review or edit draft terms.
                     {' '}2. Generate the draft PDF.
-                    {' '}3. Issue the agreement to lock terms.
-                    {' '}4. Send it to the investor.
+                    {' '}3. Issue the agreement and notify the investor.
                     {' '}5. Investor logs in and signs in the portal.
-                    {' '}6. Agreement is automatically completed and archived.
+                    {' '}4. Agreement is automatically completed and archived after portal signing.
                   </div>
                 </div>
 
@@ -355,17 +344,16 @@ export default function InvestorAgreementPanel({ investor }: Props): React.React
                   </Button>
                   <Button
                     variant="secondary"
-                    onClick={handleIssue}
-                    disabled={processing === 'issue' || !['generated', 'issued'].includes(agreement.status)}
+                    onClick={handleIssueAndSend}
+                    disabled={processing === 'issue-send' || !['generated', 'issued'].includes(agreement.status)}
                   >
-                    {processing === 'issue' ? 'Issuing...' : 'Issue to Investor'}
-                  </Button>
-                  <Button
-                    variant="outline"
-                    onClick={handleSend}
-                    disabled={processing === 'send' || agreement.status !== 'issued'}
-                  >
-                    {processing === 'send' ? 'Sending...' : 'Send to Investor'}
+                    {processing === 'issue-send'
+                      ? agreement.status === 'generated'
+                        ? 'Issuing & Sending...'
+                        : 'Sending...'
+                      : agreement.status === 'generated'
+                        ? 'Issue & Notify Investor'
+                        : 'Re-send Notification'}
                   </Button>
                   <Button
                     variant="outline"
@@ -389,7 +377,7 @@ export default function InvestorAgreementPanel({ investor }: Props): React.React
                     )}
                   </div>
                   <div className="rounded-lg border border-neutral-medium p-4">
-                    <div className="text-sm font-medium text-primary mb-3">Step 5: Investor Signature</div>
+                    <div className="text-sm font-medium text-primary mb-3">Step 3: Investor Signature</div>
                     {files.signed_url ? (
                       <a className="text-accent-amber text-sm hover:underline block mb-3" href={files.signed_url} target="_blank" rel="noreferrer">
                         View Signed Copy
@@ -402,7 +390,7 @@ export default function InvestorAgreementPanel({ investor }: Props): React.React
                     </div>
                   </div>
                   <div className="rounded-lg border border-neutral-medium p-4">
-                    <div className="text-sm font-medium text-primary mb-3">Step 6: Completed Agreement</div>
+                    <div className="text-sm font-medium text-primary mb-3">Step 4: Completed Agreement</div>
                     {files.executed_url ? (
                       <a className="text-accent-amber text-sm hover:underline block mb-3" href={files.executed_url} target="_blank" rel="noreferrer">
                         View Completed Agreement

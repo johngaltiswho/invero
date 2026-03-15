@@ -414,7 +414,10 @@ export async function signInvestorAgreement(input: {
   return data as InvestorAgreement;
 }
 
-export async function sendAgreementEmail(agreementId: string, actor: AdminActor): Promise<AgreementDeliveryLog> {
+export async function sendAgreementEmail(
+  agreementId: string,
+  actor: AdminActor
+): Promise<AgreementDeliveryLog> {
   const agreement = await getInvestorAgreement(agreementId);
   if (!agreement) throw new Error('Agreement not found');
   if (!agreement.draft_pdf_path) throw new Error('Agreement draft PDF missing');
@@ -422,17 +425,16 @@ export async function sendAgreementEmail(agreementId: string, actor: AdminActor)
   const investor = await getInvestorById(agreement.investor_id);
   if (!investor) throw new Error('Investor not found');
 
-  const { data: signedUrlData, error: urlError } = await (supabaseAdmin as any).storage
-    .from(AGREEMENT_BUCKET)
-    .createSignedUrl(agreement.draft_pdf_path, 60 * 60 * 24 * 7);
-  if (urlError || !signedUrlData?.signedUrl) {
-    throw new Error(urlError?.message || 'Failed to create agreement link');
-  }
+  const appUrl =
+    process.env.NEXT_PUBLIC_APP_URL ||
+    (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : null) ||
+    'http://localhost:3000';
+  const portalUrl = `${appUrl.replace(/\/$/, '')}/dashboard/investor/agreement`;
 
   const emailTemplate = investorAgreementReadyEmail({
     investorName: investor.name,
     commitmentAmount: Number(agreement.commitment_amount) || 0,
-    agreementUrl: signedUrlData.signedUrl,
+    portalUrl,
   });
 
   await sendEmail({
@@ -450,7 +452,7 @@ export async function sendAgreementEmail(agreementId: string, actor: AdminActor)
       subject: emailTemplate.subject,
       sent_at: new Date().toISOString(),
       metadata: {
-        signed_url_expires_in_seconds: 60 * 60 * 24 * 7,
+        portal_url: portalUrl,
       },
       created_by: actor.id,
     })

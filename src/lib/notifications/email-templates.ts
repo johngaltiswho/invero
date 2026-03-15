@@ -45,17 +45,17 @@ export function purchaseRequestStatusEmail(input: {
 export function investorAgreementReadyEmail(input: {
   investorName: string;
   commitmentAmount: number;
-  agreementUrl: string;
+  portalUrl: string;
 }): EmailTemplateResult {
   return {
     subject: `Finverno Investor Agreement - ${input.investorName}`,
-    text: `Dear ${input.investorName},\n\nYour Finverno investor participation agreement is ready for review.\nCommitment amount: Rs ${input.commitmentAmount.toLocaleString('en-IN')}\n\nDownload agreement: ${input.agreementUrl}\n\nPlease review, sign, and return the signed agreement to Finverno.\n\nRegards,\nFinverno Private Limited`,
+    text: `Dear ${input.investorName},\n\nYour Finverno investor participation agreement is ready for review.\nCommitment amount: Rs ${input.commitmentAmount.toLocaleString('en-IN')}\n\nOpen the Finverno investor portal to review and sign your agreement: ${input.portalUrl}\n\nYou will be asked to sign in before completing the agreement.\n\nRegards,\nFinverno Private Limited`,
     html: `
       <p>Dear ${input.investorName},</p>
       <p>Your Finverno investor participation agreement is ready for review.</p>
       <p>Commitment amount: <strong>Rs ${input.commitmentAmount.toLocaleString('en-IN')}</strong></p>
-      <p>Download agreement: <a href="${input.agreementUrl}">View Agreement</a></p>
-      <p>Please review, sign, and return the signed agreement to Finverno.</p>
+      <p><a href="${input.portalUrl}">Open Finverno Investor Portal</a> to review and sign your agreement.</p>
+      <p>You will be asked to sign in before completing the agreement.</p>
       <p>Regards,<br />Finverno Private Limited</p>
     `.trim(),
   };
