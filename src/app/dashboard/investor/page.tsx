@@ -8,12 +8,14 @@ import { LoadingSpinner, AddCapitalModal } from '@/components';
 import { useUser } from '@clerk/nextjs';
 import { useRouter } from 'next/navigation';
 import { useInvestor } from '@/contexts/InvestorContext';
+import InvestorAgreementStatusCard from '@/components/investor/InvestorAgreementStatusCard';
 
 export default function InvestorDashboard(): React.ReactElement {
   const { user, isLoaded } = useUser();
   const router = useRouter();
   const { investor, loading: investorLoading, error } = useInvestor();
   const [isAddCapitalModalOpen, setIsAddCapitalModalOpen] = useState(false);
+  const [agreementData, setAgreementData] = useState<{ agreement: any; files: any } | null>(null);
 
   // Redirect if not authenticated
   useEffect(() => {
@@ -24,6 +26,24 @@ export default function InvestorDashboard(): React.ReactElement {
       return;
     }
   }, [user, isLoaded, router]);
+
+  useEffect(() => {
+    if (!user || !isLoaded) return;
+
+    const loadAgreement = async () => {
+      try {
+        const response = await fetch('/api/investor/agreement');
+        const result = await response.json();
+        if (response.ok && result.success) {
+          setAgreementData({ agreement: result.agreement, files: result.files || {} });
+        }
+      } catch (error) {
+        console.error('Failed to load investor agreement status:', error);
+      }
+    };
+
+    loadAgreement();
+  }, [user, isLoaded]);
 
   // Show loading state while Clerk loads OR investor data loads
   if (!isLoaded || investorLoading) {
@@ -307,6 +327,10 @@ export default function InvestorDashboard(): React.ReactElement {
             <div className="text-2xl font-bold text-primary mb-1">{portfolioMetrics.activeInvestments}</div>
             <div className="text-xs text-secondary">{portfolioMetrics.completedInvestments} completed</div>
           </div>
+        </div>
+
+        <div className="mb-8">
+          <InvestorAgreementStatusCard agreement={agreementData?.agreement || null} files={agreementData?.files || {}} />
         </div>
 
         <div className={`grid gap-8 ${showPortfolioInsights ? 'lg:grid-cols-3' : ''}`}>

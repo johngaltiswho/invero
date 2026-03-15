@@ -12,18 +12,24 @@ type BuildPayloadInput = {
     email: string;
     investor_type: string;
     phone?: string | null;
+    pan_number?: string | null;
+    address?: string | null;
   };
   commitmentAmount: number;
   agreementDate: string;
+  investorPan?: string | null;
+  investorAddress?: string | null;
   companySignatoryName: string;
   companySignatoryTitle: string;
   notes?: string | null;
+  investorSignedName?: string | null;
+  investorSignedAt?: string | null;
 };
 
 const FINVERNO_COMPANY_NAME = 'Finverno Private Limited';
-const FINVERNO_COMPANY_ADDRESS = '403, 3rd Floor, 22nd Cross, 2nd Sector, HSR Layout, Bengaluru - 560102, Karnataka, India';
-const FINVERNO_COMPANY_CIN = 'U74999KA2024PTC000000';
-const FINVERNO_COMPANY_PAN = 'AAGCF7643D';
+const FINVERNO_COMPANY_ADDRESS = '403, 3rd Floor, 22nd Cross Road, 2nd Sector, HSR Layout, Bengaluru - 560102, Karnataka';
+const FINVERNO_COMPANY_CIN = 'U70200KA2025PTC212659';
+const FINVERNO_COMPANY_PAN = null;
 const FINVERNO_JURISDICTION = 'Bengaluru, Karnataka';
 
 export function buildInvestorAgreementPayload(input: BuildPayloadInput): AgreementTemplatePayload {
@@ -36,12 +42,28 @@ export function buildInvestorAgreementPayload(input: BuildPayloadInput): Agreeme
         year: 'numeric',
       });
 
+  const investorSignedAt = input.investorSignedAt ? new Date(input.investorSignedAt) : null;
+  const investorSignedAtLabel =
+    investorSignedAt && !Number.isNaN(investorSignedAt.getTime())
+      ? investorSignedAt.toLocaleString('en-IN', {
+          day: '2-digit',
+          month: 'long',
+          year: 'numeric',
+          hour: '2-digit',
+          minute: '2-digit',
+        })
+      : input.investorSignedAt || null;
+
   return {
     agreementDateLabel,
     investorName: input.investor.name,
     investorEmail: input.investor.email,
     investorType: input.investor.investor_type,
     investorPhone: input.investor.phone || null,
+    investorPan: input.investorPan ?? input.investor.pan_number ?? null,
+    investorAddress: input.investorAddress ?? input.investor.address ?? null,
+    investorSignedName: input.investorSignedName || null,
+    investorSignedAtLabel,
     commitmentAmount: input.commitmentAmount,
     commitmentAmountLabel: formatCurrency(input.commitmentAmount),
     companyName: FINVERNO_COMPANY_NAME,

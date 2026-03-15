@@ -465,7 +465,7 @@ export async function GET() {
     let fundingRequired = 0; // Only for open (submitted/approved) requests
 
     // Calculate funding required for open requests only
-    const openRequestIds = new Set((openRequests || []).map(r => r.id));
+    const openRequestIds = new Set<string>((openRequests || []).map(r => r.id as string));
     openRequestIds.forEach((requestId) => {
       const requestTotal = requestTotals.get(requestId) || 0;
       const funded = fundedTotals.get(requestId) || 0;

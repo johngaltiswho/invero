@@ -33,6 +33,9 @@ const categoryLabels: Record<string, string> = {
   pan: 'PAN',
   'cancelled-cheque': 'Cancelled Cheque',
   agreement: 'Agreement',
+  'agreement-draft': 'Agreement Draft',
+  'agreement-signed': 'Signed Agreement',
+  'agreement-executed': 'Executed Agreement',
   general: 'General'
 };
 
