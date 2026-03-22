@@ -51,6 +51,12 @@ export function ContractorDashboardLayout({ children, activeTab }: ContractorDas
       description: 'Funding & repayments'
     },
     {
+      id: 'fuel',
+      name: 'Fuel',
+      href: '/dashboard/contractor/fuel/request',
+      description: 'Request fuel & track expenses'
+    },
+    {
       id: 'network',
       name: 'Network',
       href: '/dashboard/contractor/network',
@@ -66,7 +72,15 @@ export function ContractorDashboardLayout({ children, activeTab }: ContractorDas
 
   const isActive = (itemId: string) => {
     if (activeTab) return activeTab === itemId;
-    return pathname === navigationItems.find(item => item.id === itemId)?.href;
+    const item = navigationItems.find(item => item.id === itemId);
+    if (!item) return false;
+
+    // Special handling for fuel - match all /fuel/* paths
+    if (itemId === 'fuel') {
+      return pathname?.startsWith('/dashboard/contractor/fuel');
+    }
+
+    return pathname === item.href;
   };
 
 

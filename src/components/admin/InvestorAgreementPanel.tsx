@@ -233,6 +233,21 @@ export default function InvestorAgreementPanel({ investor }: Props): React.React
     }
   };
 
+  const handleCountersign = async () => {
+    if (!agreement) return;
+    try {
+      setProcessing('execute');
+      await requestJson(`/api/admin/investor-agreements/${agreement.id}/execute`, {
+        method: 'POST',
+      });
+      await loadAgreement();
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Failed to countersign agreement');
+    } finally {
+      setProcessing(null);
+    }
+  };
+
   const canEditDraft = !agreement || ['draft', 'generated'].includes(agreement.status);
   const statusLabelMap: Record<string, string> = {
     draft: 'Draft Created',
@@ -317,14 +332,14 @@ export default function InvestorAgreementPanel({ investor }: Props): React.React
                   </div>
                 </div>
 
-                <div className="rounded-lg border border-neutral-medium bg-neutral-medium/20 p-4">
+                  <div className="rounded-lg border border-neutral-medium bg-neutral-medium/20 p-4">
                   <div className="text-sm font-medium text-primary mb-2">Workflow</div>
                   <div className="text-sm text-secondary">
                     1. Review or edit draft terms.
                     {' '}2. Generate the draft PDF.
                     {' '}3. Issue the agreement and notify the investor.
-                    {' '}5. Investor logs in and signs in the portal.
-                    {' '}4. Agreement is automatically completed and archived after portal signing.
+                    {' '}4. Investor logs in and signs in the portal.
+                    {' '}5. Finverno countersigns and executes the agreement.
                   </div>
                 </div>
 
@@ -363,6 +378,14 @@ export default function InvestorAgreementPanel({ investor }: Props): React.React
                   >
                     {processing === 'void' ? 'Voiding...' : 'Void'}
                   </Button>
+                  {agreement.status === 'investor_signed' && (
+                    <Button
+                      onClick={handleCountersign}
+                      disabled={processing === 'execute'}
+                    >
+                      {processing === 'execute' ? 'Countersigning...' : 'Countersign & Execute'}
+                    </Button>
+                  )}
                 </div>
 
                 <div className="grid md:grid-cols-3 gap-4">
@@ -390,16 +413,20 @@ export default function InvestorAgreementPanel({ investor }: Props): React.React
                     </div>
                   </div>
                   <div className="rounded-lg border border-neutral-medium p-4">
-                    <div className="text-sm font-medium text-primary mb-3">Step 4: Completed Agreement</div>
+                    <div className="text-sm font-medium text-primary mb-3">Step 5: Completed Agreement</div>
                     {files.executed_url ? (
                       <a className="text-accent-amber text-sm hover:underline block mb-3" href={files.executed_url} target="_blank" rel="noreferrer">
                         View Completed Agreement
                       </a>
                     ) : (
-                      <div className="text-sm text-secondary mb-3">The executed agreement will appear here automatically after in-portal signing.</div>
+                      <div className="text-sm text-secondary mb-3">
+                        {agreement.status === 'investor_signed'
+                          ? 'Investor signature is complete. Finverno must now countersign to finalize execution.'
+                          : 'The executed agreement will appear here after investor signing and Finverno countersignature.'}
+                      </div>
                     )}
                     <div className="text-xs text-secondary">
-                      No admin upload or manual execution step is required in the portal-sign flow.
+                      Portal signing records investor acceptance first. Admin countersignature completes execution.
                     </div>
                   </div>
                 </div>

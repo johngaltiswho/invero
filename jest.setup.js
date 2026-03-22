@@ -35,3 +35,107 @@ jest.mock('@clerk/nextjs', () => ({
   })),
   ClerkProvider: ({ children }) => children,
 }))
+
+// Mock Next.js server components
+class MockNextResponse {
+  constructor(body, init) {
+    this.body = body
+    this.status = init?.status || 200
+    this.headers = new Map(Object.entries(init?.headers || {}))
+  }
+
+  static json(data, init) {
+    return new MockNextResponse(JSON.stringify(data), {
+      ...init,
+      headers: {
+        'Content-Type': 'application/json',
+        ...(init?.headers || {}),
+      },
+    })
+  }
+
+  async json() {
+    return JSON.parse(this.body)
+  }
+}
+
+MockNextResponse.prototype.headers = {
+  get: function(key) {
+    return this.headers?.get?.(key) || null
+  },
+  set: function(key, value) {
+    this.headers?.set?.(key, value)
+  },
+}
+
+global.Headers = class Headers {
+  constructor(init) {
+    this.map = new Map()
+    if (init) {
+      if (init instanceof Headers) {
+        init.forEach((value, key) => this.map.set(key, value))
+      } else if (typeof init === 'object') {
+        Object.entries(init).forEach(([key, value]) => this.map.set(key, value))
+      }
+    }
+  }
+
+  get(key) {
+    return this.map.get(key) || null
+  }
+
+  set(key, value) {
+    this.map.set(key, value)
+  }
+
+  has(key) {
+    return this.map.has(key)
+  }
+
+  delete(key) {
+    this.map.delete(key)
+  }
+
+  forEach(callback) {
+    this.map.forEach((value, key) => callback(value, key))
+  }
+}
+
+global.NextResponse = MockNextResponse
+
+// Mock Request for Next.js server
+global.Request = class Request {
+  constructor(input, init) {
+    this.url = typeof input === 'string' ? input : input.url
+    this.method = init?.method || 'GET'
+    this.headers = new global.Headers(init?.headers)
+    this.body = init?.body
+  }
+}
+
+global.Response = class Response {
+  constructor(body, init) {
+    this.body = body
+    this.status = init?.status || 200
+    this.statusText = init?.statusText || ''
+    this.headers = new global.Headers(init?.headers)
+  }
+
+  static json(data, init) {
+    return new Response(JSON.stringify(data), {
+      ...init,
+      headers: {
+        'Content-Type': 'application/json',
+        ...(init?.headers || {}),
+      },
+    })
+  }
+
+  async json() {
+    return JSON.parse(this.body)
+  }
+
+  async text() {
+    return this.body
+  }
+}

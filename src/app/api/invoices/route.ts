@@ -39,7 +39,6 @@ type PurchaseRequestRow = {
   id: string;
   project_id: string;
   contractor_id: string;
-  shipping_location?: string | null;
   dispatched_at?: string | null;
   purchase_request_items?: PurchaseRequestItem[] | null;
 };
@@ -181,7 +180,6 @@ export async function POST(request: NextRequest) {
         id,
         project_id,
         contractor_id,
-        shipping_location,
         dispatched_at,
         remarks,
         purchase_request_items (
@@ -221,7 +219,6 @@ export async function POST(request: NextRequest) {
           id,
           project_id,
           contractor_id,
-          shipping_location,
           dispatched_at,
           remarks,
           purchase_request_items (
@@ -272,15 +269,11 @@ export async function POST(request: NextRequest) {
     // Fetch project name
     const { data: project } = await supabase
       .from('projects')
-      .select('id, project_name, client_name, project_address, location')
+      .select('id, project_name, client_name, project_address')
       .eq('id', pr.project_id)
       .single();
 
-    const shipToAddress =
-      pr.shipping_location?.trim() ||
-      project?.project_address?.trim() ||
-      project?.location?.trim() ||
-      undefined;
+    const shipToAddress = project?.project_address?.trim() || undefined;
 
     // Build line items
     const lineItems: InvoiceLineItem[] = (pr.purchase_request_items || []).map((item: PurchaseRequestItem) => {

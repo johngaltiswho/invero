@@ -82,6 +82,28 @@ export function parseMultiSheetExcelFile(file: File): Promise<{
   });
 }
 
+export function parseMultiSheetWorkbookBuffer(buffer: Buffer | ArrayBuffer | Uint8Array): {
+  sheets: { name: string; data: any[][] }[];
+  totalSheets: number;
+} {
+  const workbook = XLSX.read(buffer, { type: 'buffer' });
+
+  const sheets = workbook.SheetNames.map(sheetName => {
+    const worksheet = workbook.Sheets[sheetName];
+    const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
+
+    return {
+      name: sheetName,
+      data: jsonData as any[][]
+    };
+  });
+
+  return {
+    sheets,
+    totalSheets: workbook.SheetNames.length
+  };
+}
+
 // Check if sheet should be skipped (abstract/summary sheets)
 function shouldSkipSheet(sheetName: string): boolean {
   const skipKeywords = ['abstract', 'summary', 'total', 'overview', 'index'];

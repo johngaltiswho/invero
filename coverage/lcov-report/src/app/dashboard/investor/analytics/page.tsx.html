@@ -390,7 +390,8 @@
 <a name='L325'></a><a href='#L325'>325</a>
 <a name='L326'></a><a href='#L326'>326</a>
 <a name='L327'></a><a href='#L327'>327</a>
-<a name='L328'></a><a href='#L328'>328</a></td><td class="line-coverage quiet"><span class="cline-any cline-neutral">&nbsp;</span>
+<a name='L328'></a><a href='#L328'>328</a>
+<a name='L329'></a><a href='#L329'>329</a></td><td class="line-coverage quiet"><span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
@@ -681,6 +682,7 @@
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
@@ -812,7 +814,7 @@ export default function <span class="cstat-no" title="statement not covered" ><s
                 onChange={<span class="fstat-no" title="function not covered" >(e</span>) =&gt; <span class="cstat-no" title="statement not covered" >setSelectedMetric(e.target.value)}</span>
                 className="w-full px-3 py-2 bg-neutral-medium border border-neutral-light rounded text-primary text-sm"
               &gt;
-                &lt;option value="irr"&gt;IRR Performance&lt;/option&gt;
+                &lt;option value="irr"&gt;XIRR Performance&lt;/option&gt;
                 &lt;option value="invested"&gt;Cumulative Investment&lt;/option&gt;
                 &lt;option value="returns"&gt;Returns Generated&lt;/option&gt;
               &lt;/select&gt;
@@ -831,7 +833,7 @@ export default function <span class="cstat-no" title="statement not covered" ><s
         {/* Key Performance Metrics */}
         &lt;div className="grid lg:grid-cols-5 md:grid-cols-3 gap-6 mb-8"&gt;
           &lt;div className="bg-neutral-dark p-6 rounded-lg border border-neutral-medium"&gt;
-            &lt;div className="text-accent-amber text-sm font-mono mb-2"&gt;CURRENT IRR&lt;/div&gt;
+            &lt;div className="text-accent-amber text-sm font-mono mb-2"&gt;CURRENT XIRR&lt;/div&gt;
             &lt;div className="text-2xl font-bold text-primary mb-1"&gt;13.7%&lt;/div&gt;
             &lt;div className="text-xs text-success"&gt;+0.3% vs last month&lt;/div&gt;
           &lt;/div&gt;
@@ -868,7 +870,7 @@ export default function <span class="cstat-no" title="statement not covered" ><s
               &lt;div className="p-6 border-b border-neutral-medium"&gt;
                 &lt;h2 className="text-xl font-bold text-primary mb-2"&gt;Performance Trend&lt;/h2&gt;
                 &lt;p className="text-sm text-secondary"&gt;
-                  {selectedMetric === 'irr' ? 'IRR progression over time' : 
+                  {selectedMetric === 'irr' ? 'XIRR progression over time' : 
                    selectedMetric === 'invested' ? 'Cumulative investment amount' : 
                    'Returns generated over time'}
                 &lt;/p&gt;
@@ -913,7 +915,7 @@ export default function <span class="cstat-no" title="statement not covered" ><s
             &lt;div className="bg-neutral-dark rounded-lg border border-neutral-medium"&gt;
               &lt;div className="p-6 border-b border-neutral-medium"&gt;
                 &lt;h2 className="text-xl font-bold text-primary"&gt;Sector Performance&lt;/h2&gt;
-                &lt;p className="text-sm text-secondary"&gt;IRR by sector allocation&lt;/p&gt;
+                &lt;p className="text-sm text-secondary"&gt;XIRR by sector allocation&lt;/p&gt;
               &lt;/div&gt;
               &lt;div className="p-6"&gt;
                 &lt;div className="space-y-4"&gt;
@@ -993,8 +995,8 @@ export default function <span class="cstat-no" title="statement not covered" ><s
                   &lt;th className="text-left p-4 text-sm font-medium text-primary"&gt;Project&lt;/th&gt;
                   &lt;th className="text-left p-4 text-sm font-medium text-primary"&gt;Sector&lt;/th&gt;
                   &lt;th className="text-right p-4 text-sm font-medium text-primary"&gt;Investment&lt;/th&gt;
-                  &lt;th className="text-right p-4 text-sm font-medium text-primary"&gt;Expected IRR&lt;/th&gt;
-                  &lt;th className="text-right p-4 text-sm font-medium text-primary"&gt;Current IRR&lt;/th&gt;
+                  &lt;th className="text-right p-4 text-sm font-medium text-primary"&gt;Expected XIRR&lt;/th&gt;
+                  &lt;th className="text-right p-4 text-sm font-medium text-primary"&gt;Current XIRR&lt;/th&gt;
                   &lt;th className="text-right p-4 text-sm font-medium text-primary"&gt;Returns&lt;/th&gt;
                   &lt;th className="text-center p-4 text-sm font-medium text-primary"&gt;Status&lt;/th&gt;
                 &lt;/tr&gt;
@@ -1044,14 +1046,15 @@ export default function <span class="cstat-no" title="statement not covered" ><s
       &lt;/div&gt;
     &lt;/DashboardLayout&gt;
   );
-}</pre></td></tr></table></pre>
+}
+&nbsp;</pre></td></tr></table></pre>
 
                 <div class='push'></div><!-- for sticky footer -->
             </div><!-- /wrapper -->
             <div class='footer quiet pad2 space-top1 center small'>
                 Code coverage generated by
                 <a href="https://istanbul.js.org/" target="_blank" rel="noopener noreferrer">istanbul</a>
-                at 2026-02-08T15:39:04.756Z
+                at 2026-03-15T17:39:36.622Z
             </div>
         <script src="../../../../../prettify.js"></script>
         <script>

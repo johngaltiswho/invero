@@ -1,0 +1,490 @@
+
+<!doctype html>
+<html lang="en">
+
+<head>
+    <title>Code coverage report for src/lib/agreements/pdf.ts</title>
+    <meta charset="utf-8" />
+    <link rel="stylesheet" href="../../../prettify.css" />
+    <link rel="stylesheet" href="../../../base.css" />
+    <link rel="shortcut icon" type="image/x-icon" href="../../../favicon.png" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <style type='text/css'>
+        .coverage-summary .sorter {
+            background-image: url(../../../sort-arrow-sprite.png);
+        }
+    </style>
+</head>
+    
+<body>
+<div class='wrapper'>
+    <div class='pad1'>
+        <h1><a href="../../../index.html">All files</a> / <a href="index.html">src/lib/agreements</a> pdf.ts</h1>
+        <div class='clearfix'>
+            
+            <div class='fl pad1y space-right2'>
+                <span class="strong">0% </span>
+                <span class="quiet">Statements</span>
+                <span class='fraction'>0/64</span>
+            </div>
+        
+            
+            <div class='fl pad1y space-right2'>
+                <span class="strong">0% </span>
+                <span class="quiet">Branches</span>
+                <span class='fraction'>0/28</span>
+            </div>
+        
+            
+            <div class='fl pad1y space-right2'>
+                <span class="strong">0% </span>
+                <span class="quiet">Functions</span>
+                <span class='fraction'>0/5</span>
+            </div>
+        
+            
+            <div class='fl pad1y space-right2'>
+                <span class="strong">0% </span>
+                <span class="quiet">Lines</span>
+                <span class='fraction'>0/63</span>
+            </div>
+        
+            
+        </div>
+        <p class="quiet">
+            Press <em>n</em> or <em>j</em> to go to the next uncovered block, <em>b</em>, <em>p</em> or <em>k</em> for the previous block.
+        </p>
+        <template id="filterTemplate">
+            <div class="quiet">
+                Filter:
+                <input type="search" id="fileSearch">
+            </div>
+        </template>
+    </div>
+    <div class='status-line low'></div>
+    <pre><table class="coverage">
+<tr><td class="line-count quiet"><a name='L1'></a><a href='#L1'>1</a>
+<a name='L2'></a><a href='#L2'>2</a>
+<a name='L3'></a><a href='#L3'>3</a>
+<a name='L4'></a><a href='#L4'>4</a>
+<a name='L5'></a><a href='#L5'>5</a>
+<a name='L6'></a><a href='#L6'>6</a>
+<a name='L7'></a><a href='#L7'>7</a>
+<a name='L8'></a><a href='#L8'>8</a>
+<a name='L9'></a><a href='#L9'>9</a>
+<a name='L10'></a><a href='#L10'>10</a>
+<a name='L11'></a><a href='#L11'>11</a>
+<a name='L12'></a><a href='#L12'>12</a>
+<a name='L13'></a><a href='#L13'>13</a>
+<a name='L14'></a><a href='#L14'>14</a>
+<a name='L15'></a><a href='#L15'>15</a>
+<a name='L16'></a><a href='#L16'>16</a>
+<a name='L17'></a><a href='#L17'>17</a>
+<a name='L18'></a><a href='#L18'>18</a>
+<a name='L19'></a><a href='#L19'>19</a>
+<a name='L20'></a><a href='#L20'>20</a>
+<a name='L21'></a><a href='#L21'>21</a>
+<a name='L22'></a><a href='#L22'>22</a>
+<a name='L23'></a><a href='#L23'>23</a>
+<a name='L24'></a><a href='#L24'>24</a>
+<a name='L25'></a><a href='#L25'>25</a>
+<a name='L26'></a><a href='#L26'>26</a>
+<a name='L27'></a><a href='#L27'>27</a>
+<a name='L28'></a><a href='#L28'>28</a>
+<a name='L29'></a><a href='#L29'>29</a>
+<a name='L30'></a><a href='#L30'>30</a>
+<a name='L31'></a><a href='#L31'>31</a>
+<a name='L32'></a><a href='#L32'>32</a>
+<a name='L33'></a><a href='#L33'>33</a>
+<a name='L34'></a><a href='#L34'>34</a>
+<a name='L35'></a><a href='#L35'>35</a>
+<a name='L36'></a><a href='#L36'>36</a>
+<a name='L37'></a><a href='#L37'>37</a>
+<a name='L38'></a><a href='#L38'>38</a>
+<a name='L39'></a><a href='#L39'>39</a>
+<a name='L40'></a><a href='#L40'>40</a>
+<a name='L41'></a><a href='#L41'>41</a>
+<a name='L42'></a><a href='#L42'>42</a>
+<a name='L43'></a><a href='#L43'>43</a>
+<a name='L44'></a><a href='#L44'>44</a>
+<a name='L45'></a><a href='#L45'>45</a>
+<a name='L46'></a><a href='#L46'>46</a>
+<a name='L47'></a><a href='#L47'>47</a>
+<a name='L48'></a><a href='#L48'>48</a>
+<a name='L49'></a><a href='#L49'>49</a>
+<a name='L50'></a><a href='#L50'>50</a>
+<a name='L51'></a><a href='#L51'>51</a>
+<a name='L52'></a><a href='#L52'>52</a>
+<a name='L53'></a><a href='#L53'>53</a>
+<a name='L54'></a><a href='#L54'>54</a>
+<a name='L55'></a><a href='#L55'>55</a>
+<a name='L56'></a><a href='#L56'>56</a>
+<a name='L57'></a><a href='#L57'>57</a>
+<a name='L58'></a><a href='#L58'>58</a>
+<a name='L59'></a><a href='#L59'>59</a>
+<a name='L60'></a><a href='#L60'>60</a>
+<a name='L61'></a><a href='#L61'>61</a>
+<a name='L62'></a><a href='#L62'>62</a>
+<a name='L63'></a><a href='#L63'>63</a>
+<a name='L64'></a><a href='#L64'>64</a>
+<a name='L65'></a><a href='#L65'>65</a>
+<a name='L66'></a><a href='#L66'>66</a>
+<a name='L67'></a><a href='#L67'>67</a>
+<a name='L68'></a><a href='#L68'>68</a>
+<a name='L69'></a><a href='#L69'>69</a>
+<a name='L70'></a><a href='#L70'>70</a>
+<a name='L71'></a><a href='#L71'>71</a>
+<a name='L72'></a><a href='#L72'>72</a>
+<a name='L73'></a><a href='#L73'>73</a>
+<a name='L74'></a><a href='#L74'>74</a>
+<a name='L75'></a><a href='#L75'>75</a>
+<a name='L76'></a><a href='#L76'>76</a>
+<a name='L77'></a><a href='#L77'>77</a>
+<a name='L78'></a><a href='#L78'>78</a>
+<a name='L79'></a><a href='#L79'>79</a>
+<a name='L80'></a><a href='#L80'>80</a>
+<a name='L81'></a><a href='#L81'>81</a>
+<a name='L82'></a><a href='#L82'>82</a>
+<a name='L83'></a><a href='#L83'>83</a>
+<a name='L84'></a><a href='#L84'>84</a>
+<a name='L85'></a><a href='#L85'>85</a>
+<a name='L86'></a><a href='#L86'>86</a>
+<a name='L87'></a><a href='#L87'>87</a>
+<a name='L88'></a><a href='#L88'>88</a>
+<a name='L89'></a><a href='#L89'>89</a>
+<a name='L90'></a><a href='#L90'>90</a>
+<a name='L91'></a><a href='#L91'>91</a>
+<a name='L92'></a><a href='#L92'>92</a>
+<a name='L93'></a><a href='#L93'>93</a>
+<a name='L94'></a><a href='#L94'>94</a>
+<a name='L95'></a><a href='#L95'>95</a>
+<a name='L96'></a><a href='#L96'>96</a>
+<a name='L97'></a><a href='#L97'>97</a>
+<a name='L98'></a><a href='#L98'>98</a>
+<a name='L99'></a><a href='#L99'>99</a>
+<a name='L100'></a><a href='#L100'>100</a>
+<a name='L101'></a><a href='#L101'>101</a>
+<a name='L102'></a><a href='#L102'>102</a>
+<a name='L103'></a><a href='#L103'>103</a>
+<a name='L104'></a><a href='#L104'>104</a>
+<a name='L105'></a><a href='#L105'>105</a>
+<a name='L106'></a><a href='#L106'>106</a>
+<a name='L107'></a><a href='#L107'>107</a>
+<a name='L108'></a><a href='#L108'>108</a>
+<a name='L109'></a><a href='#L109'>109</a>
+<a name='L110'></a><a href='#L110'>110</a>
+<a name='L111'></a><a href='#L111'>111</a>
+<a name='L112'></a><a href='#L112'>112</a>
+<a name='L113'></a><a href='#L113'>113</a>
+<a name='L114'></a><a href='#L114'>114</a>
+<a name='L115'></a><a href='#L115'>115</a>
+<a name='L116'></a><a href='#L116'>116</a>
+<a name='L117'></a><a href='#L117'>117</a>
+<a name='L118'></a><a href='#L118'>118</a>
+<a name='L119'></a><a href='#L119'>119</a>
+<a name='L120'></a><a href='#L120'>120</a>
+<a name='L121'></a><a href='#L121'>121</a>
+<a name='L122'></a><a href='#L122'>122</a>
+<a name='L123'></a><a href='#L123'>123</a>
+<a name='L124'></a><a href='#L124'>124</a>
+<a name='L125'></a><a href='#L125'>125</a>
+<a name='L126'></a><a href='#L126'>126</a>
+<a name='L127'></a><a href='#L127'>127</a>
+<a name='L128'></a><a href='#L128'>128</a>
+<a name='L129'></a><a href='#L129'>129</a>
+<a name='L130'></a><a href='#L130'>130</a>
+<a name='L131'></a><a href='#L131'>131</a>
+<a name='L132'></a><a href='#L132'>132</a>
+<a name='L133'></a><a href='#L133'>133</a>
+<a name='L134'></a><a href='#L134'>134</a>
+<a name='L135'></a><a href='#L135'>135</a>
+<a name='L136'></a><a href='#L136'>136</a></td><td class="line-coverage quiet"><span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span></td><td class="text"><pre class="prettyprint lang-js">import { jsPDF } from <span class="cstat-no" title="statement not covered" >'jspdf';</span>
+import type { AgreementTemplatePayload } from '@/lib/agreements/types';
+&nbsp;
+export function <span class="cstat-no" title="statement not covered" ><span class="fstat-no" title="function not covered" >generateInvestorAgreementPDF(</span></span>
+  payload: AgreementTemplatePayload,
+  meta: { templateVersion: string }
+): Buffer {
+  const doc = <span class="cstat-no" title="statement not covered" >new jsPDF({</span>
+    orientation: 'portrait',
+    unit: 'mm',
+    format: 'a4',
+  });
+&nbsp;
+  const pageWidth = <span class="cstat-no" title="statement not covered" >210;</span>
+  const margin = <span class="cstat-no" title="statement not covered" >18;</span>
+  const contentWidth = <span class="cstat-no" title="statement not covered" >pageWidth - margin * 2;</span>
+  let y = <span class="cstat-no" title="statement not covered" >18;</span>
+&nbsp;
+  const sanitizePdfText = <span class="cstat-no" title="statement not covered" ><span class="fstat-no" title="function not covered" >(v</span>alue: string) =&gt;</span>
+<span class="cstat-no" title="statement not covered" >    value</span>
+      .replace(/₹/g, 'INR ')
+      .replace(/[“”]/g, '"')
+      .replace(/[‘’]/g, "'")
+      .replace(/–/g, '-')
+      .replace(/—/g, '-')
+      .replace(/•/g, '-')
+      .replace(/☐/g, '[ ]')
+      .replace(/\u00a0/g, ' ');
+&nbsp;
+  const addTextBlock = <span class="cstat-no" title="statement not covered" ><span class="fstat-no" title="function not covered" >(</span></span>
+    text: string,
+    options?: { bold?: boolean; size?: number; spacing?: number }
+  ) =&gt; {
+<span class="cstat-no" title="statement not covered" >    doc.setFont('helvetica', options?.bold ? 'bold' : 'normal');</span>
+<span class="cstat-no" title="statement not covered" >    doc.setFontSize(options?.size ?? 11);</span>
+    const lines = <span class="cstat-no" title="statement not covered" >doc.splitTextToSize(sanitizePdfText(text), contentWidth) as string[];</span>
+<span class="cstat-no" title="statement not covered" >    doc.text(lines, margin, y);</span>
+<span class="cstat-no" title="statement not covered" >    y += lines.length * ((options?.size ?? 11) * 0.42) + (options?.spacing ?? 3);</span>
+  };
+&nbsp;
+  const addSection = <span class="cstat-no" title="statement not covered" ><span class="fstat-no" title="function not covered" >(t</span>itle: string, body: string | string[]) =&gt; {</span>
+<span class="cstat-no" title="statement not covered" >    if (y &gt; 265) {</span>
+<span class="cstat-no" title="statement not covered" >      doc.addPage();</span>
+<span class="cstat-no" title="statement not covered" >      y = 18;</span>
+    }
+<span class="cstat-no" title="statement not covered" >    addTextBlock(title, { bold: true, spacing: 2 });</span>
+    const blocks = <span class="cstat-no" title="statement not covered" >Array.isArray(body) ? body : [body];</span>
+<span class="cstat-no" title="statement not covered" >    blocks.forEach(<span class="fstat-no" title="function not covered" >(b</span>lock) =&gt; <span class="cstat-no" title="statement not covered" >addTextBlock(block, { size: 10, spacing: 4 }));</span></span>
+  };
+&nbsp;
+<span class="cstat-no" title="statement not covered" >  doc.setFont('helvetica', 'bold');</span>
+<span class="cstat-no" title="statement not covered" >  doc.setFontSize(16);</span>
+<span class="cstat-no" title="statement not covered" >  doc.text('FINVERNO PRIVATE LIMITED', pageWidth / 2, y, { align: 'center' });</span>
+<span class="cstat-no" title="statement not covered" >  y += 7;</span>
+<span class="cstat-no" title="statement not covered" >  doc.text('INVESTOR PARTICIPATION AGREEMENT', pageWidth / 2, y, { align: 'center' });</span>
+<span class="cstat-no" title="statement not covered" >  y += 6;</span>
+<span class="cstat-no" title="statement not covered" >  doc.setFont('helvetica', 'normal');</span>
+<span class="cstat-no" title="statement not covered" >  doc.setFontSize(10);</span>
+<span class="cstat-no" title="statement not covered" >  doc.text('(Proof of Concept Capital Pool)', pageWidth / 2, y, { align: 'center' });</span>
+<span class="cstat-no" title="statement not covered" >  y += 6;</span>
+<span class="cstat-no" title="statement not covered" >  doc.setFontSize(9);</span>
+<span class="cstat-no" title="statement not covered" >  doc.text(`Template Version: ${meta.templateVersion}`, pageWidth / 2, y, { align: 'center' });</span>
+<span class="cstat-no" title="statement not covered" >  y += 8;</span>
+&nbsp;
+<span class="cstat-no" title="statement not covered" >  addTextBlock(</span>
+    `This Investor Participation Agreement is entered into on the date of electronic execution between ${payload.companyName} and the Investor identified on the Finverno portal.`,
+    { size: 10, spacing: 4 }
+  );
+<span class="cstat-no" title="statement not covered" >  addTextBlock(</span>
+    `${payload.companyName}\n${payload.companyAddress}${payload.companyCIN ? `\nCIN: ${payload.companyCIN}` : ''}`,
+    { size: 10, spacing: 5 }
+  );
+&nbsp;
+<span class="cstat-no" title="statement not covered" >  addSection('1. Purpose', [</span>
+    'Finverno is conducting a limited Proof of Concept capital pool to validate a working capital financing model for SME contractors.',
+    'The purpose of this Agreement is to document the terms under which the Investor provides capital to Finverno for deployment within this POC structure.',
+  ]);
+<span class="cstat-no" title="statement not covered" >  addSection('2. Nature of Investment', [</span>
+    `The capital provided under this Agreement shall be treated as a loan from the Investor to ${payload.companyName}.`,
+    'Finverno shall deploy the capital towards short-duration financing of material purchases linked to approved contractor BOQs and supplier invoices. Finverno retains full discretion regarding deployment decisions.',
+  ]);
+<span class="cstat-no" title="statement not covered" >  addSection('3. Investment Amount', [</span>
+    `The Investor agrees to contribute ${payload.commitmentAmountLabel}.`,
+    'The capital shall be transferred via bank transfer to the designated Finverno account.',
+  ]);
+<span class="cstat-no" title="statement not covered" >  addSection('4. Deployment Duration', 'Capital deployments typically occur in cycles of approximately 30 to 90 days, though the exact duration may vary depending on the underlying project cycle.');</span>
+<span class="cstat-no" title="statement not covered" >  addSection('5. Return Framework', [</span>
+    'Hurdle Return: 12% annualised return, calculated on a pro-rated basis for the duration capital remains deployed.',
+    'Profit Sharing: after the hurdle return has been satisfied, additional profits generated from deployment may be distributed 80% to the Investor and 20% retained by Finverno as performance compensation.',
+    'Expected Returns: indicative expected net annualised return to investors is approximately 14% to 18%. These returns are not guaranteed.',
+  ]);
+<span class="cstat-no" title="statement not covered" >  addSection('6. Management and Platform Fees', 'Finverno may earn management compensation and platform or enablement fees charged to contractors. Such revenues belong to Finverno and are separate from investor capital returns.');</span>
+<span class="cstat-no" title="statement not covered" >  addSection('7. Repayment', 'Upon completion of a deployment cycle, Finverno shall return the Investor principal capital and applicable returns calculated in accordance with Section 5. Investors may elect to withdraw capital or redeploy into subsequent cycles.');</span>
+<span class="cstat-no" title="statement not covered" >  addSection('8. Transparency and Reporting', 'Finverno will provide periodic updates to investors including deployment summaries, repayment confirmations, and return calculations. Operational details may be summarised for confidentiality purposes.');</span>
+<span class="cstat-no" title="statement not covered" >  addSection('9. Risk Disclosure', [</span>
+    'This POC involves financing operational business activities.',
+    'Contractor payment timelines may vary.',
+    'Returns are dependent on successful collection from financed transactions.',
+    'Finverno shall exercise reasonable diligence in deployment but does not guarantee investment returns.',
+  ]);
+<span class="cstat-no" title="statement not covered" >  addSection('10. Taxation', 'All returns distributed to investors may be treated as interest income under applicable tax laws. Finverno may deduct Tax Deducted at Source where required under Indian law. Investors are responsible for their own tax reporting obligations.');</span>
+<span class="cstat-no" title="statement not covered" >  addSection('11. Transfer Restrictions', 'This participation is private and non-transferable without written consent from Finverno.');</span>
+<span class="cstat-no" title="statement not covered" >  addSection('12. Governing Law', `This Agreement shall be governed by the laws of India. Any disputes shall fall under the jurisdiction of courts located in ${payload.jurisdiction}.`);</span>
+<span class="cstat-no" title="statement not covered" >  addSection('13. Electronic Execution', 'This Agreement is executed electronically through the Finverno investor portal. Electronic signatures shall have the same legal validity as physical signatures under the Information Technology Act, 2000.');</span>
+<span class="cstat-no" title="statement not covered" >  addSection('14. Acceptance', [</span>
+    'By electronically signing this Agreement, the Investor confirms that they have read and understood the terms, agree to participate under the stated structure, and acknowledge the associated risks.',
+    'Pre-signing confirmations: investing from own funds, understands this is a private investment opportunity, has read the risk disclosure.',
+  ]);
+&nbsp;
+<span class="cstat-no" title="statement not covered" >  if (payload.note) {</span>
+<span class="cstat-no" title="statement not covered" >    addSection('Schedule / Notes', payload.note);</span>
+  }
+&nbsp;
+<span class="cstat-no" title="statement not covered" >  if (y &gt; 245) {</span>
+<span class="cstat-no" title="statement not covered" >    doc.addPage();</span>
+<span class="cstat-no" title="statement not covered" >    y = 18;</span>
+  }
+<span class="cstat-no" title="statement not covered" >  y += 6;</span>
+<span class="cstat-no" title="statement not covered" >  addTextBlock(`For ${payload.companyName}`, { bold: true, spacing: 2 });</span>
+<span class="cstat-no" title="statement not covered" >  addTextBlock(`${payload.companySignatoryName}\n${payload.companySignatoryTitle}`, { size: 10, spacing: 6 });</span>
+&nbsp;
+<span class="cstat-no" title="statement not covered" >  addTextBlock('Investor', { bold: true, spacing: 2 });</span>
+<span class="cstat-no" title="statement not covered" >  addTextBlock(</span>
+    `${payload.investorName}\nEmail: ${payload.investorEmail}\nType: ${payload.investorType}${payload.investorPhone ? `\nPhone: ${payload.investorPhone}` : ''}\nPAN: ${payload.investorPan || '__________________________'}\nAddress: ${payload.investorAddress || '__________________________'}`,
+    { size: 10, spacing: 4 }
+  );
+<span class="cstat-no" title="statement not covered" >  addTextBlock(</span>
+    payload.investorSignedName
+      ? `Electronically signed by ${payload.investorSignedName}${payload.investorSignedAtLabel ? ` on ${payload.investorSignedAtLabel}` : ''}.`
+      : 'Electronic Signature via Finverno Investor Portal',
+    { size: 10, spacing: 4 }
+  );
+&nbsp;
+<span class="cstat-no" title="statement not covered" >  return Buffer.from(doc.output('arraybuffer'));</span>
+}
+&nbsp;</pre></td></tr></table></pre>
+
+                <div class='push'></div><!-- for sticky footer -->
+            </div><!-- /wrapper -->
+            <div class='footer quiet pad2 space-top1 center small'>
+                Code coverage generated by
+                <a href="https://istanbul.js.org/" target="_blank" rel="noopener noreferrer">istanbul</a>
+                at 2026-03-15T17:39:36.622Z
+            </div>
+        <script src="../../../prettify.js"></script>
+        <script>
+            window.onload = function () {
+                prettyPrint();
+            };
+        </script>
+        <script src="../../../sorter.js"></script>
+        <script src="../../../block-navigation.js"></script>
+    </body>
+</html>
+    

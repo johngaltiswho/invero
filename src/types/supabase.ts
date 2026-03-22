@@ -445,6 +445,11 @@ export interface Database {
           rate: number
           amount: number
           category: string | null
+          line_order: number | null
+          measurement_input_unit: string | null
+          measurement_conversion_factor: number | null
+          notes: string | null
+          updated_at: string | null
         }
         Insert: {
           id?: string
@@ -456,6 +461,11 @@ export interface Database {
           rate: number
           amount: number
           category?: string | null
+          line_order?: number | null
+          measurement_input_unit?: string | null
+          measurement_conversion_factor?: number | null
+          notes?: string | null
+          updated_at?: string | null
         }
         Update: {
           id?: string
@@ -467,6 +477,141 @@ export interface Database {
           rate?: number
           amount?: number
           category?: string | null
+          line_order?: number | null
+          measurement_input_unit?: string | null
+          measurement_conversion_factor?: number | null
+          notes?: string | null
+          updated_at?: string | null
+        }
+      }
+      boq_measurement_rows: {
+        Row: {
+          id: string
+          project_id: string
+          contractor_id: string
+          boq_item_id: string
+          measurement_date: string
+          location_description: string | null
+          remarks: string | null
+          measurement_mode: 'direct_qty' | 'nos_x_l' | 'nos_x_l_x_b' | 'nos_x_l_x_b_x_h'
+          nos: number | null
+          length: number | null
+          breadth: number | null
+          height: number | null
+          direct_qty: number | null
+          computed_qty: number
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          project_id: string
+          contractor_id: string
+          boq_item_id: string
+          measurement_date?: string
+          location_description?: string | null
+          remarks?: string | null
+          measurement_mode: 'direct_qty' | 'nos_x_l' | 'nos_x_l_x_b' | 'nos_x_l_x_b_x_h'
+          nos?: number | null
+          length?: number | null
+          breadth?: number | null
+          height?: number | null
+          direct_qty?: number | null
+          computed_qty?: number
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          project_id?: string
+          contractor_id?: string
+          boq_item_id?: string
+          measurement_date?: string
+          location_description?: string | null
+          remarks?: string | null
+          measurement_mode?: 'direct_qty' | 'nos_x_l' | 'nos_x_l_x_b' | 'nos_x_l_x_b_x_h'
+          nos?: number | null
+          length?: number | null
+          breadth?: number | null
+          height?: number | null
+          direct_qty?: number | null
+          computed_qty?: number
+          created_at?: string
+          updated_at?: string
+        }
+      }
+      boq_linked_workbooks: {
+        Row: {
+          id: string
+          project_id: string
+          contractor_id: string
+          provider: 'microsoft' | 'google'
+          original_file_path: string
+          original_file_name: string
+          original_content_type: string | null
+          provider_file_id: string | null
+          provider_drive_id: string | null
+          provider_site_id: string | null
+          provider_web_url: string | null
+          status: 'source_uploaded' | 'linked' | 'link_failed' | 'syncing' | 'synced' | 'sync_failed'
+          active: boolean
+          last_synced_at: string | null
+          last_sync_status: 'success' | 'failed' | null
+          last_sync_error: string | null
+          last_synced_boq_id: string | null
+          metadata: Record<string, any> | null
+          created_by: string | null
+          updated_by: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          project_id: string
+          contractor_id: string
+          provider?: 'microsoft' | 'google'
+          original_file_path: string
+          original_file_name: string
+          original_content_type?: string | null
+          provider_file_id?: string | null
+          provider_drive_id?: string | null
+          provider_site_id?: string | null
+          provider_web_url?: string | null
+          status?: 'source_uploaded' | 'linked' | 'link_failed' | 'syncing' | 'synced' | 'sync_failed'
+          active?: boolean
+          last_synced_at?: string | null
+          last_sync_status?: 'success' | 'failed' | null
+          last_sync_error?: string | null
+          last_synced_boq_id?: string | null
+          metadata?: Record<string, any> | null
+          created_by?: string | null
+          updated_by?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          project_id?: string
+          contractor_id?: string
+          provider?: 'microsoft' | 'google'
+          original_file_path?: string
+          original_file_name?: string
+          original_content_type?: string | null
+          provider_file_id?: string | null
+          provider_drive_id?: string | null
+          provider_site_id?: string | null
+          provider_web_url?: string | null
+          status?: 'source_uploaded' | 'linked' | 'link_failed' | 'syncing' | 'synced' | 'sync_failed'
+          active?: boolean
+          last_synced_at?: string | null
+          last_sync_status?: 'success' | 'failed' | null
+          last_sync_error?: string | null
+          last_synced_boq_id?: string | null
+          metadata?: Record<string, any> | null
+          created_by?: string | null
+          updated_by?: string | null
+          created_at?: string
+          updated_at?: string
         }
       }
       project_schedules: {
@@ -569,6 +714,275 @@ export interface Database {
           updated_at?: string
         }
       }
+      vehicles: {
+        Row: {
+          id: string
+          contractor_id: string
+          vehicle_number: string
+          vehicle_type: string
+          is_active: boolean
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          contractor_id: string
+          vehicle_number: string
+          vehicle_type: string
+          is_active?: boolean
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          contractor_id?: string
+          vehicle_number?: string
+          vehicle_type?: string
+          is_active?: boolean
+          updated_at?: string
+        }
+      }
+      fuel_expenses: {
+        Row: {
+          id: string
+          contractor_id: string
+          vehicle_id: string
+          bill_image_url: string
+          bill_number: string | null
+          bill_date: string | null
+          pump_name: string | null
+          fuel_type: 'Petrol' | 'Diesel' | null
+          quantity_liters: number | null
+          rate_per_liter: number | null
+          total_amount: number | null
+          ocr_raw_response: any | null
+          status: 'submitted' | 'ocr_processing' | 'pending_review' | 'approved' | 'rejected' | 'ocr_failed'
+          admin_notes: string | null
+          approved_by: string | null
+          approved_at: string | null
+          rejected_reason: string | null
+          submitted_at: string
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          contractor_id: string
+          vehicle_id: string
+          bill_image_url: string
+          bill_number?: string | null
+          bill_date?: string | null
+          pump_name?: string | null
+          fuel_type?: 'Petrol' | 'Diesel' | null
+          quantity_liters?: number | null
+          rate_per_liter?: number | null
+          total_amount?: number | null
+          ocr_raw_response?: any | null
+          status?: 'submitted' | 'ocr_processing' | 'pending_review' | 'approved' | 'rejected' | 'ocr_failed'
+          admin_notes?: string | null
+          approved_by?: string | null
+          approved_at?: string | null
+          rejected_reason?: string | null
+          submitted_at?: string
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          contractor_id?: string
+          vehicle_id?: string
+          bill_image_url?: string
+          bill_number?: string | null
+          bill_date?: string | null
+          pump_name?: string | null
+          fuel_type?: 'Petrol' | 'Diesel' | null
+          quantity_liters?: number | null
+          rate_per_liter?: number | null
+          total_amount?: number | null
+          ocr_raw_response?: any | null
+          status?: 'submitted' | 'ocr_processing' | 'pending_review' | 'approved' | 'rejected' | 'ocr_failed'
+          admin_notes?: string | null
+          approved_by?: string | null
+          approved_at?: string | null
+          rejected_reason?: string | null
+          updated_at?: string
+        }
+      }
+      fuel_pumps: {
+        Row: {
+          id: string
+          pump_name: string
+          address: string | null
+          city: string | null
+          state: string | null
+          pincode: string | null
+          contact_person: string | null
+          contact_phone: string | null
+          contact_email: string | null
+          is_active: boolean
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          pump_name: string
+          address?: string | null
+          city?: string | null
+          state?: string | null
+          pincode?: string | null
+          contact_person?: string | null
+          contact_phone?: string | null
+          contact_email?: string | null
+          is_active?: boolean
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          pump_name?: string
+          address?: string | null
+          city?: string | null
+          state?: string | null
+          pincode?: string | null
+          contact_person?: string | null
+          contact_phone?: string | null
+          contact_email?: string | null
+          is_active?: boolean
+          updated_at?: string
+        }
+      }
+      contractor_fuel_settings: {
+        Row: {
+          id: string
+          contractor_id: string
+          monthly_fuel_budget: number
+          per_request_max_amount: number
+          per_request_max_liters: number
+          max_fills_per_vehicle_per_day: number
+          min_hours_between_fills: number
+          auto_approve_enabled: boolean
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          contractor_id: string
+          monthly_fuel_budget?: number
+          per_request_max_amount?: number
+          per_request_max_liters?: number
+          max_fills_per_vehicle_per_day?: number
+          min_hours_between_fills?: number
+          auto_approve_enabled?: boolean
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          contractor_id?: string
+          monthly_fuel_budget?: number
+          per_request_max_amount?: number
+          per_request_max_liters?: number
+          max_fills_per_vehicle_per_day?: number
+          min_hours_between_fills?: number
+          auto_approve_enabled?: boolean
+          updated_at?: string
+        }
+      }
+      contractor_approved_pumps: {
+        Row: {
+          id: string
+          contractor_id: string
+          pump_id: string
+          is_active: boolean
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          contractor_id: string
+          pump_id: string
+          is_active?: boolean
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          contractor_id?: string
+          pump_id?: string
+          is_active?: boolean
+          updated_at?: string
+        }
+      }
+      fuel_approvals: {
+        Row: {
+          id: string
+          approval_code: string
+          vehicle_id: string
+          contractor_id: string
+          pump_id: string
+          max_amount: number
+          max_liters: number
+          valid_from: string
+          valid_until: string
+          status: 'pending' | 'filled' | 'expired' | 'cancelled'
+          request_type: string
+          auto_approved: boolean
+          requested_notes: string | null
+          filled_at: string | null
+          filled_quantity: number | null
+          filled_amount: number | null
+          pump_notes: string | null
+          approved_by: string | null
+          approved_at: string
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          approval_code?: string
+          vehicle_id: string
+          contractor_id: string
+          pump_id: string
+          max_amount: number
+          max_liters: number
+          valid_from?: string
+          valid_until: string
+          status?: 'pending' | 'filled' | 'expired' | 'cancelled'
+          request_type?: string
+          auto_approved?: boolean
+          requested_notes?: string | null
+          filled_at?: string | null
+          filled_quantity?: number | null
+          filled_amount?: number | null
+          pump_notes?: string | null
+          approved_by?: string | null
+          approved_at?: string
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          approval_code?: string
+          vehicle_id?: string
+          contractor_id?: string
+          pump_id?: string
+          max_amount?: number
+          max_liters?: number
+          valid_from?: string
+          valid_until?: string
+          status?: 'pending' | 'filled' | 'expired' | 'cancelled'
+          request_type?: string
+          auto_approved?: boolean
+          requested_notes?: string | null
+          filled_at?: string | null
+          filled_quantity?: number | null
+          filled_amount?: number | null
+          pump_notes?: string | null
+          approved_by?: string | null
+          approved_at?: string
+          updated_at?: string
+        }
+      }
     }
   }
 }
@@ -593,3 +1007,53 @@ export type FinancialMilestoneUpdate = Database['public']['Tables']['financial_m
 export type Activity = Database['public']['Tables']['activities']['Row']
 export type ActivityInsert = Database['public']['Tables']['activities']['Insert']
 export type ActivityUpdate = Database['public']['Tables']['activities']['Update']
+
+export type Vehicle = Database['public']['Tables']['vehicles']['Row']
+export type VehicleInsert = Database['public']['Tables']['vehicles']['Insert']
+export type VehicleUpdate = Database['public']['Tables']['vehicles']['Update']
+
+export type FuelExpense = Database['public']['Tables']['fuel_expenses']['Row']
+export type FuelExpenseInsert = Database['public']['Tables']['fuel_expenses']['Insert']
+export type FuelExpenseUpdate = Database['public']['Tables']['fuel_expenses']['Update']
+
+export type FuelExpenseStatus = 'submitted' | 'ocr_processing' | 'pending_review' | 'approved' | 'rejected' | 'ocr_failed'
+
+// Fuel expense with relations for admin review
+export interface FuelExpenseWithRelations extends FuelExpense {
+  vehicle: Vehicle
+  contractor: {
+    id: string
+    company_name: string
+    contact_person: string
+  }
+}
+
+// Fuel auto-approval system types
+export type FuelPump = Database['public']['Tables']['fuel_pumps']['Row']
+export type FuelPumpInsert = Database['public']['Tables']['fuel_pumps']['Insert']
+export type FuelPumpUpdate = Database['public']['Tables']['fuel_pumps']['Update']
+
+export type ContractorFuelSettings = Database['public']['Tables']['contractor_fuel_settings']['Row']
+export type ContractorFuelSettingsInsert = Database['public']['Tables']['contractor_fuel_settings']['Insert']
+export type ContractorFuelSettingsUpdate = Database['public']['Tables']['contractor_fuel_settings']['Update']
+
+export type ContractorApprovedPump = Database['public']['Tables']['contractor_approved_pumps']['Row']
+export type ContractorApprovedPumpInsert = Database['public']['Tables']['contractor_approved_pumps']['Insert']
+export type ContractorApprovedPumpUpdate = Database['public']['Tables']['contractor_approved_pumps']['Update']
+
+export type FuelApproval = Database['public']['Tables']['fuel_approvals']['Row']
+export type FuelApprovalInsert = Database['public']['Tables']['fuel_approvals']['Insert']
+export type FuelApprovalUpdate = Database['public']['Tables']['fuel_approvals']['Update']
+
+export type ApprovalStatus = 'pending' | 'filled' | 'expired' | 'cancelled'
+
+// Fuel approval with relations
+export interface FuelApprovalWithRelations extends FuelApproval {
+  vehicle: Vehicle
+  pump: FuelPump
+  contractor: {
+    id: string
+    company_name: string
+    contact_person: string
+  }
+}

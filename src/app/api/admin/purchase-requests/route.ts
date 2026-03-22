@@ -109,7 +109,6 @@ async function fetchPurchaseRequests(options: FetchOptions = {}) {
         id,
         project_id,
         contractor_id,
-        shipping_location,
         status,
         remarks,
         approval_notes,
@@ -257,23 +256,22 @@ async function fetchPurchaseRequests(options: FetchOptions = {}) {
   }
 
   const projectIds = Array.from(new Set((requestRows || []).map((row: { project_id: string }) => row.project_id).filter(Boolean)));
-  const projectMap = new Map<string, { name?: string | null; client_name?: string | null; project_address?: string | null; location?: string | null }>();
+  const projectMap = new Map<string, { name?: string | null; client_name?: string | null; project_address?: string | null }>();
 
   if (projectIds.length > 0) {
     const { data: projects, error: projectError } = await supabaseAdmin
       .from('projects')
-      .select('id, project_name, client_name, project_address, location')
+      .select('id, project_name, client_name, project_address')
       .in('id', projectIds);
 
     if (projectError) {
       console.error('Failed to fetch project metadata:', projectError);
     } else {
-      projects?.forEach((project: { id: string; project_name?: string; client_name?: string | null; project_address?: string | null; location?: string | null }) => {
+      projects?.forEach((project: { id: string; project_name?: string; client_name?: string | null; project_address?: string | null }) => {
         projectMap.set(project.id, {
           name: project.project_name,
           client_name: project.client_name ?? null,
-          project_address: project.project_address ?? null,
-          location: project.location ?? null
+          project_address: project.project_address ?? null
         });
       });
     }
@@ -324,7 +322,6 @@ async function fetchPurchaseRequests(options: FetchOptions = {}) {
       id: request.id,
       project_id: request.project_id,
       contractor_id: request.contractor_id,
-      shipping_location: request.shipping_location || null,
       status: request.status,
       remarks: request.remarks,
       approval_notes: request.approval_notes,

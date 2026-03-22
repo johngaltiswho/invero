@@ -25,14 +25,14 @@
             <div class='fl pad1y space-right2'>
                 <span class="strong">0% </span>
                 <span class="quiet">Statements</span>
-                <span class='fraction'>0/95</span>
+                <span class='fraction'>0/105</span>
             </div>
         
             
             <div class='fl pad1y space-right2'>
                 <span class="strong">0% </span>
                 <span class="quiet">Branches</span>
-                <span class='fraction'>0/72</span>
+                <span class='fraction'>0/86</span>
             </div>
         
             
@@ -46,7 +46,7 @@
             <div class='fl pad1y space-right2'>
                 <span class="strong">0% </span>
                 <span class="quiet">Lines</span>
-                <span class='fraction'>0/87</span>
+                <span class='fraction'>0/92</span>
             </div>
         
             
@@ -383,7 +383,18 @@
 <a name='L318'></a><a href='#L318'>318</a>
 <a name='L319'></a><a href='#L319'>319</a>
 <a name='L320'></a><a href='#L320'>320</a>
-<a name='L321'></a><a href='#L321'>321</a></td><td class="line-coverage quiet"><span class="cline-any cline-no">&nbsp;</span>
+<a name='L321'></a><a href='#L321'>321</a>
+<a name='L322'></a><a href='#L322'>322</a>
+<a name='L323'></a><a href='#L323'>323</a>
+<a name='L324'></a><a href='#L324'>324</a>
+<a name='L325'></a><a href='#L325'>325</a>
+<a name='L326'></a><a href='#L326'>326</a>
+<a name='L327'></a><a href='#L327'>327</a>
+<a name='L328'></a><a href='#L328'>328</a>
+<a name='L329'></a><a href='#L329'>329</a>
+<a name='L330'></a><a href='#L330'>330</a>
+<a name='L331'></a><a href='#L331'>331</a>
+<a name='L332'></a><a href='#L332'>332</a></td><td class="line-coverage quiet"><span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
@@ -406,6 +417,11 @@
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
@@ -439,6 +455,11 @@
 <span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
@@ -699,6 +720,7 @@
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
@@ -718,7 +740,12 @@ export async function <span class="cstat-no" title="statement not covered" ><spa
     
     // Extract update data
     const {
+      name,
+      description,
+      category,
+      unit,
       purchase_status,
+      hsn_code,
       finverno_rate,
       finverno_tax_percentage,
       finverno_tax_amount,
@@ -751,7 +778,12 @@ export async function <span class="cstat-no" title="statement not covered" ><spa
     };
 &nbsp;
     // Add fields that are provided
+<span class="cstat-no" title="statement not covered" >    if (name !== undefined) <span class="cstat-no" title="statement not covered" >updateData.name = String(name).trim();</span></span>
+<span class="cstat-no" title="statement not covered" >    if (description !== undefined) <span class="cstat-no" title="statement not covered" >updateData.description = description ? String(description).trim() : null;</span></span>
+<span class="cstat-no" title="statement not covered" >    if (category !== undefined) <span class="cstat-no" title="statement not covered" >updateData.category = String(category).trim();</span></span>
+<span class="cstat-no" title="statement not covered" >    if (unit !== undefined) <span class="cstat-no" title="statement not covered" >updateData.unit = String(unit).trim();</span></span>
 <span class="cstat-no" title="statement not covered" >    if (purchase_status) <span class="cstat-no" title="statement not covered" >updateData.purchase_status = purchase_status;</span></span>
+<span class="cstat-no" title="statement not covered" >    if (hsn_code !== undefined) <span class="cstat-no" title="statement not covered" >updateData.hsn_code = hsn_code ? String(hsn_code).trim() : null;</span></span>
 <span class="cstat-no" title="statement not covered" >    if (finverno_rate !== undefined) <span class="cstat-no" title="statement not covered" >updateData.finverno_rate = finverno_rate;</span></span>
 <span class="cstat-no" title="statement not covered" >    if (finverno_tax_percentage !== undefined) <span class="cstat-no" title="statement not covered" >updateData.finverno_tax_percentage = finverno_tax_percentage;</span></span>
 <span class="cstat-no" title="statement not covered" >    if (finverno_tax_amount !== undefined) <span class="cstat-no" title="statement not covered" >updateData.finverno_tax_amount = finverno_tax_amount;</span></span>
@@ -1023,14 +1055,15 @@ export async function <span class="cstat-no" title="statement not covered" ><spa
       { status: 500 }
     );
   }
-}</pre></td></tr></table></pre>
+}
+&nbsp;</pre></td></tr></table></pre>
 
                 <div class='push'></div><!-- for sticky footer -->
             </div><!-- /wrapper -->
             <div class='footer quiet pad2 space-top1 center small'>
                 Code coverage generated by
                 <a href="https://istanbul.js.org/" target="_blank" rel="noopener noreferrer">istanbul</a>
-                at 2026-02-08T15:39:04.756Z
+                at 2026-03-15T17:39:36.622Z
             </div>
         <script src="../../../../../prettify.js"></script>
         <script>

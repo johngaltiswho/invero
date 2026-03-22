@@ -373,9 +373,8 @@ export async function signInvestorAgreement(input: {
   const { data, error } = await (supabaseAdmin as any)
     .from('investor_agreements')
     .update({
-      status: 'executed',
+      status: 'investor_signed',
       signed_pdf_path: signedPdfPath,
-      executed_pdf_path: signedPdfPath,
       investor_signed_name: typedName,
       investor_signed_email: email,
       investor_signed_at: signedAt,
@@ -383,7 +382,6 @@ export async function signInvestorAgreement(input: {
       investor_signed_user_agent: input.userAgent || null,
       investor_acceptance: input.acceptance,
       signed_copy_received_at: signedAt,
-      executed_at: signedAt,
       payload_snapshot: payload,
       rendered_html: rendered.html,
       updated_by: user.id,
@@ -397,19 +395,7 @@ export async function signInvestorAgreement(input: {
     throw new Error(error.message || 'Failed to sign agreement');
   }
 
-  await syncInvestorAgreementStatus(agreement.investor_id, 'completed', 'active', signedAt);
-
-  try {
-    await sendEmail({
-      to: investor.email,
-      ...investorAgreementExecutedEmail({
-        investorName: investor.name,
-        commitmentAmount: Number(agreement.commitment_amount) || 0,
-      }),
-    });
-  } catch (emailError) {
-    console.error('Failed to send executed agreement email after portal signing:', emailError);
-  }
+  await syncInvestorAgreementStatus(agreement.investor_id, 'in_progress', 'agreement_pending');
 
   return data as InvestorAgreement;
 }
@@ -522,8 +508,12 @@ export async function uploadAgreementFile(input: {
 export async function markAgreementExecuted(agreementId: string, actor: AdminActor): Promise<InvestorAgreement> {
   const agreement = await getInvestorAgreement(agreementId);
   if (!agreement) throw new Error('Agreement not found');
-  if (!agreement.executed_pdf_path) {
-    throw new Error('Executed agreement file is required');
+  if (!['investor_signed', 'signed_copy_received'].includes(agreement.status)) {
+    throw new Error('Agreement must be investor-signed before countersigning');
+  }
+  const executedPdfPath = agreement.executed_pdf_path || agreement.signed_pdf_path;
+  if (!executedPdfPath) {
+    throw new Error('Investor-signed agreement file is required before countersigning');
   }
 
   const executedAt = new Date().toISOString();
@@ -531,6 +521,7 @@ export async function markAgreementExecuted(agreementId: string, actor: AdminAct
     .from('investor_agreements')
     .update({
       status: 'executed',
+      executed_pdf_path: executedPdfPath,
       executed_at: executedAt,
       updated_by: actor.id,
       updated_at: executedAt,

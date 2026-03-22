@@ -1,4 +1,5 @@
 import { google } from 'googleapis';
+import { Readable } from 'stream';
 
 // Google Drive configuration
 const GOOGLE_CLIENT_EMAIL = process.env.GOOGLE_CLIENT_EMAIL;
@@ -6,10 +7,14 @@ const GOOGLE_PRIVATE_KEY = process.env.GOOGLE_PRIVATE_KEY;
 const GOOGLE_PROJECT_ID = process.env.GOOGLE_PROJECT_ID;
 const GOOGLE_API_KEY = process.env.GOOGLE_API_KEY;
 const CREDENTIALS = process.env.GOOGLE_SERVICE_ACCOUNT_KEY;
+const GOOGLE_WORKBOOK_PARENT_FOLDER_ID =
+  process.env.GOOGLE_WORKBOOK_PARENT_FOLDER_ID;
 
 interface GoogleDriveConfig {
   credentials: string;
 }
+
+const GOOGLE_WORKBOOK_PARENT_FOLDER = process.env.GOOGLE_WORKBOOK_PARENT_FOLDER || 'Finverno/BOQ Workbooks';
 
 class GoogleDriveAPI {
   private drive: any;
@@ -100,6 +105,8 @@ class GoogleDriveAPI {
 
       const searchResponse = await this.drive.files.list({
         q: query,
+        supportsAllDrives: true,
+        includeItemsFromAllDrives: true,
         fields: 'files(id, name)',
       });
 
@@ -117,6 +124,7 @@ class GoogleDriveAPI {
 
       const response = await this.drive.files.create({
         requestBody: folderMetadata,
+        supportsAllDrives: true,
         fields: 'id',
       });
 
@@ -125,6 +133,21 @@ class GoogleDriveAPI {
       console.error(`❌ Error finding/creating folder ${folderName}:`, error);
       throw error;
     }
+  }
+
+  async findOrCreateFolderPath(folderPath: string): Promise<string> {
+    const parts = folderPath.split('/').map(part => part.trim()).filter(Boolean);
+    let parentId: string | undefined;
+
+    for (const part of parts) {
+      parentId = await this.findOrCreateFolder(part, parentId);
+    }
+
+    if (!parentId) {
+      throw new Error('Failed to resolve Google Drive folder path');
+    }
+
+    return parentId;
   }
 
   async uploadFile(
@@ -197,6 +220,73 @@ class GoogleDriveAPI {
       return fileUrls;
     } catch (error) {
       console.error(`❌ Error uploading files for application ${applicationId}:`, error);
+      throw error;
+    }
+  }
+
+  async createEditableSpreadsheetFromExcel(
+    fileBuffer: Buffer,
+    fileName: string,
+    parentFolderPath: string = GOOGLE_WORKBOOK_PARENT_FOLDER
+  ): Promise<{ fileId: string; webUrl: string; mimeType: string }> {
+    try {
+      const folderId =
+        GOOGLE_WORKBOOK_PARENT_FOLDER_ID ||
+        (await this.findOrCreateFolderPath(parentFolderPath));
+      const normalizedName = fileName.replace(/\.(xlsx|xls)$/i, '') || 'BOQ Working Workbook';
+
+      const response = await this.drive.files.create({
+        requestBody: {
+          name: normalizedName,
+          mimeType: 'application/vnd.google-apps.spreadsheet',
+          parents: [folderId],
+        },
+        media: {
+          mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+          body: Readable.from(fileBuffer),
+        },
+        supportsAllDrives: true,
+        fields: 'id, mimeType, webViewLink',
+      });
+
+      const fileId = response.data.id;
+
+      await this.drive.permissions.create({
+        fileId,
+        supportsAllDrives: true,
+        requestBody: {
+          role: 'writer',
+          type: 'anyone',
+        },
+      });
+
+      return {
+        fileId,
+        webUrl: response.data.webViewLink || `https://docs.google.com/spreadsheets/d/${fileId}/edit`,
+        mimeType: response.data.mimeType || 'application/vnd.google-apps.spreadsheet',
+      };
+    } catch (error) {
+      console.error('❌ Error creating editable Google spreadsheet:', error);
+      throw error;
+    }
+  }
+
+  async exportSpreadsheetAsXlsx(fileId: string): Promise<Buffer> {
+    try {
+      const response = await this.drive.files.export(
+        {
+          fileId,
+          mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+          supportsAllDrives: true,
+        },
+        {
+          responseType: 'arraybuffer',
+        }
+      );
+
+      return Buffer.from(response.data as ArrayBuffer);
+    } catch (error) {
+      console.error(`❌ Error exporting spreadsheet ${fileId} as XLSX:`, error);
       throw error;
     }
   }

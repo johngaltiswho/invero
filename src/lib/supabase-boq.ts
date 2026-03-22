@@ -1,6 +1,11 @@
 import { supabase } from './supabase';
 import type { ProjectBOQ, ProjectSchedule, BOQItem, ScheduleItem } from '@/types/boq';
 
+type SaveBOQOptions = {
+  overwriteBoqId?: string;
+  dbClient?: any;
+};
+
 // BOQ Functions
 // Test Supabase connection
 export async function testSupabaseConnection() {
@@ -18,13 +23,14 @@ export async function testSupabaseConnection() {
   }
 }
 
-export async function saveBOQToSupabase(boq: ProjectBOQ) {
+export async function saveBOQToSupabase(boq: ProjectBOQ, options: SaveBOQOptions = {}) {
   try {
+    const dbClient = options.dbClient || supabase;
     console.log('Starting BOQ save process...');
     console.log('BOQ data:', JSON.stringify(boq, null, 2));
     
     // Test connection first
-    const connectionTest = await testSupabaseConnection();
+    const connectionTest = options.dbClient ? { connected: true, error: null } : await testSupabaseConnection();
     console.log('Connection test result:', connectionTest);
     
     if (!connectionTest.connected) {
@@ -34,24 +40,58 @@ export async function saveBOQToSupabase(boq: ProjectBOQ) {
       throw new Error(`Supabase connection failed: ${errorMessage}`);
     }
     
-    // Insert BOQ record
-    const { data: boqData, error: boqError } = await (supabase as any)
-      .from('project_boqs')
-      .insert({
-        project_id: boq.projectId,
-        contractor_id: boq.contractorId,
-        upload_date: boq.uploadDate,
-        total_amount: Math.round(boq.totalAmount), // Round to nearest integer
-        file_name: boq.fileName
-      })
-      .select()
-      .single();
+    let boqData: any = null;
+    let boqError: any = null;
+
+    if (options.overwriteBoqId) {
+      const { data, error } = await dbClient
+        .from('project_boqs')
+        .update({
+          upload_date: boq.uploadDate,
+          total_amount: Math.round(boq.totalAmount),
+          file_name: boq.fileName,
+        })
+        .eq('id', options.overwriteBoqId)
+        .eq('project_id', boq.projectId)
+        .select()
+        .single();
+
+      boqData = data;
+      boqError = error;
+    } else {
+      const { data, error } = await dbClient
+        .from('project_boqs')
+        .insert({
+          project_id: boq.projectId,
+          contractor_id: boq.contractorId,
+          upload_date: boq.uploadDate,
+          total_amount: Math.round(boq.totalAmount), // Round to nearest integer
+          file_name: boq.fileName
+        })
+        .select()
+        .single();
+
+      boqData = data;
+      boqError = error;
+    }
 
     console.log('BOQ insert result:', { data: boqData, error: boqError });
 
     if (boqError) {
       console.error('BOQ insert error:', boqError);
       throw new Error(`Failed to insert BOQ: ${boqError.message} (Code: ${boqError.code})`);
+    }
+
+    if (options.overwriteBoqId) {
+      const { error: deleteItemsError } = await dbClient
+        .from('boq_items')
+        .delete()
+        .eq('boq_id', options.overwriteBoqId);
+
+      if (deleteItemsError) {
+        console.error('Failed to clear existing BOQ items before overwrite:', deleteItemsError);
+        throw new Error(`Failed to overwrite BOQ items: ${deleteItemsError.message} (Code: ${deleteItemsError.code})`);
+      }
     }
 
     // Insert BOQ items with proper ordering
@@ -77,7 +117,7 @@ export async function saveBOQToSupabase(boq: ProjectBOQ) {
 
     console.log('BOQ items to insert:', JSON.stringify(boqItems, null, 2));
 
-    const { error: itemsError } = await (supabase as any)
+    const { error: itemsError } = await dbClient
       .from('boq_items')
       .insert(boqItems);
 

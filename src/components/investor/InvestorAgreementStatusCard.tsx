@@ -144,7 +144,7 @@ export default function InvestorAgreementStatusCard({ agreement, files, onSigned
         <div className="mt-6 rounded-lg border border-neutral-medium p-5">
           <h3 className="mb-2 text-lg font-semibold text-primary">Sign In Portal</h3>
           <p className="mb-4 text-sm text-secondary">
-            Type your full legal name and confirm the declarations below to complete this agreement on the platform.
+            Type your full legal name and confirm the declarations below to submit your signature. Finverno will countersign after your acceptance.
           </p>
 
           <div className="mb-4">
@@ -182,12 +182,17 @@ export default function InvestorAgreementStatusCard({ agreement, files, onSigned
       {(agreement.status === 'investor_signed' || agreement.status === 'executed') && (
         <div className="mt-6 rounded-lg border border-neutral-medium p-5 text-sm">
           <div className="font-medium text-primary">
-            {agreement.status === 'executed' ? 'Agreement completed in portal' : 'Investor signature recorded'}
+            {agreement.status === 'executed' ? 'Agreement fully executed' : 'Investor signature recorded'}
           </div>
           <div className="mt-2 text-secondary">
             Signed by {agreement.investor_signed_name || 'Investor'}
             {agreement.investor_signed_at ? ` on ${new Date(agreement.investor_signed_at).toLocaleString('en-IN')}` : ''}.
           </div>
+          {agreement.status === 'investor_signed' && (
+            <div className="mt-2 text-secondary">
+              Finverno will countersign next. The agreement will move to executed once the company signature is completed.
+            </div>
+          )}
         </div>
       )}
     </div>

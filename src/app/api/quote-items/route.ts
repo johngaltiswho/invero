@@ -28,6 +28,8 @@ export async function GET(request: NextRequest) {
         rate,
         amount,
         line_order,
+        measurement_input_unit,
+        measurement_conversion_factor,
         notes,
         boq_id,
         project_boqs!inner(project_id)
@@ -60,7 +62,7 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { project_id, description, quantity, unit, rate, notes, line_order } = body;
+    const { project_id, description, quantity, unit, rate, notes, line_order, measurement_input_unit, measurement_conversion_factor } = body;
 
     if (!project_id || !description || quantity === undefined || rate === undefined) {
       return NextResponse.json({ 
@@ -123,6 +125,8 @@ export async function POST(request: NextRequest) {
         rate,
         amount: quantity * rate,
         line_order: line_order || 0,
+        measurement_input_unit: measurement_input_unit?.trim() || null,
+        measurement_conversion_factor: measurement_conversion_factor ?? null,
         notes,
         category: 'line_item'
       })
@@ -147,6 +151,8 @@ export async function POST(request: NextRequest) {
         rate: item.rate,
         amount: item.amount,
         line_order: item.line_order,
+        measurement_input_unit: item.measurement_input_unit,
+        measurement_conversion_factor: item.measurement_conversion_factor,
         notes: item.notes
       }
     });
@@ -166,7 +172,7 @@ export async function PUT(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { id, description, quantity, unit, rate, notes, line_order } = body;
+    const { id, description, quantity, unit, rate, notes, line_order, measurement_input_unit, measurement_conversion_factor } = body;
 
     if (!id) {
       return NextResponse.json({ error: 'Item ID required' }, { status: 400 });
@@ -182,6 +188,13 @@ export async function PUT(request: NextRequest) {
     if (rate !== undefined) {
       updateData.rate = rate;
       updateData.amount = (quantity || 0) * rate; // Recalculate amount
+    }
+    if (measurement_input_unit !== undefined) updateData.measurement_input_unit = measurement_input_unit?.trim() || null;
+    if (measurement_conversion_factor !== undefined) {
+      updateData.measurement_conversion_factor =
+        measurement_conversion_factor === '' || measurement_conversion_factor === null
+          ? null
+          : Number(measurement_conversion_factor);
     }
     if (notes !== undefined) updateData.notes = notes;
     if (line_order !== undefined) updateData.line_order = line_order;
@@ -211,6 +224,8 @@ export async function PUT(request: NextRequest) {
         rate: item.rate,
         amount: item.amount,
         line_order: item.line_order,
+        measurement_input_unit: item.measurement_input_unit,
+        measurement_conversion_factor: item.measurement_conversion_factor,
         notes: item.notes
       }
     });

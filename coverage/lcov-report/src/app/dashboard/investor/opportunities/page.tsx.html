@@ -25,14 +25,14 @@
             <div class='fl pad1y space-right2'>
                 <span class="strong">0% </span>
                 <span class="quiet">Statements</span>
-                <span class='fraction'>0/127</span>
+                <span class='fraction'>0/128</span>
             </div>
         
             
             <div class='fl pad1y space-right2'>
                 <span class="strong">0% </span>
                 <span class="quiet">Branches</span>
-                <span class='fraction'>0/130</span>
+                <span class='fraction'>0/135</span>
             </div>
         
             
@@ -46,7 +46,7 @@
             <div class='fl pad1y space-right2'>
                 <span class="strong">0% </span>
                 <span class="quiet">Lines</span>
-                <span class='fraction'>0/119</span>
+                <span class='fraction'>0/120</span>
             </div>
         
             
@@ -650,7 +650,8 @@
 <a name='L585'></a><a href='#L585'>585</a>
 <a name='L586'></a><a href='#L586'>586</a>
 <a name='L587'></a><a href='#L587'>587</a>
-<a name='L588'></a><a href='#L588'>588</a></td><td class="line-coverage quiet"><span class="cline-any cline-neutral">&nbsp;</span>
+<a name='L588'></a><a href='#L588'>588</a>
+<a name='L589'></a><a href='#L589'>589</a></td><td class="line-coverage quiet"><span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
@@ -761,6 +762,7 @@
 <span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
@@ -1348,9 +1350,10 @@ export default function <span class="cstat-no" title="statement not covered" ><s
     const allProjects = <span class="cstat-no" title="statement not covered" >investor.relatedProjects || [];</span>
     const allContractors = <span class="cstat-no" title="statement not covered" >investor.relatedContractors || [];</span>
     
-    const allActiveProjects = <span class="cstat-no" title="statement not covered" >allProjects.filter(<span class="fstat-no" title="function not covered" >project =&gt; </span></span>
-<span class="cstat-no" title="statement not covered" >      project.status !== 'Draft'</span>
-    );
+    const allActiveProjects = <span class="cstat-no" title="statement not covered" >allProjects.filter(<span class="fstat-no" title="function not covered" >project =&gt; {</span></span>
+      const status = <span class="cstat-no" title="statement not covered" >String(project.project_status || project.status || '').toLowerCase();</span>
+<span class="cstat-no" title="statement not covered" >      return status === 'awarded' || status === 'finalized';</span>
+    });
     
 <span class="cstat-no" title="statement not covered" >    console.log('📋 Total projects available:', allProjects.length);</span>
 <span class="cstat-no" title="statement not covered" >    console.log('📋 Active projects for opportunities:', allActiveProjects.length);</span>
@@ -1628,9 +1631,9 @@ export default function <span class="cstat-no" title="statement not covered" ><s
               &lt;/select&gt;
             &lt;/div&gt;
             &lt;div&gt;
-              &lt;label className="block text-sm font-medium text-primary mb-2"&gt;IRR Range&lt;/label&gt;
+              &lt;label className="block text-sm font-medium text-primary mb-2"&gt;XIRR Range&lt;/label&gt;
               &lt;select className="w-full px-3 py-2 bg-neutral-medium border border-neutral-light rounded text-primary text-sm"&gt;
-                &lt;option value="all"&gt;All IRR Ranges&lt;/option&gt;
+                &lt;option value="all"&gt;All XIRR Ranges&lt;/option&gt;
                 &lt;option value="12-14"&gt;12-14%&lt;/option&gt;
                 &lt;option value="14-16"&gt;14-16%&lt;/option&gt;
                 &lt;option value="16+"&gt;16%+&lt;/option&gt;
@@ -1666,7 +1669,7 @@ export default function <span class="cstat-no" title="statement not covered" ><s
             &lt;/div&gt;
           &lt;/div&gt;
           &lt;div className="bg-neutral-dark p-4 rounded-lg border border-neutral-medium"&gt;
-            &lt;div className="text-accent-amber text-sm font-mono mb-1"&gt;AVG. IRR&lt;/div&gt;
+            &lt;div className="text-accent-amber text-sm font-mono mb-1"&gt;AVG. XIRR&lt;/div&gt;
             &lt;div className="text-2xl font-bold text-accent-amber"&gt;
               {avgIrrValue !== null ? `${avgIrrValue.toFixed(1)}%` : '--'}
             &lt;/div&gt;
@@ -1729,7 +1732,7 @@ export default function <span class="cstat-no" title="statement not covered" ><s
                     &lt;div className="text-lg font-bold text-primary"&gt;{opportunity.fundingRequired}&lt;/div&gt;
                   &lt;/div&gt;
                   &lt;div&gt;
-                    &lt;div className="text-xs text-secondary mb-1"&gt;Expected IRR&lt;/div&gt;
+                    &lt;div className="text-xs text-secondary mb-1"&gt;Expected XIRR&lt;/div&gt;
                     &lt;div className="text-lg font-bold text-accent-amber"&gt;{opportunity.expectedIRR}&lt;/div&gt;
                   &lt;/div&gt;
                   &lt;div&gt;
@@ -1831,7 +1834,7 @@ export default function <span class="cstat-no" title="statement not covered" ><s
             <div class='footer quiet pad2 space-top1 center small'>
                 Code coverage generated by
                 <a href="https://istanbul.js.org/" target="_blank" rel="noopener noreferrer">istanbul</a>
-                at 2026-02-08T15:39:04.756Z
+                at 2026-03-15T17:39:36.622Z
             </div>
         <script src="../../../../../prettify.js"></script>
         <script>

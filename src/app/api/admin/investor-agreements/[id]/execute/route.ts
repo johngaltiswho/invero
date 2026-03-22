@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getAdminUser, requireAdmin } from '@/lib/admin-auth';
 import { createAuditLog, getRequestContext } from '@/lib/audit';
-import { markAgreementExecuted, uploadAgreementFile } from '@/lib/agreements/service';
+import { markAgreementExecuted } from '@/lib/agreements/service';
 
 export async function POST(
   request: NextRequest,
@@ -11,21 +11,6 @@ export async function POST(
     await requireAdmin();
     const adminUser = await getAdminUser();
     const { id } = await params;
-    const formData = await request.formData();
-    const file = formData.get('file') as File | null;
-
-    if (file) {
-      await uploadAgreementFile({
-        agreementId: id,
-        file,
-        kind: 'executed',
-        actor: {
-          id: adminUser?.id || 'system',
-          email: adminUser?.email,
-          name: adminUser?.name,
-        },
-      });
-    }
 
     const agreement = await markAgreementExecuted(id, {
       id: adminUser?.id || 'system',

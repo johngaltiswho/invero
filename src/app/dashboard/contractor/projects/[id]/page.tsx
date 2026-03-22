@@ -11,9 +11,11 @@ import { useContractorV2 } from '@/contexts/ContractorContextV2';
 import EnhancedBOQTable from '@/components/EnhancedBOQTable';
 import EditableScheduleTable from '@/components/EditableScheduleTable';
 import BOQDisplay from '@/components/BOQDisplay';
+import LinkedBOQWorkbookPanel from '@/components/LinkedBOQWorkbookPanel';
 import ScheduleDisplay from '@/components/ScheduleDisplay';
 import SimplePDFViewer from '@/components/SimplePDFViewer';
 import BOQTakeoffViewer from '@/components/BOQTakeoffViewer';
+import MeasurementSheetTab from '@/components/MeasurementSheetTab';
 import { getBOQByProjectId, getScheduleByProjectId } from '@/lib/supabase-boq';
 import { jsPDF } from 'jspdf';
 import { uploadPurchaseInvoice } from '@/lib/file-upload';
@@ -63,7 +65,7 @@ function IndividualProjectContent(): React.ReactElement {
     client_name: '',
     project_address: ''
   });
-  const [activeTab, setActiveTab] = useState<'overview' | 'boq' | 'schedule' | 'materials' | 'purchase_requests' | 'files'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'boq' | 'measurement' | 'schedule' | 'materials' | 'purchase_requests' | 'files'>('overview');
   const [refreshKey, setRefreshKey] = useState(0);
   
   // Enhanced project data state
@@ -71,6 +73,7 @@ function IndividualProjectContent(): React.ReactElement {
   const [metricsLoading, setMetricsLoading] = useState(false);
   const [hasBOQData, setHasBOQData] = useState(false);
   const [hasScheduleData, setHasScheduleData] = useState(false);
+  const [hasMeasurementRows, setHasMeasurementRows] = useState(false);
   const [documentStatusLoading, setDocumentStatusLoading] = useState(false);
   
   // Materials state
@@ -268,7 +271,8 @@ function IndividualProjectContent(): React.ReactElement {
             fetchProjectFiles(projectId),
             checkDocumentStatus(data.data),
             fetchBOQData(projectId),
-            fetchScheduleData(projectId)
+            fetchScheduleData(projectId),
+            fetchMeasurementStatus(projectId)
           ]);
         } else {
           console.error('Project not found or API error:', data);
@@ -472,8 +476,10 @@ function IndividualProjectContent(): React.ReactElement {
       setBOQLoading(true);
       const boqData = await getBOQByProjectId(projectId);
       setBOQData(boqData);
+      setHasBOQData(Boolean(boqData && boqData.length > 0));
     } catch (error) {
       console.error('Error fetching BOQ data:', error);
+      setHasBOQData(false);
     } finally {
       setBOQLoading(false);
     }
@@ -484,10 +490,27 @@ function IndividualProjectContent(): React.ReactElement {
       setScheduleLoading(true);
       const scheduleData = await getScheduleByProjectId(projectId);
       setScheduleData(scheduleData);
+      setHasScheduleData(Boolean(scheduleData && scheduleData.length > 0));
     } catch (error) {
       console.error('Error fetching schedule data:', error);
+      setHasScheduleData(false);
     } finally {
       setScheduleLoading(false);
+    }
+  };
+
+  const fetchMeasurementStatus = async (projectId: string) => {
+    try {
+      const response = await fetch(`/api/projects/${projectId}/measurements`);
+      const result = await response.json();
+      if (response.ok && result.success) {
+        setHasMeasurementRows(Boolean(result.data?.has_measurements));
+      } else {
+        setHasMeasurementRows(false);
+      }
+    } catch (error) {
+      console.error('Error fetching measurement status:', error);
+      setHasMeasurementRows(false);
     }
   };
 
@@ -1265,6 +1288,16 @@ function IndividualProjectContent(): React.ReactElement {
             Schedule
           </button>
           <button
+            onClick={() => setActiveTab('measurement')}
+            className={`px-4 py-2 text-sm font-medium rounded-t-lg transition-all ${
+              activeTab === 'measurement'
+                ? 'bg-accent-amber text-neutral-dark border-b-2 border-accent-amber'
+                : 'text-secondary hover:text-primary hover:bg-neutral-medium'
+            }`}
+          >
+            Measurement Sheet
+          </button>
+          <button
             onClick={() => setActiveTab('materials')}
             className={`px-4 py-2 text-sm font-medium rounded-t-lg transition-all ${
               activeTab === 'materials'
@@ -1395,6 +1428,17 @@ function IndividualProjectContent(): React.ReactElement {
           {/* BOQ Tab Content */}
           {activeTab === 'boq' && (
             <div className="space-y-6">
+              <LinkedBOQWorkbookPanel
+                projectId={project.id}
+                hasMeasurementRows={hasMeasurementRows}
+                refreshToken={refreshKey}
+                onBoqSynced={() => {
+                  setRefreshKey(prev => prev + 1);
+                  setEditingBOQ(false);
+                  setShowBOQEntry(false);
+                }}
+              />
+
               {!showBOQEntry ? (
                 /* BOQ Landing Page */
                 <div className="bg-neutral-dark rounded-lg border border-neutral-medium p-6">
@@ -1430,6 +1474,7 @@ function IndividualProjectContent(): React.ReactElement {
                   <EnhancedBOQTable
                     projectId={project.id}
                     contractorId={contractor?.id || ''}
+                    onSourceWorkbookUploaded={() => setRefreshKey(prev => prev + 1)}
                     onSaveSuccess={() => {
                       setRefreshKey(prev => prev + 1);
                       setShowBOQEntry(false);
@@ -1444,14 +1489,20 @@ function IndividualProjectContent(): React.ReactElement {
                 {hasBOQData && (
                   <div className="mb-4 flex justify-end">
                     <button
-                      onClick={() => setEditingBOQ(!editingBOQ)}
+                      onClick={() => {
+                        if (hasMeasurementRows) return;
+                        setEditingBOQ(!editingBOQ);
+                      }}
+                      disabled={hasMeasurementRows}
                       className={`px-4 py-2 rounded-lg transition-colors text-sm font-medium ${
-                        editingBOQ 
+                        hasMeasurementRows
+                          ? 'bg-neutral-medium text-secondary cursor-not-allowed'
+                          : editingBOQ 
                           ? 'bg-neutral-medium text-primary hover:bg-neutral-medium/80'
                           : 'bg-accent-blue text-white hover:bg-accent-blue/90'
                       }`}
                     >
-                      {editingBOQ ? '← Back to View' : '✏️ Edit BOQ'}
+                      {hasMeasurementRows ? 'Measurement Started - BOQ Locked' : editingBOQ ? '← Back to View' : '✏️ Edit BOQ'}
                     </button>
                   </div>
                 )}
@@ -1466,6 +1517,14 @@ function IndividualProjectContent(): React.ReactElement {
                 />
               </div>
             </div>
+          )}
+
+          {activeTab === 'measurement' && (
+            <MeasurementSheetTab
+              projectId={project.id}
+              hasBOQData={hasBOQData}
+              onMeasurementStatusChange={setHasMeasurementRows}
+            />
           )}
 
           {/* Schedule Tab Content */}

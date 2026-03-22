@@ -105,7 +105,7 @@ export async function PUT(
     const { id } = await params;
 
     const body = await request.json();
-    const { email, name, investor_type, phone, status, notes } = body;
+    const { email, name, investor_type, phone, pan_number, address, status, notes } = body;
 
     // Validate required fields
     if (!email || !name || !investor_type) {
@@ -147,6 +147,8 @@ export async function PUT(
       name: name.trim(),
       investor_type,
       phone: phone?.trim(),
+      pan_number: pan_number?.trim()?.toUpperCase() || null,
+      address: address?.trim() || null,
       notes: notes?.trim(),
       updated_at: new Date().toISOString()
     };

@@ -116,7 +116,6 @@ interface PurchaseRequest {
   id: string;
   project_id: string;
   contractor_id: string;
-  shipping_location?: string | null;
   status: 'draft' | 'submitted' | 'approved' | 'funded' | 'po_generated' | 'completed' | 'rejected';
   remarks?: string | null;
   approval_notes?: string | null;
@@ -148,7 +147,6 @@ interface PurchaseRequest {
     name?: string;
     client_name?: string | null;
     project_address?: string | null;
-    location?: string;
   };
   purchase_request_items: PurchaseRequestItemUI[];
   total_items: number;
@@ -175,7 +173,7 @@ interface PurchaseSummary {
 }
 
 export default function AdminVerificationDashboard(): React.ReactElement {
-  const [activeTab, setActiveTab] = useState<'contractors' | 'materials' | 'takeoffs' | 'purchases'>('contractors');
+  const [activeTab, setActiveTab] = useState<'contractors' | 'materials' | 'takeoffs' | 'purchases' | 'fuel' | 'fuel-providers'>('contractors');
   const [contractors, setContractors] = useState<ContractorWithDocuments[]>([]);
   const [materialRequests, setMaterialRequests] = useState<MaterialRequest[]>([]);
   const [takeoffItems, setTakeoffItems] = useState<BOQTakeoff[]>([]);
@@ -202,6 +200,15 @@ export default function AdminVerificationDashboard(): React.ReactElement {
     interestRateDaily: '0.10'
   });
   const [termsSaving, setTermsSaving] = useState(false);
+  const [fuelSettingsForm, setFuelSettingsForm] = useState({
+    monthlyFuelBudget: '50000',
+    perRequestMaxAmount: '10000',
+    perRequestMaxLiters: '100',
+    maxFillsPerVehiclePerDay: '1',
+    minHoursBetweenFills: '12',
+    autoApproveEnabled: true
+  });
+  const [fuelSettingsSaving, setFuelSettingsSaving] = useState(false);
   const [selectedMaterialRequest, setSelectedMaterialRequest] = useState<MaterialRequest | null>(null);
   const [masterMaterials, setMasterMaterials] = useState<MasterMaterial[]>([]);
   const [masterMaterialsLoading, setMasterMaterialsLoading] = useState(false);
@@ -225,6 +232,18 @@ export default function AdminVerificationDashboard(): React.ReactElement {
   const [generatingPO, setGeneratingPO] = useState(false);
   const [showPurchaseModal, setShowPurchaseModal] = useState(false);
   const [purchaseAdminNotes, setPurchaseAdminNotes] = useState('');
+  const [fuelPumps, setFuelPumps] = useState<any[]>([]);
+  const [showAddPump, setShowAddPump] = useState(false);
+  const [addPumpForm, setAddPumpForm] = useState({
+    pump_name: '',
+    address: '',
+    city: '',
+    state: '',
+    pincode: '',
+    contact_person: '',
+    contact_phone: ''
+  });
+  const [addPumpLoading, setAddPumpLoading] = useState(false);
 
   const formatDate = (dateString?: string | null) => {
     if (!dateString) return 'N/A';
@@ -245,6 +264,8 @@ export default function AdminVerificationDashboard(): React.ReactElement {
       loadTakeoffItems();
     } else if (activeTab === 'purchases') {
       loadPurchaseRequests(prStatusFilter);
+    } else if (activeTab === 'fuel-providers') {
+      loadFuelPumps();
     }
   }, [activeTab, prStatusFilter]);
 
@@ -278,6 +299,11 @@ export default function AdminVerificationDashboard(): React.ReactElement {
       platformFeeCap: String(Math.round(platformCap)),
       interestRateDaily: (interestDaily * 100).toFixed(2)
     });
+  }, [selectedContractor]);
+
+  useEffect(() => {
+    if (!selectedContractor) return;
+    loadFuelSettings(selectedContractor.id);
   }, [selectedContractor]);
 
   const loadContractors = async () => {
@@ -352,6 +378,194 @@ export default function AdminVerificationDashboard(): React.ReactElement {
       alert(error instanceof Error ? error.message : 'Failed to update finance terms');
     } finally {
       setTermsSaving(false);
+    }
+  };
+
+  const loadFuelSettings = async (contractorId: string) => {
+    try {
+      const response = await fetch(`/api/admin/fuel-settings/${contractorId}`);
+      const result = await response.json();
+
+      if (result.success && result.data) {
+        const settings = result.data;
+        setFuelSettingsForm({
+          monthlyFuelBudget: settings.monthly_fuel_budget?.toString() || '50000',
+          perRequestMaxAmount: settings.per_request_max_amount?.toString() || '10000',
+          perRequestMaxLiters: settings.per_request_max_liters?.toString() || '100',
+          maxFillsPerVehiclePerDay: settings.max_fills_per_vehicle_per_day?.toString() || '1',
+          minHoursBetweenFills: settings.min_hours_between_fills?.toString() || '12',
+          autoApproveEnabled: settings.auto_approve_enabled ?? true
+        });
+      } else {
+        // Set defaults if no settings exist
+        setFuelSettingsForm({
+          monthlyFuelBudget: '50000',
+          perRequestMaxAmount: '10000',
+          perRequestMaxLiters: '100',
+          maxFillsPerVehiclePerDay: '1',
+          minHoursBetweenFills: '12',
+          autoApproveEnabled: true
+        });
+      }
+    } catch (error) {
+      console.error('Failed to load fuel settings:', error);
+      // Set defaults on error
+      setFuelSettingsForm({
+        monthlyFuelBudget: '50000',
+        perRequestMaxAmount: '10000',
+        perRequestMaxLiters: '100',
+        maxFillsPerVehiclePerDay: '1',
+        minHoursBetweenFills: '12',
+        autoApproveEnabled: true
+      });
+    }
+  };
+
+  const handleSaveFuelSettings = async () => {
+    if (!selectedContractor) return;
+
+    const monthlyBudget = parseFloat(fuelSettingsForm.monthlyFuelBudget);
+    const perRequestAmount = parseFloat(fuelSettingsForm.perRequestMaxAmount);
+    const perRequestLiters = parseFloat(fuelSettingsForm.perRequestMaxLiters);
+    const maxFillsPerDay = parseInt(fuelSettingsForm.maxFillsPerVehiclePerDay);
+    const minHours = parseFloat(fuelSettingsForm.minHoursBetweenFills);
+
+    if (Number.isNaN(monthlyBudget) || Number.isNaN(perRequestAmount) || Number.isNaN(perRequestLiters) || Number.isNaN(maxFillsPerDay) || Number.isNaN(minHours)) {
+      alert('Please enter valid numbers for all fuel settings.');
+      return;
+    }
+
+    setFuelSettingsSaving(true);
+    try {
+      const response = await fetch(`/api/admin/fuel-settings/${selectedContractor.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          monthly_fuel_budget: monthlyBudget,
+          per_request_max_amount: perRequestAmount,
+          per_request_max_liters: perRequestLiters,
+          max_fills_per_vehicle_per_day: maxFillsPerDay,
+          min_hours_between_fills: minHours,
+          auto_approve_enabled: fuelSettingsForm.autoApproveEnabled
+        })
+      });
+
+      const result = await response.json();
+      if (!response.ok || !result.success) {
+        throw new Error(result.error || 'Failed to update fuel settings');
+      }
+
+      alert('Fuel settings updated successfully');
+    } catch (error) {
+      console.error('Failed to update fuel settings:', error);
+      alert(error instanceof Error ? error.message : 'Failed to update fuel settings');
+    } finally {
+      setFuelSettingsSaving(false);
+    }
+  };
+
+  const loadFuelPumps = async () => {
+    try {
+      setLoading(true);
+      const response = await fetch('/api/admin/fuel-pumps');
+      const result = await response.json();
+
+      if (result.success) {
+        setFuelPumps(result.data || []);
+      } else {
+        console.error('Failed to load fuel pumps:', result.error);
+        alert('Failed to load fuel pumps');
+      }
+    } catch (error) {
+      console.error('Error loading fuel pumps:', error);
+      alert('Error loading fuel pumps');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleGenerateInvoice = async (purchaseRequestId: string, forceRegenerate = false) => {
+    if (!confirm(`Are you sure you want to ${forceRegenerate ? 'regenerate' : 'generate'} the invoice?`)) {
+      return;
+    }
+
+    setGeneratingPO(true);
+    try {
+      const response = await fetch('/api/invoices', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          purchase_request_id: purchaseRequestId,
+          force_regenerate: forceRegenerate
+        })
+      });
+
+      const result = await response.json();
+
+      if (!response.ok || !result.success) {
+        throw new Error(result.error || 'Failed to generate invoice');
+      }
+
+      alert(`Invoice ${result.regenerated ? 'regenerated' : 'generated'} successfully: ${result.invoiceNumber}`);
+
+      // Reload purchase requests to show updated invoice status
+      loadPurchaseRequests(prStatusFilter);
+
+      // If modal is open, refresh the selected PR
+      if (selectedPurchaseRequest?.id === purchaseRequestId) {
+        const { data } = await fetch(`/api/admin/purchase-requests?status=all&limit=1000`).then(r => r.json());
+        const updated = data?.requests?.find((r: any) => r.id === purchaseRequestId);
+        if (updated) {
+          setSelectedPurchaseRequest(updated);
+        }
+      }
+    } catch (error) {
+      console.error('Failed to generate invoice:', error);
+      alert(error instanceof Error ? error.message : 'Failed to generate invoice');
+    } finally {
+      setGeneratingPO(false);
+    }
+  };
+
+  const handleAddPump = async (e: React.FormEvent) => {
+    e.preventDefault();
+
+    if (!addPumpForm.pump_name || !addPumpForm.city || !addPumpForm.state) {
+      alert('Please fill in pump name, city, and state');
+      return;
+    }
+
+    setAddPumpLoading(true);
+    try {
+      const response = await fetch('/api/admin/fuel-pumps', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(addPumpForm)
+      });
+
+      const result = await response.json();
+
+      if (!response.ok || !result.success) {
+        throw new Error(result.error || 'Failed to add fuel pump');
+      }
+
+      setAddPumpForm({
+        pump_name: '',
+        address: '',
+        city: '',
+        state: '',
+        pincode: '',
+        contact_person: '',
+        contact_phone: ''
+      });
+      setShowAddPump(false);
+      loadFuelPumps();
+      alert('Fuel pump added successfully');
+    } catch (error) {
+      console.error('Failed to add fuel pump:', error);
+      alert(error instanceof Error ? error.message : 'Failed to add fuel pump');
+    } finally {
+      setAddPumpLoading(false);
     }
   };
 
@@ -1063,6 +1277,32 @@ export default function AdminVerificationDashboard(): React.ReactElement {
                 </span>
               )}
             </button>
+            <button
+              onClick={() => window.location.href = '/admin/bulk-orders'}
+              className="px-4 py-2 rounded-md text-sm font-medium transition-colors text-secondary hover:text-primary"
+            >
+              Bulk Purchase
+            </button>
+            <button
+              onClick={() => setActiveTab('fuel')}
+              className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+                activeTab === 'fuel'
+                  ? 'bg-neutral-dark text-primary'
+                  : 'text-secondary hover:text-primary'
+              }`}
+            >
+              Fuel Settings
+            </button>
+            <button
+              onClick={() => setActiveTab('fuel-providers')}
+              className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+                activeTab === 'fuel-providers'
+                  ? 'bg-neutral-dark text-primary'
+                  : 'text-secondary hover:text-primary'
+              }`}
+            >
+              Fuel Providers
+            </button>
           </div>
         </div>
       </div>
@@ -1197,6 +1437,108 @@ export default function AdminVerificationDashboard(): React.ReactElement {
                         }
                         className="mt-2 w-full px-3 py-2 rounded-lg border border-neutral-medium bg-neutral-dark text-primary focus:outline-none focus:ring-2 focus:ring-accent-orange"
                       />
+                    </label>
+                  </div>
+                </div>
+
+                {/* Fuel Settings Section */}
+                <div className="bg-neutral-darker/60 border border-neutral-medium rounded-lg p-4 mb-6">
+                  <div className="flex items-center justify-between mb-4">
+                    <div>
+                      <h3 className="text-lg font-semibold text-primary">Fuel Settings</h3>
+                      <p className="text-xs text-secondary">Configure fuel budget, limits, and auto-approval settings for this contractor</p>
+                    </div>
+                    <Button variant="primary" size="sm" onClick={handleSaveFuelSettings} disabled={fuelSettingsSaving}>
+                      {fuelSettingsSaving ? 'Saving...' : 'Save Settings'}
+                    </Button>
+                  </div>
+                  <div className="grid md:grid-cols-3 gap-4 text-sm">
+                    <label className="block">
+                      <span className="text-secondary">Monthly Fuel Budget (Rs)</span>
+                      <input
+                        type="number"
+                        step="1000"
+                        min="1000"
+                        max="10000000"
+                        value={fuelSettingsForm.monthlyFuelBudget}
+                        onChange={(event) =>
+                          setFuelSettingsForm((prev) => ({ ...prev, monthlyFuelBudget: event.target.value }))
+                        }
+                        className="mt-2 w-full px-3 py-2 rounded-lg border border-neutral-medium bg-neutral-dark text-primary focus:outline-none focus:ring-2 focus:ring-accent-orange"
+                      />
+                    </label>
+                    <label className="block">
+                      <span className="text-secondary">Per Request Max Amount (Rs)</span>
+                      <input
+                        type="number"
+                        step="100"
+                        min="100"
+                        max="1000000"
+                        value={fuelSettingsForm.perRequestMaxAmount}
+                        onChange={(event) =>
+                          setFuelSettingsForm((prev) => ({ ...prev, perRequestMaxAmount: event.target.value }))
+                        }
+                        className="mt-2 w-full px-3 py-2 rounded-lg border border-neutral-medium bg-neutral-dark text-primary focus:outline-none focus:ring-2 focus:ring-accent-orange"
+                      />
+                    </label>
+                    <label className="block">
+                      <span className="text-secondary">Per Request Max Liters</span>
+                      <input
+                        type="number"
+                        step="1"
+                        min="1"
+                        max="1000"
+                        value={fuelSettingsForm.perRequestMaxLiters}
+                        onChange={(event) =>
+                          setFuelSettingsForm((prev) => ({ ...prev, perRequestMaxLiters: event.target.value }))
+                        }
+                        className="mt-2 w-full px-3 py-2 rounded-lg border border-neutral-medium bg-neutral-dark text-primary focus:outline-none focus:ring-2 focus:ring-accent-orange"
+                      />
+                    </label>
+                    <label className="block">
+                      <span className="text-secondary">Max Fills Per Vehicle Per Day</span>
+                      <input
+                        type="number"
+                        step="1"
+                        min="1"
+                        max="10"
+                        value={fuelSettingsForm.maxFillsPerVehiclePerDay}
+                        onChange={(event) =>
+                          setFuelSettingsForm((prev) => ({ ...prev, maxFillsPerVehiclePerDay: event.target.value }))
+                        }
+                        className="mt-2 w-full px-3 py-2 rounded-lg border border-neutral-medium bg-neutral-dark text-primary focus:outline-none focus:ring-2 focus:ring-accent-orange"
+                      />
+                    </label>
+                    <label className="block">
+                      <span className="text-secondary">Min Hours Between Fills</span>
+                      <input
+                        type="number"
+                        step="1"
+                        min="1"
+                        max="168"
+                        value={fuelSettingsForm.minHoursBetweenFills}
+                        onChange={(event) =>
+                          setFuelSettingsForm((prev) => ({ ...prev, minHoursBetweenFills: event.target.value }))
+                        }
+                        className="mt-2 w-full px-3 py-2 rounded-lg border border-neutral-medium bg-neutral-dark text-primary focus:outline-none focus:ring-2 focus:ring-accent-orange"
+                      />
+                    </label>
+                    <label className="block">
+                      <span className="text-secondary">Auto-Approve</span>
+                      <div className="mt-2 flex items-center space-x-3">
+                        <input
+                          type="checkbox"
+                          id="auto-approve"
+                          checked={fuelSettingsForm.autoApproveEnabled}
+                          onChange={(event) =>
+                            setFuelSettingsForm((prev) => ({ ...prev, autoApproveEnabled: event.target.checked }))
+                          }
+                          className="w-4 h-4 rounded border-neutral-medium"
+                        />
+                        <label htmlFor="auto-approve" className="text-sm text-primary cursor-pointer">
+                          Enable auto-approval
+                        </label>
+                      </div>
                     </label>
                   </div>
                 </div>
@@ -2066,6 +2408,88 @@ export default function AdminVerificationDashboard(): React.ReactElement {
             </table>
           </div>
         </div>
+      ) : activeTab === 'fuel-providers' ? (
+        <>
+        {/* Fuel Providers Tab */}
+        <div className="space-y-6">
+          <div className="flex justify-between items-center">
+            <div>
+              <h2 className="text-2xl font-bold text-primary">Fuel Providers</h2>
+              <p className="text-secondary text-sm mt-1">Manage fuel pump partners across locations</p>
+            </div>
+            <Button variant="primary" onClick={() => setShowAddPump(true)}>
+              + Add Fuel Pump
+            </Button>
+          </div>
+
+          {loading ? (
+            <div className="text-center py-12">
+              <div className="text-secondary">Loading fuel pumps...</div>
+            </div>
+          ) : fuelPumps.length === 0 ? (
+            <div className="text-center py-12 bg-neutral-dark rounded-lg border border-neutral-medium">
+              <div className="text-4xl mb-4">⛽</div>
+              <h3 className="text-lg font-semibold text-primary mb-2">No Fuel Pumps</h3>
+              <p className="text-secondary text-sm mb-4">Add your first fuel pump partner to get started</p>
+              <Button variant="primary" onClick={() => setShowAddPump(true)}>
+                + Add Fuel Pump
+              </Button>
+            </div>
+          ) : (
+            <div className="bg-neutral-dark rounded-lg border border-neutral-medium">
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead className="bg-neutral-darker">
+                    <tr>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-secondary uppercase tracking-wider">Pump Name</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-secondary uppercase tracking-wider">Location</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-secondary uppercase tracking-wider">Contact</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-secondary uppercase tracking-wider">Status</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-secondary uppercase tracking-wider">Added</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-neutral-medium">
+                    {fuelPumps.map((pump) => (
+                      <tr key={pump.id} className="hover:bg-neutral-darker/50 transition-colors">
+                        <td className="px-6 py-4">
+                          <div className="font-medium text-primary">{pump.pump_name}</div>
+                        </td>
+                        <td className="px-6 py-4">
+                          <div className="text-sm text-secondary">
+                            {pump.city}, {pump.state}
+                            {pump.pincode && ` - ${pump.pincode}`}
+                          </div>
+                          {pump.address && (
+                            <div className="text-xs text-secondary mt-1">{pump.address}</div>
+                          )}
+                        </td>
+                        <td className="px-6 py-4">
+                          <div className="text-sm text-secondary">
+                            {pump.contact_person && <div>{pump.contact_person}</div>}
+                            {pump.contact_phone && <div className="text-xs">{pump.contact_phone}</div>}
+                          </div>
+                        </td>
+                        <td className="px-6 py-4">
+                          <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
+                            pump.is_active
+                              ? 'bg-green-500/10 text-green-500'
+                              : 'bg-red-500/10 text-red-500'
+                          }`}>
+                            {pump.is_active ? 'Active' : 'Inactive'}
+                          </span>
+                        </td>
+                        <td className="px-6 py-4 text-sm text-secondary">
+                          {new Date(pump.created_at).toLocaleDateString()}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+        </div>
+        </>
       ) : null}
 
       {/* Purchase Request Modal */}
@@ -2111,7 +2535,7 @@ export default function AdminVerificationDashboard(): React.ReactElement {
                 </div>
               </div>
 
-              {(selectedPurchaseRequest.shipping_location || selectedPurchaseRequest.project?.project_address || selectedPurchaseRequest.project?.location) && (
+              {selectedPurchaseRequest.project?.project_address && (
                 <div className="bg-neutral-darker border border-neutral-medium rounded-lg p-4">
                   <h3 className="text-base font-semibold text-primary mb-2">Shipping Location</h3>
                   <div className="text-sm text-secondary">
@@ -2119,9 +2543,7 @@ export default function AdminVerificationDashboard(): React.ReactElement {
                       <div className="text-primary font-medium mb-1">{selectedPurchaseRequest.project.client_name}</div>
                     )}
                     <div>
-                      {selectedPurchaseRequest.shipping_location ||
-                        selectedPurchaseRequest.project?.project_address ||
-                        selectedPurchaseRequest.project?.location}
+                      {selectedPurchaseRequest.project?.project_address}
                     </div>
                   </div>
                 </div>
@@ -2319,22 +2741,158 @@ export default function AdminVerificationDashboard(): React.ReactElement {
                   {selectedPurchaseRequest.invoice_generated_at && (
                     <p className="text-green-800">Invoice generated: {formatDate(selectedPurchaseRequest.invoice_generated_at)}</p>
                   )}
-                  {(selectedPurchaseRequest.invoice_download_url || selectedPurchaseRequest.invoice_url) && (
-                    <a
-                      href={selectedPurchaseRequest.invoice_download_url || selectedPurchaseRequest.invoice_url || '#'}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="inline-block mt-2 px-3 py-1.5 rounded border border-green-300 text-green-700 bg-white hover:bg-green-50"
-                    >
-                      View Invoice
-                    </a>
-                  )}
+                  <div className="mt-2 flex gap-2">
+                    {(selectedPurchaseRequest.invoice_download_url || selectedPurchaseRequest.invoice_url) && (
+                      <a
+                        href={selectedPurchaseRequest.invoice_download_url || selectedPurchaseRequest.invoice_url || '#'}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-block px-3 py-1.5 rounded border border-green-300 text-green-700 bg-white hover:bg-green-50"
+                      >
+                        View Invoice
+                      </a>
+                    )}
+                    {!selectedPurchaseRequest.invoice_generated_at && (
+                      <Button
+                        size="sm"
+                        variant="primary"
+                        onClick={() => handleGenerateInvoice(selectedPurchaseRequest.id)}
+                        disabled={generatingPO}
+                      >
+                        {generatingPO ? 'Generating...' : 'Generate Invoice'}
+                      </Button>
+                    )}
+                    {selectedPurchaseRequest.invoice_generated_at && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => handleGenerateInvoice(selectedPurchaseRequest.id, true)}
+                        disabled={generatingPO}
+                      >
+                        {generatingPO ? 'Regenerating...' : 'Regenerate Invoice'}
+                      </Button>
+                    )}
+                  </div>
                 </div>
               )}
                   </>
                 );
               })()}
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Add Fuel Pump Modal */}
+      {showAddPump && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
+          <div className="bg-neutral-dark rounded-lg border border-neutral-medium max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+            <div className="p-6 border-b border-neutral-medium sticky top-0 bg-neutral-dark">
+              <h2 className="text-xl font-semibold text-primary">Add Fuel Pump</h2>
+              <p className="text-sm text-secondary mt-1">Add a new fuel pump partner</p>
+            </div>
+            <form onSubmit={handleAddPump} className="p-6 space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-primary mb-1">Pump Name *</label>
+                <input
+                  type="text"
+                  required
+                  value={addPumpForm.pump_name}
+                  onChange={(e) => setAddPumpForm({ ...addPumpForm, pump_name: e.target.value })}
+                  className="w-full px-3 py-2 border border-neutral-medium rounded-md bg-neutral-darker text-primary placeholder-secondary focus:outline-none focus:ring-2 focus:ring-accent-orange"
+                  placeholder="HP Petrol Pump - Koramangala"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-primary mb-1">Address</label>
+                <textarea
+                  value={addPumpForm.address}
+                  onChange={(e) => setAddPumpForm({ ...addPumpForm, address: e.target.value })}
+                  rows={2}
+                  className="w-full px-3 py-2 border border-neutral-medium rounded-md bg-neutral-darker text-primary placeholder-secondary focus:outline-none focus:ring-2 focus:ring-accent-orange"
+                  placeholder="100 Feet Road, Koramangala"
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-primary mb-1">City *</label>
+                  <input
+                    type="text"
+                    required
+                    value={addPumpForm.city}
+                    onChange={(e) => setAddPumpForm({ ...addPumpForm, city: e.target.value })}
+                    className="w-full px-3 py-2 border border-neutral-medium rounded-md bg-neutral-darker text-primary placeholder-secondary focus:outline-none focus:ring-2 focus:ring-accent-orange"
+                    placeholder="Bangalore"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-primary mb-1">State *</label>
+                  <input
+                    type="text"
+                    required
+                    value={addPumpForm.state}
+                    onChange={(e) => setAddPumpForm({ ...addPumpForm, state: e.target.value })}
+                    className="w-full px-3 py-2 border border-neutral-medium rounded-md bg-neutral-darker text-primary placeholder-secondary focus:outline-none focus:ring-2 focus:ring-accent-orange"
+                    placeholder="Karnataka"
+                  />
+                </div>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-primary mb-1">Pincode</label>
+                <input
+                  type="text"
+                  value={addPumpForm.pincode}
+                  onChange={(e) => setAddPumpForm({ ...addPumpForm, pincode: e.target.value })}
+                  className="w-full px-3 py-2 border border-neutral-medium rounded-md bg-neutral-darker text-primary placeholder-secondary focus:outline-none focus:ring-2 focus:ring-accent-orange"
+                  placeholder="560034"
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-primary mb-1">Contact Person</label>
+                  <input
+                    type="text"
+                    value={addPumpForm.contact_person}
+                    onChange={(e) => setAddPumpForm({ ...addPumpForm, contact_person: e.target.value })}
+                    className="w-full px-3 py-2 border border-neutral-medium rounded-md bg-neutral-darker text-primary placeholder-secondary focus:outline-none focus:ring-2 focus:ring-accent-orange"
+                    placeholder="Manager Name"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-primary mb-1">Contact Phone</label>
+                  <input
+                    type="tel"
+                    value={addPumpForm.contact_phone}
+                    onChange={(e) => setAddPumpForm({ ...addPumpForm, contact_phone: e.target.value })}
+                    className="w-full px-3 py-2 border border-neutral-medium rounded-md bg-neutral-darker text-primary placeholder-secondary focus:outline-none focus:ring-2 focus:ring-accent-orange"
+                    placeholder="+91 98765 43210"
+                  />
+                </div>
+              </div>
+              <div className="flex space-x-3 pt-2">
+                <Button type="submit" variant="primary" disabled={addPumpLoading}>
+                  {addPumpLoading ? 'Adding...' : 'Add Fuel Pump'}
+                </Button>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  onClick={() => {
+                    setShowAddPump(false);
+                    setAddPumpForm({
+                      pump_name: '',
+                      address: '',
+                      city: '',
+                      state: '',
+                      pincode: '',
+                      contact_person: '',
+                      contact_phone: ''
+                    });
+                  }}
+                >
+                  Cancel
+                </Button>
+              </div>
+            </form>
           </div>
         </div>
       )}

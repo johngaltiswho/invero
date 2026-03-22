@@ -2,6 +2,9 @@
  * Test utilities and helpers
  */
 
+import { NextRequest } from 'next/server';
+import { z } from 'zod';
+
 // Mock Supabase client
 export const createMockSupabaseClient = () => ({
   from: jest.fn().mockReturnThis(),
@@ -107,4 +110,41 @@ export const mockPurchaseRequest = {
   status: 'pending',
   total_amount: 100000,
   created_at: new Date().toISOString(),
+}
+
+// Validation test helpers
+export const expectValidationSuccess = <T>(schema: z.ZodSchema<T>, data: any) => {
+  const result = schema.safeParse(data)
+  expect(result.success).toBe(true)
+  if (result.success) {
+    return result.data
+  }
+}
+
+export const expectValidationError = (
+  schema: z.ZodSchema,
+  data: any,
+  expectedErrorField?: string
+) => {
+  const result = schema.safeParse(data)
+  expect(result.success).toBe(false)
+  if (!result.success && expectedErrorField) {
+    const fields = result.error.issues.map(e => e.path.join('.'))
+    expect(fields).toContain(expectedErrorField)
+  }
+  return !result.success ? result.error : null
+}
+
+// For rate limiting tests
+export const createMockNextRequest = (options: {
+  url?: string
+  headers?: Record<string, string>
+  method?: string
+}): NextRequest => {
+  const headers = new Headers(options.headers || {})
+  return {
+    url: options.url || 'http://localhost:3000/api/test',
+    headers,
+    method: options.method || 'GET',
+  } as NextRequest
 }

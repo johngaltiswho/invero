@@ -11,6 +11,7 @@ interface EnhancedBOQTableProps {
   projectId: string;
   contractorId: string;
   onSaveSuccess?: () => void;
+  onSourceWorkbookUploaded?: () => void;
   loadExistingData?: boolean;
 }
 
@@ -30,7 +31,13 @@ const CONFIDENCE_ICONS = {
   [ConfidenceLevel.LOW]: '🔴'
 };
 
-export default function EnhancedBOQTable({ projectId, contractorId, onSaveSuccess, loadExistingData = false }: EnhancedBOQTableProps) {
+export default function EnhancedBOQTable({
+  projectId,
+  contractorId,
+  onSaveSuccess,
+  onSourceWorkbookUploaded,
+  loadExistingData = false,
+}: EnhancedBOQTableProps) {
   const [sections, setSections] = useState<BOQSection[]>([]);
   const [rows, setRows] = useState<BOQRow[]>([]);
   const [saving, setSaving] = useState(false);
@@ -141,7 +148,30 @@ export default function EnhancedBOQTable({ projectId, contractorId, onSaveSucces
       const discrepancyWarning = hasDiscrepancies ? 
         ` ⚠️ ${discrepancyDetails.sectionsWithIssues} sections with discrepancies (Total diff: ₹${discrepancyDetails.totalDifference.toLocaleString()})` : 
         '';
-      setMessage(`✅ Analyzed ${totalSheets} sheets: ${organizedSections.length} sections, ${analyzedRows.length} rows, ₹${totalAmount.toLocaleString()}${discrepancyWarning}`);
+      let successMessage = `✅ Analyzed ${totalSheets} sheets: ${organizedSections.length} sections, ${analyzedRows.length} rows, ₹${totalAmount.toLocaleString()}${discrepancyWarning}`;
+
+      try {
+        const formData = new FormData();
+        formData.append('file', file);
+
+        const uploadResponse = await fetch(`/api/projects/${projectId}/boq-workbooks`, {
+          method: 'POST',
+          body: formData,
+        });
+        const uploadPayload = await uploadResponse.json();
+
+        if (uploadResponse.ok && uploadPayload.success) {
+          successMessage += ' • Working workbook linked';
+          onSourceWorkbookUploaded?.();
+        } else {
+          successMessage += ' • Original workbook was not linked yet';
+        }
+      } catch (uploadError) {
+        console.error('Failed to preserve original workbook for linked editing:', uploadError);
+        successMessage += ' • Original workbook was not linked yet';
+      }
+
+      setMessage(successMessage);
 
       // Reset file input
       if (fileInputRef.current) {

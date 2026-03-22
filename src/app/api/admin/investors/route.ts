@@ -118,7 +118,7 @@ export async function POST(request: NextRequest) {
     const adminUser = await getAdminUser();
 
     const body = await request.json();
-    const { email, name, investor_type, phone, notes } = body;
+    const { email, name, investor_type, phone, pan_number, address, notes } = body;
 
     // Validate required fields
     if (!email || !name || !investor_type) {
@@ -154,6 +154,8 @@ export async function POST(request: NextRequest) {
           name: name.trim(),
           investor_type,
           phone: phone?.trim(),
+          pan_number: pan_number?.trim()?.toUpperCase() || null,
+          address: address?.trim() || null,
           notes: notes?.trim(),
           status: 'active',
           created_by: adminUser?.id

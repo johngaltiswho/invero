@@ -27,6 +27,8 @@ interface InvestorFormData {
   name: string;
   investor_type: 'Individual' | 'HNI' | 'Family Office' | 'Institutional';
   phone: string;
+  pan_number: string;
+  address: string;
   notes: string;
 }
 
@@ -47,6 +49,8 @@ const InvestorManagement: React.FC = () => {
     name: '',
     investor_type: 'Individual',
     phone: '',
+    pan_number: '',
+    address: '',
     notes: ''
   });
 
@@ -106,8 +110,13 @@ const InvestorManagement: React.FC = () => {
         name: '',
         investor_type: 'Individual',
         phone: '',
+        pan_number: '',
+        address: '',
         notes: ''
       });
+      if (editingInvestor && selectedInvestor?.id === editingInvestor.id) {
+        setSelectedInvestor(data.investor);
+      }
       setShowAddForm(false);
       setEditingInvestor(null);
       fetchInvestors(currentPage);
@@ -123,6 +132,8 @@ const InvestorManagement: React.FC = () => {
       name: investor.name,
       investor_type: investor.investor_type,
       phone: investor.phone || '',
+      pan_number: investor.pan_number || '',
+      address: investor.address || '',
       notes: investor.notes || ''
     });
     setEditingInvestor(investor);
@@ -196,6 +207,8 @@ const InvestorManagement: React.FC = () => {
       name: '',
       investor_type: 'Individual',
       phone: '',
+      pan_number: '',
+      address: '',
       notes: ''
     });
     setEditingInvestor(null);
@@ -399,6 +412,12 @@ const InvestorManagement: React.FC = () => {
                       {selectedInvestor.phone && (
                         <div><strong className="text-primary">Phone:</strong> <span className="text-secondary">{selectedInvestor.phone}</span></div>
                       )}
+                      {selectedInvestor.pan_number && (
+                        <div><strong className="text-primary">PAN:</strong> <span className="text-secondary">{selectedInvestor.pan_number}</span></div>
+                      )}
+                      {selectedInvestor.address && (
+                        <div><strong className="text-primary">Address:</strong> <span className="text-secondary whitespace-pre-line">{selectedInvestor.address}</span></div>
+                      )}
                       <div><strong className="text-primary">Created:</strong> <span className="text-secondary">{new Date(selectedInvestor.created_at).toLocaleDateString()}</span></div>
                       <div><strong className="text-primary">Updated:</strong> <span className="text-secondary">{new Date(selectedInvestor.updated_at).toLocaleDateString()}</span></div>
                     </div>
@@ -551,6 +570,29 @@ const InvestorManagement: React.FC = () => {
                   type="tel"
                   value={formData.phone}
                   onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+                  className="w-full px-3 py-2 border border-neutral-medium rounded-md bg-neutral-darker text-primary placeholder-secondary focus:outline-none focus:ring-2 focus:ring-accent-orange"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-primary mb-1">
+                  PAN Number
+                </label>
+                <input
+                  type="text"
+                  value={formData.pan_number}
+                  onChange={(e) => setFormData({ ...formData, pan_number: e.target.value.toUpperCase() })}
+                  className="w-full px-3 py-2 border border-neutral-medium rounded-md bg-neutral-darker text-primary placeholder-secondary focus:outline-none focus:ring-2 focus:ring-accent-orange"
+                />
+                <p className="mt-1 text-xs text-secondary">Defaults from the investor profile when already filled.</p>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-primary mb-1">
+                  Investor Address
+                </label>
+                <textarea
+                  value={formData.address}
+                  onChange={(e) => setFormData({ ...formData, address: e.target.value })}
+                  rows={3}
                   className="w-full px-3 py-2 border border-neutral-medium rounded-md bg-neutral-darker text-primary placeholder-secondary focus:outline-none focus:ring-2 focus:ring-accent-orange"
                 />
               </div>

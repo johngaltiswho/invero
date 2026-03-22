@@ -7,10 +7,10 @@ import { usePathname } from 'next/navigation';
 const navItems = [
   { href: '/admin', label: 'Dashboard' },
   { href: '/admin/verification', label: 'Contractor' },
-  { href: '/admin/bulk-orders', label: 'Bulk Orders' },
   { href: '/admin/capital', label: 'Capital' },
   { href: '/admin/investors', label: 'Investors' },
-  { href: '/admin/finance', label: 'Finance' }
+  { href: '/admin/finance', label: 'Finance' },
+  { href: '/dashboard/admin/fuel-expenses', label: 'Fuel Bills' },
 ];
 
 export default function AdminNavbar(): React.ReactElement {

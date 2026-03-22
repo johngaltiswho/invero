@@ -25,14 +25,14 @@
             <div class='fl pad1y space-right2'>
                 <span class="strong">0% </span>
                 <span class="quiet">Statements</span>
-                <span class='fraction'>0/146</span>
+                <span class='fraction'>0/147</span>
             </div>
         
             
             <div class='fl pad1y space-right2'>
                 <span class="strong">0% </span>
                 <span class="quiet">Branches</span>
-                <span class='fraction'>0/99</span>
+                <span class='fraction'>0/98</span>
             </div>
         
             
@@ -46,7 +46,7 @@
             <div class='fl pad1y space-right2'>
                 <span class="strong">0% </span>
                 <span class="quiet">Lines</span>
-                <span class='fraction'>0/142</span>
+                <span class='fraction'>0/143</span>
             </div>
         
             
@@ -576,7 +576,12 @@
 <a name='L511'></a><a href='#L511'>511</a>
 <a name='L512'></a><a href='#L512'>512</a>
 <a name='L513'></a><a href='#L513'>513</a>
-<a name='L514'></a><a href='#L514'>514</a></td><td class="line-coverage quiet"><span class="cline-any cline-no">&nbsp;</span>
+<a name='L514'></a><a href='#L514'>514</a>
+<a name='L515'></a><a href='#L515'>515</a>
+<a name='L516'></a><a href='#L516'>516</a>
+<a name='L517'></a><a href='#L517'>517</a>
+<a name='L518'></a><a href='#L518'>518</a>
+<a name='L519'></a><a href='#L519'>519</a></td><td class="line-coverage quiet"><span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
@@ -629,6 +634,7 @@
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
@@ -679,7 +685,6 @@
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
@@ -702,7 +707,9 @@
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
@@ -764,6 +771,7 @@
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
@@ -906,6 +914,7 @@
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
@@ -987,6 +996,7 @@
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
@@ -1134,7 +1144,8 @@ export async function <span class="cstat-no" title="statement not covered" ><spa
           id,
           name,
           category,
-          unit
+          unit,
+          hsn_code
         )
       `)
       .eq('project_id', projectId)
@@ -1187,7 +1198,6 @@ export async function <span class="cstat-no" title="statement not covered" ><spa
       material_id,
       material_name,
       material_category,
-      material_description,
       quantity,
       unit,
       notes,
@@ -1216,6 +1226,8 @@ export async function <span class="cstat-no" title="statement not covered" ><spa
 <span class="cstat-no" title="statement not covered" >    if (!contractor) {</span>
 <span class="cstat-no" title="statement not covered" >      return NextResponse.json({ error: 'Contractor not found' }, { status: 404 });</span>
     }
+&nbsp;
+    const normalizedDescription = <span class="cstat-no" title="statement not covered" >notes ? String(notes).trim() : null;</span>
 &nbsp;
     // Ensure material exists (auto-create if missing and name provided)
     let resolvedMaterialId = <span class="cstat-no" title="statement not covered" >material_id;</span>
@@ -1253,7 +1265,7 @@ export async function <span class="cstat-no" title="statement not covered" ><spa
           .from('materials')
           .insert({
             name: material_name,
-            description: material_description || notes || null,
+            description: normalizedDescription,
             category: material_category || 'Uncategorized',
             unit,
             is_active: true,
@@ -1285,7 +1297,7 @@ export async function <span class="cstat-no" title="statement not covered" ><spa
         quantity: parseFloat(quantity),
         available_qty: 0,
         unit,
-        notes,
+        notes: normalizedDescription,
         // Add default values for new purchase workflow columns
         purchase_status: 'none',
         source_type: source_type,
@@ -1297,7 +1309,8 @@ export async function <span class="cstat-no" title="statement not covered" ><spa
           id,
           name,
           category,
-          unit
+          unit,
+          hsn_code
         )
       `)
       .single();
@@ -1414,7 +1427,8 @@ export async function <span class="cstat-no" title="statement not covered" ><spa
           id,
           name,
           category,
-          unit
+          unit,
+          hsn_code
         )
       `)
       .single();
@@ -1510,7 +1524,8 @@ export async function <span class="cstat-no" title="statement not covered" ><spa
           id,
           name,
           category,
-          unit
+          unit,
+          hsn_code
         )
       `)
       .single();
@@ -1609,7 +1624,7 @@ export async function <span class="cstat-no" title="statement not covered" ><spa
             <div class='footer quiet pad2 space-top1 center small'>
                 Code coverage generated by
                 <a href="https://istanbul.js.org/" target="_blank" rel="noopener noreferrer">istanbul</a>
-                at 2026-02-08T15:39:04.756Z
+                at 2026-03-15T17:39:36.622Z
             </div>
         <script src="../../../../prettify.js"></script>
         <script>
