@@ -33,6 +33,7 @@ export interface POGenerationParams {
   vendorEmail?: string;
   vendorPhone?: string;
   contractorName: string;
+  shippingAddress?: string;
   lineItems: POLineItem[];
   subtotal: number;
   totalTax: number;
@@ -120,6 +121,13 @@ export function generatePOPDF(params: POGenerationParams): Buffer {
 
   // From / To
   y += 3;
+  const shipToLines = params.shippingAddress
+    ? (doc.splitTextToSize(params.shippingAddress, CONTENT_W - 22) as string[])
+    : [];
+  const shipToLineHeight = 4;
+  const shipToContentHeight = shipToLines.length > 0
+    ? Math.max(16, shipToLines.length * shipToLineHeight + 4)
+    : 0;
   const partyBoxHeight = 32;
   doc.rect(MARGIN, y, CONTENT_W, partyBoxHeight);
   doc.line(MARGIN + CONTENT_W / 2, y, MARGIN + CONTENT_W / 2, y + partyBoxHeight);
@@ -161,7 +169,19 @@ export function generatePOPDF(params: POGenerationParams): Buffer {
     doc.text(`Contact: ${params.vendorContact} (${params.vendorPhone})`, toX, vendorY);
   }
 
-  y += partyBoxHeight + 5;
+  if (shipToLines.length > 0) {
+    const shipToY = y + partyBoxHeight + 4;
+    doc.rect(MARGIN, shipToY, CONTENT_W, shipToContentHeight);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(9);
+    doc.text('Ship To:', MARGIN + 3, shipToY + 5);
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(8);
+    doc.text(shipToLines, MARGIN + 20, shipToY + 5);
+    y = shipToY + shipToContentHeight + 5;
+  } else {
+    y += partyBoxHeight + 5;
+  }
 
   // Line items table
   doc.rect(MARGIN, y, CONTENT_W, 8);

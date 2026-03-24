@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase';
 import { auth } from '@clerk/nextjs/server';
+import { maybeCreateInitialProjectPOReference } from '@/lib/project-po-references';
 
 // PUT - Convert project from draft to awarded
 export async function PUT(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -76,6 +77,20 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       return NextResponse.json({
         success: false,
         error: 'Failed to convert project'
+      }, { status: 500 });
+    }
+
+    try {
+      await maybeCreateInitialProjectPOReference({
+        project_id: projectId,
+        po_number: po_number || null,
+        po_value: estimated_value,
+      });
+    } catch (poReferenceError) {
+      console.error('Project conversion PO reference error:', poReferenceError);
+      return NextResponse.json({
+        success: false,
+        error: 'Project converted but failed to initialize PO reference'
       }, { status: 500 });
     }
 

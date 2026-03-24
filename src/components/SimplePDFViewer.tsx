@@ -27,7 +27,8 @@ export default function SimplePDFViewer({ fileUrl, fileName, onError, isAnalyzin
   };
 
   const downloadFile = () => {
-    window.open(fileUrl, '_blank');
+    const separator = fileUrl.includes('?') ? '&' : '?';
+    window.open(`${fileUrl}${separator}download=1`, '_blank');
   };
 
   if (error) {

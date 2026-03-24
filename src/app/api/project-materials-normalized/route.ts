@@ -95,6 +95,7 @@ export async function GET(request: NextRequest) {
           approved_qty,
           unit_rate,
           tax_percent,
+          round_off_amount,
           status,
           created_at,
           updated_at,
@@ -106,8 +107,16 @@ export async function GET(request: NextRequest) {
           purchase_requests (
             id,
             status,
+            project_po_reference_id,
             submitted_at,
-            created_at
+            created_at,
+            project_po_references:project_po_reference_id (
+              id,
+              po_number,
+              po_type,
+              status,
+              is_default
+            )
           )
         `)
         .in('project_material_id', materialIds)
@@ -115,7 +124,13 @@ export async function GET(request: NextRequest) {
       requestItems = requestItemsWithConversion.data as any[] | null;
       requestError = requestItemsWithConversion.error;
 
-      if (requestError && String(requestError.message || '').includes('purchase_qty')) {
+      if (
+        requestError &&
+        (
+          String(requestError.message || '').includes('purchase_qty') ||
+          String(requestError.message || '').includes('round_off_amount')
+        )
+      ) {
         const fallbackRequestItems = await supabaseAdmin
           .from('purchase_request_items')
           .select(`
@@ -139,8 +154,16 @@ export async function GET(request: NextRequest) {
             purchase_requests (
               id,
               status,
+              project_po_reference_id,
               submitted_at,
-              created_at
+              created_at,
+              project_po_references:project_po_reference_id (
+                id,
+                po_number,
+                po_type,
+                status,
+                is_default
+              )
             )
           `)
           .in('project_material_id', materialIds)
@@ -169,10 +192,16 @@ export async function GET(request: NextRequest) {
             approved_qty: item.approved_qty,
             unit_rate: item.unit_rate,
             tax_percent: item.tax_percent,
+            round_off_amount: item.round_off_amount ?? 0,
             status: item.status,
             created_at: item.created_at,
             updated_at: item.updated_at,
             purchase_request: item.purchase_requests
+              ? {
+                  ...item.purchase_requests,
+                  project_po_reference: item.purchase_requests.project_po_references || null,
+                }
+              : null
           });
           requestHistoryMap.set(item.project_material_id, list);
         });

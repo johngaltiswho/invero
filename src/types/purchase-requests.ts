@@ -3,6 +3,8 @@
 export interface PurchaseRequest {
   id: string;
   project_id: string;
+  project_po_reference_id?: string | null;
+  project_po_reference?: Pick<ProjectPOReferenceSummary, 'id' | 'po_number' | 'po_type' | 'status' | 'is_default'> | null;
   contractor_id: string;
   shipping_location?: string | null;
   status: 'draft' | 'submitted' | 'approved' | 'funded' | 'po_generated' | 'completed' | 'rejected';
@@ -32,6 +34,7 @@ export interface PurchaseRequestItem {
   approved_qty?: number;
   unit_rate?: number;
   tax_percent?: number;
+  round_off_amount?: number | null;
   status: 'pending' | 'approved' | 'ordered' | 'received' | 'rejected';
   created_at: string;
   updated_at: string;
@@ -53,7 +56,9 @@ export interface ProjectMaterialForUI {
   ordered_qty: number;          // computed from approved purchase requests
   purchase_status?: string | null;
   request_history?: Array<PurchaseRequestItem & {
-    purchase_request?: Pick<PurchaseRequest, 'id' | 'status' | 'submitted_at' | 'created_at'>;
+    purchase_request?: Pick<PurchaseRequest, 'id' | 'status' | 'submitted_at' | 'created_at' | 'project_po_reference_id'> & {
+      project_po_reference?: Pick<ProjectPOReferenceSummary, 'id' | 'po_number' | 'po_type' | 'status' | 'is_default'> | null;
+    };
   }>;
   notes?: string;
   source_type?: string;
@@ -65,6 +70,7 @@ export interface ProjectMaterialForUI {
 export interface CreatePurchaseRequestPayload {
   project_id: string;
   contractor_id: string;
+  project_po_reference_id?: string | null;
   shipping_location?: string;
   remarks?: string;
   items: Array<{
@@ -79,7 +85,23 @@ export interface CreatePurchaseRequestPayload {
     requested_qty: number;
     unit_rate?: number;
     tax_percent?: number;
+    round_off_amount?: number | null;
   }>;
+}
+
+export interface ProjectPOReferenceSummary {
+  id: string;
+  project_id: string;
+  po_number: string;
+  po_date?: string | null;
+  po_value?: number | null;
+  po_type: 'original' | 'amendment' | 'supplemental' | 'replacement';
+  status: 'active' | 'exhausted' | 'closed';
+  is_default: boolean;
+  notes?: string | null;
+  previous_po_reference_id?: string | null;
+  request_count?: number;
+  linked_value?: number;
 }
 
 export interface PurchaseRequestWithItems extends PurchaseRequest {

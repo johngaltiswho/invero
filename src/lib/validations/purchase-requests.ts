@@ -58,6 +58,7 @@ export const purchaseRequestItemSchema = z.object({
   normalized_qty: z.number().positive('Normalized quantity must be positive').optional().nullable(),
   unit_rate: z.number().min(0, 'Unit rate cannot be negative').optional().nullable(),
   tax_percent: z.number().min(0, 'Tax percent cannot be negative').max(100, 'Tax percent cannot exceed 100').optional().nullable(),
+  round_off_amount: z.number().finite('Round off amount must be a valid number').optional().nullable(),
 });
 
 /**

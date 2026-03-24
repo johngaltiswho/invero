@@ -35,6 +35,7 @@ type PurchaseRequestRow = {
   vendor_id?: string | null;
   status: string;
   remarks?: string | null;
+  shipping_location?: string | null;
   purchase_request_items?: PurchaseRequestItem[] | null;
   projects?: {
     project_name?: string;
@@ -65,6 +66,62 @@ function supabaseAdmin() {
       }
     }
   );
+}
+
+async function resolveShippingAddress(
+  supabase: ReturnType<typeof supabaseAdmin>,
+  purchaseRequest: PurchaseRequestRow,
+  projectId: string
+) {
+  const withClientName = (clientName: string | null | undefined, address: string | null | undefined) => {
+    const normalizedAddress = address?.trim();
+    if (!normalizedAddress) return null;
+
+    const normalizedClientName = clientName?.trim();
+    if (!normalizedClientName) return normalizedAddress;
+
+    const foldedAddress = normalizedAddress.toLowerCase();
+    if (foldedAddress.includes(normalizedClientName.toLowerCase())) {
+      return normalizedAddress;
+    }
+
+    return `${normalizedClientName}\n${normalizedAddress}`;
+  };
+
+  const { data: project } = await supabase
+    .from('projects')
+    .select('id, project_name, project_address, client_id, client_name, contractor_id')
+    .eq('id', projectId)
+    .maybeSingle() as { data: any };
+
+  const explicitShipping = withClientName(project?.client_name, purchaseRequest.shipping_location);
+  if (explicitShipping) return explicitShipping;
+
+  const projectAddress = withClientName(project?.client_name, project?.project_address);
+  if (projectAddress) return projectAddress;
+
+  if (project?.client_id) {
+    const { data: client } = await supabase
+      .from('clients')
+      .select('name, address')
+      .eq('id', project.client_id)
+      .maybeSingle() as { data: any };
+    const clientAddress = withClientName(client?.name || project?.client_name, client?.address);
+    if (clientAddress) return clientAddress;
+  }
+
+  if (project?.client_name) {
+    const { data: clientByName } = await supabase
+      .from('clients')
+      .select('name, address')
+      .eq('contractor_id', project.contractor_id)
+      .ilike('name', project.client_name)
+      .maybeSingle() as { data: any };
+    const clientAddress = withClientName(clientByName?.name || project.client_name, clientByName?.address);
+    if (clientAddress) return clientAddress;
+  }
+
+  return null;
 }
 
 /**
@@ -116,6 +173,7 @@ export async function POST(_request: NextRequest, context: RouteContext) {
         vendor_id,
         status,
         remarks,
+        shipping_location,
         purchase_request_items (
           id,
           hsn_code,
@@ -214,6 +272,12 @@ export async function POST(_request: NextRequest, context: RouteContext) {
       );
     }
 
+    const resolvedShippingAddress = await resolveShippingAddress(
+      supabase,
+      typedPR,
+      typedPR.project_id
+    );
+
     // Build line items for PO
     const lineItems: POLineItem[] = items.map((item, index) => {
       console.log(`[PO Generation] Item ${index}:`, {
@@ -280,6 +344,7 @@ export async function POST(_request: NextRequest, context: RouteContext) {
       vendorEmail: typedPR.vendors.email || undefined,
       vendorPhone: typedPR.vendors.phone || undefined,
       contractorName: typedPR.contractors?.company_name || 'Unknown Contractor',
+      shippingAddress: resolvedShippingAddress || undefined,
       lineItems,
       subtotal,
       totalTax,

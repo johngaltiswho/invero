@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase';
 import { auth } from '@clerk/nextjs/server';
 import { rateLimit, RateLimitPresets } from '@/lib/rate-limit';
+import { maybeCreateInitialProjectPOReference } from '@/lib/project-po-references';
 
 // POST - Create new project
 export async function POST(request: NextRequest) {
@@ -166,6 +167,22 @@ export async function POST(request: NextRequest) {
         success: false,
         error: 'Failed to create project'
       }, { status: 500 });
+    }
+
+    if (project?.id) {
+      try {
+        await maybeCreateInitialProjectPOReference({
+          project_id: project.id,
+          po_number: projectData.po_number,
+          po_value: projectData.estimated_value ?? null,
+        });
+      } catch (poReferenceError) {
+        console.error('Failed to create initial project PO reference:', poReferenceError);
+        return NextResponse.json({
+          success: false,
+          error: 'Project created but failed to initialize PO reference'
+        }, { status: 500 });
+      }
     }
 
     // If PO was uploaded, save it to project_files table for Files section integration

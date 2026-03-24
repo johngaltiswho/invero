@@ -49,6 +49,50 @@ async function resolveShippingLocation(
   return project.location?.trim() || null;
 }
 
+async function resolveProjectPOReferenceForRequest(
+  supabase: any,
+  projectId: string,
+  projectStatus: string | null | undefined,
+  requestedPOReferenceId?: string | null
+) {
+  const normalizedStatus = String(projectStatus || '').toLowerCase();
+  const requiresPO = ['awarded', 'finalized', 'completed'].includes(normalizedStatus);
+  if (!requiresPO) return null;
+
+  const { data: poReferences, error } = await supabase
+    .from('project_po_references')
+    .select('id, status, is_default')
+    .eq('project_id', projectId)
+    .order('is_default', { ascending: false })
+    .order('created_at', { ascending: true });
+
+  if (error) {
+    throw new Error(`Failed to fetch project POs: ${error.message}`);
+  }
+
+  const activePOs = (poReferences || []).filter((po: any) => po.status === 'active');
+  if (activePOs.length === 0) {
+    throw new Error('No active client PO is available for this awarded project');
+  }
+
+  if (requestedPOReferenceId) {
+    const requested = (poReferences || []).find((po: any) => po.id === requestedPOReferenceId);
+    if (!requested) {
+      throw new Error('Selected client PO does not belong to this project');
+    }
+    if (requested.status !== 'active') {
+      throw new Error('Selected client PO is not active');
+    }
+    return requested.id;
+  }
+
+  if (activePOs.length === 1) {
+    return activePOs[0].id;
+  }
+
+  return (activePOs.find((po: any) => po.is_default) || activePOs[0]).id;
+}
+
 // GET - Fetch purchase requests for contractor
 export async function GET(request: NextRequest) {
   // Apply rate limiting for read operations
@@ -87,6 +131,7 @@ export async function GET(request: NextRequest) {
       .select(`
         id,
         project_id,
+        project_po_reference_id,
         contractor_id,
         shipping_location,
         status,
@@ -99,6 +144,13 @@ export async function GET(request: NextRequest) {
         funded_at,
         approved_by,
         approval_notes,
+        project_po_references:project_po_reference_id (
+          id,
+          po_number,
+          po_type,
+          status,
+          is_default
+        ),
         contractors:contractor_id (
           id,
           company_name,
@@ -159,7 +211,7 @@ export async function POST(request: NextRequest) {
     }
 
     const body: CreatePurchaseRequestPayload = await request.json();
-    const { project_id, contractor_id, remarks, items, shipping_location } = body;
+    const { project_id, contractor_id, project_po_reference_id, remarks, items, shipping_location } = body;
 
     if (!project_id || !items || !Array.isArray(items) || items.length === 0) {
       return NextResponse.json({ 
@@ -188,7 +240,23 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
     }
 
+    const { data: project } = await supabase
+      .from('projects')
+      .select('id, project_status')
+      .eq('id', project_id)
+      .maybeSingle();
+
+    if (!project) {
+      return NextResponse.json({ error: 'Project not found' }, { status: 404 });
+    }
+
     const resolvedShippingLocation = await resolveShippingLocation(supabase, project_id, shipping_location || null);
+    const resolvedPOReferenceId = await resolveProjectPOReferenceForRequest(
+      supabase,
+      project_id,
+      (project as any).project_status,
+      project_po_reference_id || null
+    );
 
     console.log('🚀 Creating purchase request for contractor:', contractor.id);
     console.log('📄 Request details:', { project_id, items: items.length, remarks });
@@ -199,6 +267,7 @@ export async function POST(request: NextRequest) {
       .from('purchase_requests')
       .insert({
         project_id,
+        project_po_reference_id: resolvedPOReferenceId,
         contractor_id: contractor.id,
         status: 'submitted',
         created_by: contractor.id,
@@ -235,6 +304,7 @@ export async function POST(request: NextRequest) {
       requested_qty: item.requested_qty,
       unit_rate: item.unit_rate || null,
       tax_percent: item.tax_percent || 0,
+      round_off_amount: item.round_off_amount || 0,
       status: 'pending',
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString()
@@ -288,7 +358,7 @@ export async function POST(request: NextRequest) {
     const persistedItems = createdItems || [];
     console.log('✅ Purchase request items created:', persistedItems.length);
 
-    const { data: project } = await supabase
+    const { data: projectNameRow } = await supabase
       .from('projects')
       .select('project_name')
       .eq('id', project_id)
@@ -297,7 +367,10 @@ export async function POST(request: NextRequest) {
     const estimatedTotal = persistedItems.reduce((sum, item) => {
       const billableQty = Number((item as any).purchase_qty ?? item.requested_qty) || 0;
       const rate = Number(item.unit_rate) || 0;
-      return sum + billableQty * rate;
+      const taxPercent = Number(item.tax_percent) || 0;
+      const roundOffAmount = Number((item as any).round_off_amount) || 0;
+      const subtotal = billableQty * rate;
+      return sum + subtotal + (subtotal * taxPercent) / 100 + roundOffAmount;
     }, 0);
 
     if (contractor?.email) {
@@ -306,7 +379,7 @@ export async function POST(request: NextRequest) {
           to: contractor.email,
           ...purchaseRequestSubmittedEmail({
             recipientName: contractor.contact_person || contractor.company_name || 'there',
-            projectName: project?.project_name || project_id,
+            projectName: projectNameRow?.project_name || project_id,
             itemCount: persistedItems.length,
             estimatedValue: estimatedTotal,
           }),

@@ -19,7 +19,7 @@ import MeasurementSheetTab from '@/components/MeasurementSheetTab';
 import { getBOQByProjectId, getScheduleByProjectId } from '@/lib/supabase-boq';
 import { jsPDF } from 'jspdf';
 import { uploadPurchaseInvoice } from '@/lib/file-upload';
-import type { ProjectMaterialForUI } from '@/types/purchase-requests';
+import type { ProjectMaterialForUI, ProjectPOReferenceSummary } from '@/types/purchase-requests';
 
 type ProjectMaterialWithStats = ProjectMaterialForUI & {
   pending_qty: number;
@@ -34,6 +34,7 @@ type EditableProjectPurchaseRequestItem = {
   requested_qty: number;
   unit_rate: number | null;
   tax_percent: number | null;
+  round_off_amount: number | null;
   hsn_code: string | null;
   material_name: string;
   unit: string;
@@ -44,8 +45,20 @@ type EditableProjectPurchaseRequest = {
   status: string;
   remarks: string | null;
   shipping_location: string | null;
+  project_po_reference_id?: string | null;
+  project_po_reference?: Pick<ProjectPOReferenceSummary, 'id' | 'po_number' | 'po_type' | 'status' | 'is_default'> | null;
   editable: boolean;
   items: EditableProjectPurchaseRequestItem[];
+};
+
+type ProjectPurchaseRequestSummary = {
+  id: string;
+  status: string;
+  created_at: string;
+  line_items: number;
+  estimated_total: number;
+  project_po_reference_id: string | null;
+  po_number: string | null;
 };
 
 function IndividualProjectContent(): React.ReactElement {
@@ -65,8 +78,23 @@ function IndividualProjectContent(): React.ReactElement {
     client_name: '',
     project_address: ''
   });
-  const [activeTab, setActiveTab] = useState<'overview' | 'boq' | 'measurement' | 'schedule' | 'materials' | 'purchase_requests' | 'files'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'boq' | 'measurement' | 'schedule' | 'materials' | 'client_pos' | 'purchase_requests' | 'files'>('overview');
   const [refreshKey, setRefreshKey] = useState(0);
+  const [poReferences, setPOReferences] = useState<ProjectPOReferenceSummary[]>([]);
+  const [poReferencesLoading, setPOReferencesLoading] = useState(false);
+  const [addingPO, setAddingPO] = useState(false);
+  const [poActionLoadingId, setPOActionLoadingId] = useState<string | null>(null);
+  const [bulkReassigningPOId, setBulkReassigningPOId] = useState<string | null>(null);
+  const [showAddPOForm, setShowAddPOForm] = useState(false);
+  const [selectedPOForRequest, setSelectedPOForRequest] = useState('');
+  const [poForm, setPOForm] = useState({
+    po_number: '',
+    po_date: '',
+    po_value: '',
+    po_type: 'supplemental' as ProjectPOReferenceSummary['po_type'],
+    notes: '',
+    previous_po_reference_id: '',
+  });
   
   // Enhanced project data state
   const [enhancedProjectData, setEnhancedProjectData] = useState<any>(null);
@@ -112,6 +140,7 @@ function IndividualProjectContent(): React.ReactElement {
   // Purchase request state
   const [purchaseRates, setPurchaseRates] = useState<{[key: string]: number}>({});
   const [purchaseTax, setPurchaseTax] = useState<{[key: string]: number}>({});
+  const [purchaseRoundOffs, setPurchaseRoundOffs] = useState<{[key: string]: number}>({});
   const [purchaseHsn, setPurchaseHsn] = useState<{[key: string]: string}>({});
   const [purchaseRemarks, setPurchaseRemarks] = useState<{[key: string]: string}>({});
   const [purchaseQuantities, setPurchaseQuantities] = useState<{[key: string]: string}>({});
@@ -186,6 +215,10 @@ function IndividualProjectContent(): React.ReactElement {
   const [currentPDFUrl, setCurrentPDFUrl] = useState<string>('');
   const [currentPDFName, setCurrentPDFName] = useState<string>('');
   const [useAnalysisMode, setUseAnalysisMode] = useState(false);
+  const activePOReference = React.useMemo(
+    () => poReferences.find((po) => po.is_default && po.status === 'active') || poReferences.find((po) => po.status === 'active') || null,
+    [poReferences]
+  );
 
   // Load project data on mount
   useEffect(() => {
@@ -246,6 +279,13 @@ function IndividualProjectContent(): React.ReactElement {
     setPurchaseShippingLocation((prev) => prev || project?.project_address || project?.location || '');
   }, [showBatchPurchaseDialog, project?.project_address, project?.location]);
 
+  useEffect(() => {
+    if (!showBatchPurchaseDialog) return;
+    if (!selectedPOForRequest && activePOReference) {
+      setSelectedPOForRequest(activePOReference.id);
+    }
+  }, [showBatchPurchaseDialog, activePOReference, selectedPOForRequest]);
+
   const fetchProjectData = async () => {
     try {
       setProjectLoading(true);
@@ -268,6 +308,7 @@ function IndividualProjectContent(): React.ReactElement {
           // Load project materials, files, etc.
           await Promise.all([
             fetchProjectMaterials(projectId),
+            fetchProjectPOReferences(projectId),
             fetchProjectFiles(projectId),
             checkDocumentStatus(data.data),
             fetchBOQData(projectId),
@@ -343,6 +384,23 @@ function IndividualProjectContent(): React.ReactElement {
     } catch (error) {
       console.error('Error fetching project materials:', error);
       setProjectMaterials([]);
+    }
+  };
+
+  const fetchProjectPOReferences = async (targetProjectId: string) => {
+    try {
+      setPOReferencesLoading(true);
+      const response = await fetch(`/api/projects/${targetProjectId}/po-references`);
+      const result = await response.json();
+      if (!response.ok || !result.success) {
+        throw new Error(result.error || 'Failed to load project POs');
+      }
+      setPOReferences(result.data?.po_references || []);
+    } catch (error) {
+      console.error('Failed to fetch project PO references:', error);
+      setPOReferences([]);
+    } finally {
+      setPOReferencesLoading(false);
     }
   };
 
@@ -583,6 +641,17 @@ function IndividualProjectContent(): React.ReactElement {
   // View/Download file
   const viewFile = async (fileId: string) => {
     try {
+      const fileRecord = projectFiles.find((file) => file.id === fileId);
+      const inlineViewUrl = `/api/project-files/view?id=${encodeURIComponent(fileId)}`;
+
+      if (fileRecord?.mime_type === 'application/pdf' || fileRecord?.file_type === 'application/pdf') {
+        setCurrentPDFUrl(inlineViewUrl);
+        setCurrentPDFName(fileRecord.original_name || fileRecord.file_name || 'PDF Document');
+        setUseAnalysisMode(false);
+        setShowPDFViewer(true);
+        return;
+      }
+
       const response = await fetch(`/api/project-files/download?id=${fileId}`);
       const result = await response.json();
 
@@ -591,7 +660,7 @@ function IndividualProjectContent(): React.ReactElement {
         
         // If it's a PDF, show in our viewer
         if (mimeType === 'application/pdf') {
-          setCurrentPDFUrl(downloadUrl);
+          setCurrentPDFUrl(inlineViewUrl);
           setCurrentPDFName(fileName);
           setUseAnalysisMode(false);
           setShowPDFViewer(true);
@@ -616,6 +685,17 @@ function IndividualProjectContent(): React.ReactElement {
   // Quantity takeoff for drawing file
   const takeoffFile = async (fileId: string) => {
     try {
+      const fileRecord = projectFiles.find((file) => file.id === fileId);
+      const inlineViewUrl = `/api/project-files/view?id=${encodeURIComponent(fileId)}`;
+
+      if (fileRecord?.mime_type === 'application/pdf' || fileRecord?.file_type === 'application/pdf') {
+        setCurrentPDFUrl(inlineViewUrl);
+        setCurrentPDFName(fileRecord.original_name || fileRecord.file_name || 'PDF Document');
+        setUseAnalysisMode(true);
+        setShowPDFViewer(true);
+        return;
+      }
+
       const response = await fetch(`/api/project-files/download?id=${fileId}`);
       const result = await response.json();
 
@@ -624,7 +704,7 @@ function IndividualProjectContent(): React.ReactElement {
         
         // Only for PDFs (drawings)
         if (mimeType === 'application/pdf') {
-          setCurrentPDFUrl(downloadUrl);
+          setCurrentPDFUrl(inlineViewUrl);
           setCurrentPDFName(fileName);
           setUseAnalysisMode(true); // Enable takeoff mode
           setShowPDFViewer(true);
@@ -915,6 +995,9 @@ function IndividualProjectContent(): React.ReactElement {
     });
   };
 
+  const formatTwoDecimals = (value: number) =>
+    value.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
   const getRequiredQty = (materialId: string) => {
     return parseFloat(purchaseQuantities[materialId] || '0') || 0;
   };
@@ -924,18 +1007,34 @@ function IndividualProjectContent(): React.ReactElement {
     return Number.isFinite(parsed) && parsed > 0 ? parsed : 1;
   };
 
-  // Purchase qty is auto-derived and rounded up to avoid under-procurement.
+  // Purchase qty is auto-derived and rounded to 2 decimals for decimal-unit procurement.
   const getComputedPurchaseQty = (materialId: string) => {
     const requiredQty = getRequiredQty(materialId);
     if (requiredQty <= 0) return 0;
     const conversionFactor = getConversionFactor(materialId);
-    return Math.ceil(requiredQty / conversionFactor);
+    const purchaseQty = requiredQty / conversionFactor;
+    return Math.round(purchaseQty * 100) / 100;
   };
 
   const getNormalizedCoverageQty = (materialId: string) => {
     const purchaseQty = getComputedPurchaseQty(materialId);
     const conversionFactor = getConversionFactor(materialId);
     return purchaseQty * conversionFactor;
+  };
+
+  const getRoundOffValue = (materialId: string) => {
+    const value = purchaseRoundOffs[materialId];
+    return Number.isFinite(value) ? value : 0;
+  };
+
+  const getLineTotal = (materialId: string) => {
+    const purchaseQty = getComputedPurchaseQty(materialId);
+    const rate = purchaseRates[materialId] || 0;
+    const tax = purchaseTax[materialId] || 0;
+    const roundOff = getRoundOffValue(materialId);
+    const subtotal = purchaseQty * rate;
+    const withTax = subtotal + (subtotal * tax) / 100;
+    return withTax + roundOff;
   };
 
   const getStatusColor = (status: string) => {
@@ -973,19 +1072,110 @@ function IndividualProjectContent(): React.ReactElement {
 
   const canEditPurchaseRequest = (status: string) => {
     const normalized = (status || '').toLowerCase();
-    return normalized === 'draft' || normalized === 'submitted' || normalized === 'rejected';
+    return normalized === 'draft' || normalized === 'submitted' || normalized === 'approved';
   };
 
-  const projectPurchaseRequests = React.useMemo(() => {
+  const addProjectPOReference = async () => {
+    if (!project?.id) return;
+    const poNumber = poForm.po_number.trim();
+    if (!poNumber) {
+      alert('PO number is required');
+      return;
+    }
+
+    try {
+      setAddingPO(true);
+      const response = await fetch(`/api/projects/${project.id}/po-references`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          po_number: poNumber,
+          po_date: poForm.po_date || null,
+          po_value: poForm.po_value ? Number(poForm.po_value) : null,
+          po_type: poReferences.length === 0 ? 'original' : poForm.po_type,
+          status: 'active',
+          is_default: poReferences.length === 0,
+          notes: poForm.notes.trim() || null,
+          previous_po_reference_id: poForm.previous_po_reference_id || null,
+        })
+      });
+
+      const result = await response.json();
+      if (!response.ok || !result.success) {
+        throw new Error(result.error || 'Failed to add client PO');
+      }
+
+      setPOForm({
+        po_number: '',
+        po_date: '',
+        po_value: '',
+        po_type: 'supplemental',
+        notes: '',
+        previous_po_reference_id: '',
+      });
+      setShowAddPOForm(false);
+      await fetchProjectPOReferences(project.id);
+    } catch (error) {
+      console.error('Failed to add project PO:', error);
+      alert(error instanceof Error ? error.message : 'Failed to add project PO');
+    } finally {
+      setAddingPO(false);
+    }
+  };
+
+  const updateProjectPOStatus = async (
+    poId: string,
+    updates: Partial<Pick<ProjectPOReferenceSummary, 'status' | 'is_default' | 'notes' | 'po_number' | 'po_date' | 'po_value' | 'po_type' | 'previous_po_reference_id'>>
+  ) => {
+    if (!project?.id) return;
+    try {
+      setPOActionLoadingId(poId);
+      const response = await fetch(`/api/projects/${project.id}/po-references/${poId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(updates)
+      });
+      const result = await response.json();
+      if (!response.ok || !result.success) {
+        throw new Error(result.error || 'Failed to update client PO');
+      }
+      await fetchProjectPOReferences(project.id);
+    } catch (error) {
+      console.error('Failed to update project PO:', error);
+      alert(error instanceof Error ? error.message : 'Failed to update client PO');
+    } finally {
+      setPOActionLoadingId(null);
+    }
+  };
+
+  const reassignOpenRequestsToPO = async (poId: string, poNumber: string) => {
+    if (!project?.id) return;
+    const confirmed = window.confirm(`Move all open purchase requests on this project to ${poNumber}? Locked/commercially committed requests will stay on their current PO.`);
+    if (!confirmed) return;
+
+    try {
+      setBulkReassigningPOId(poId);
+      const response = await fetch(`/api/projects/${project.id}/po-references/${poId}/reassign-open-requests`, {
+        method: 'POST'
+      });
+      const result = await response.json();
+      if (!response.ok || !result.success) {
+        throw new Error(result.error || 'Failed to reassign open purchase requests');
+      }
+      await Promise.all([fetchProjectMaterials(project.id), fetchProjectPOReferences(project.id)]);
+      alert(`Reassigned ${result.data?.updated_count || 0} open purchase requests to ${poNumber}.`);
+    } catch (error) {
+      console.error('Failed to reassign open purchase requests:', error);
+      alert(error instanceof Error ? error.message : 'Failed to reassign open purchase requests');
+    } finally {
+      setBulkReassigningPOId(null);
+    }
+  };
+
+  const projectPurchaseRequests = React.useMemo<ProjectPurchaseRequestSummary[]>(() => {
     const map = new Map<
       string,
-      {
-        id: string;
-        status: string;
-        created_at: string;
-        line_items: number;
-        estimated_total: number;
-      }
+      ProjectPurchaseRequestSummary
     >();
 
     projectMaterials.forEach((material) => {
@@ -995,8 +1185,9 @@ function IndividualProjectContent(): React.ReactElement {
         const qty = Number((item as any).purchase_qty ?? item.requested_qty ?? 0) || 0;
         const rate = Number(item.unit_rate ?? 0) || 0;
         const taxPercent = Number(item.tax_percent ?? 0) || 0;
+        const roundOffAmount = Number((item as any).round_off_amount ?? 0) || 0;
         const base = qty * rate;
-        const total = base + (base * taxPercent) / 100;
+        const total = base + (base * taxPercent) / 100 + roundOffAmount;
 
         if (!existing) {
           map.set(item.purchase_request_id, {
@@ -1004,7 +1195,9 @@ function IndividualProjectContent(): React.ReactElement {
             status: item.purchase_request?.status || item.status || 'submitted',
             created_at: item.purchase_request?.created_at || item.created_at,
             line_items: 1,
-            estimated_total: total
+            estimated_total: total,
+            project_po_reference_id: item.purchase_request?.project_po_reference_id || null,
+            po_number: item.purchase_request?.project_po_reference?.po_number || null
           });
           return;
         }
@@ -1017,6 +1210,10 @@ function IndividualProjectContent(): React.ReactElement {
         const nextCreatedAt = item.purchase_request?.created_at || item.created_at;
         if (nextCreatedAt && new Date(nextCreatedAt).getTime() < new Date(existing.created_at).getTime()) {
           existing.created_at = nextCreatedAt;
+        }
+        if (item.purchase_request?.project_po_reference_id) {
+          existing.project_po_reference_id = item.purchase_request.project_po_reference_id;
+          existing.po_number = item.purchase_request.project_po_reference?.po_number || existing.po_number;
         }
         map.set(item.purchase_request_id, existing);
       });
@@ -1043,7 +1240,10 @@ function IndividualProjectContent(): React.ReactElement {
       if (!response.ok || !result.success) {
         throw new Error(result.error || 'Failed to load purchase request');
       }
-      setEditingPurchaseRequest(result.data);
+      setEditingPurchaseRequest({
+        ...result.data,
+        project_po_reference: result.data.project_po_references || result.data.project_po_reference || null,
+      });
       setNewMaterialIdForRequest('');
     } catch (error) {
       console.error('Failed to load purchase request for edit:', error);
@@ -1067,10 +1267,13 @@ function IndividualProjectContent(): React.ReactElement {
       if (field === 'item_description') {
         return { ...item, item_description: value || null };
       }
-      if (field === 'requested_qty' || field === 'unit_rate' || field === 'tax_percent') {
+      if (field === 'requested_qty' || field === 'unit_rate' || field === 'tax_percent' || field === 'round_off_amount') {
         const parsed = value === '' ? null : Number(value);
         if (field === 'requested_qty') {
           return { ...item, requested_qty: Number.isFinite(parsed as number) ? (parsed as number) : 0 };
+        }
+        if (field === 'round_off_amount') {
+          return { ...item, round_off_amount: Number.isFinite(parsed as number) ? (parsed as number) : 0 };
         }
         return { ...item, [field]: Number.isFinite(parsed as number) ? (parsed as number) : null };
       }
@@ -1096,6 +1299,7 @@ function IndividualProjectContent(): React.ReactElement {
       requested_qty: Math.max(Math.min(material.max_requestable || 1, 1), 0.001),
       unit_rate: 0,
       tax_percent: 0,
+      round_off_amount: 0,
       hsn_code: material.hsn_code || null,
       material_name: material.name || 'Material',
       unit: material.unit || 'unit'
@@ -1129,12 +1333,20 @@ function IndividualProjectContent(): React.ReactElement {
 
     try {
       setSavingRequestEdit(true);
+      const requiresPOForProject = ['awarded', 'finalized', 'completed'].includes(
+        String(project?.project_status || project?.status || '').toLowerCase()
+      );
+      if (requiresPOForProject && !editingPurchaseRequest.project_po_reference_id) {
+        alert('Select an active client PO before saving this purchase request.');
+        return;
+      }
       const response = await fetch(`/api/purchase-requests/${editingPurchaseRequest.id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           remarks: editingPurchaseRequest.remarks || null,
           shipping_location: editingPurchaseRequest.shipping_location || null,
+          project_po_reference_id: editingPurchaseRequest.project_po_reference_id || null,
           items: editingPurchaseRequest.items.map((item) => ({
             ...(item.id.startsWith('new-') ? {} : { id: item.id }),
             project_material_id: item.project_material_id,
@@ -1142,6 +1354,7 @@ function IndividualProjectContent(): React.ReactElement {
             requested_qty: item.requested_qty,
             unit_rate: item.unit_rate,
             tax_percent: item.tax_percent,
+            round_off_amount: item.round_off_amount,
             hsn_code: item.hsn_code
           }))
         })
@@ -1153,7 +1366,7 @@ function IndividualProjectContent(): React.ReactElement {
       }
 
       setEditingPurchaseRequest(null);
-      await fetchProjectMaterials(projectId);
+      await Promise.all([fetchProjectMaterials(projectId), fetchProjectPOReferences(projectId)]);
     } catch (error) {
       console.error('Failed to update purchase request:', error);
       alert(error instanceof Error ? error.message : 'Failed to update purchase request');
@@ -1175,7 +1388,7 @@ function IndividualProjectContent(): React.ReactElement {
       if (!response.ok || !result.success) {
         throw new Error(result.error || 'Failed to delete purchase request');
       }
-      await fetchProjectMaterials(projectId);
+      await Promise.all([fetchProjectMaterials(projectId), fetchProjectPOReferences(projectId)]);
     } catch (error) {
       console.error('Failed to delete purchase request:', error);
       alert(error instanceof Error ? error.message : 'Failed to delete purchase request');
@@ -1244,6 +1457,11 @@ function IndividualProjectContent(): React.ReactElement {
             {project.estimated_value && (
               <span className="text-sm text-secondary">
                 Value: {formatCurrency(project.estimated_value)}
+              </span>
+            )}
+            {activePOReference && (
+              <span className="text-sm text-secondary">
+                Active PO: <span className="text-primary font-medium">{activePOReference.po_number}</span>
               </span>
             )}
             <button
@@ -1318,6 +1536,16 @@ function IndividualProjectContent(): React.ReactElement {
             Purchase Requests
           </button>
           <button
+            onClick={() => setActiveTab('client_pos')}
+            className={`px-4 py-2 text-sm font-medium rounded-t-lg transition-all ${
+              activeTab === 'client_pos'
+                ? 'bg-accent-amber text-neutral-dark border-b-2 border-accent-amber'
+                : 'text-secondary hover:text-primary hover:bg-neutral-medium'
+            }`}
+          >
+            Client POs
+          </button>
+          <button
             onClick={() => setActiveTab('files')}
             className={`px-4 py-2 text-sm font-medium rounded-t-lg transition-all ${
               activeTab === 'files'
@@ -1359,6 +1587,12 @@ function IndividualProjectContent(): React.ReactElement {
                   <div className="text-xs text-secondary mb-1">Materials</div>
                   <div className="text-lg font-bold text-primary">
                     {projectMaterials.length} items
+                  </div>
+                </div>
+                <div className="bg-neutral-darker p-4 rounded-lg">
+                  <div className="text-xs text-secondary mb-1">Active Client PO</div>
+                  <div className="text-lg font-bold text-primary">
+                    {activePOReference?.po_number || 'Not set'}
                   </div>
                 </div>
                 <div className="bg-neutral-darker p-4 rounded-lg md:col-span-3">
@@ -1952,6 +2186,9 @@ function IndividualProjectContent(): React.ReactElement {
                                               <div className="text-secondary mt-1">
                                                 Raised: {formatDate(item.created_at)}{' '}
                                                 {item.purchase_request?.status ? `• PR Status: ${item.purchase_request.status}` : ''}
+                                                {item.purchase_request?.project_po_reference?.po_number
+                                                  ? ` • PO: ${item.purchase_request.project_po_reference.po_number}`
+                                                  : ''}
                                               </div>
                                             </div>
                                             <div className="flex gap-2 mt-2 md:mt-0">
@@ -2003,6 +2240,7 @@ function IndividualProjectContent(): React.ReactElement {
                       <thead className="bg-neutral-dark border-b border-neutral-medium">
                         <tr>
                           <th className="p-3 text-left text-secondary">Request ID</th>
+                          <th className="p-3 text-left text-secondary">Funding PO</th>
                           <th className="p-3 text-left text-secondary">Status</th>
                           <th className="p-3 text-left text-secondary">Line Items</th>
                           <th className="p-3 text-left text-secondary">Estimated Value</th>
@@ -2016,6 +2254,7 @@ function IndividualProjectContent(): React.ReactElement {
                           return (
                             <tr key={request.id} className="border-b border-neutral-medium/30 hover:bg-neutral-medium/10">
                               <td className="p-3 text-primary font-medium">#{request.id.slice(0, 8).toUpperCase()}</td>
+                              <td className="p-3 text-secondary">{request.po_number || 'Not linked'}</td>
                               <td className="p-3">
                                 <span className={`text-xs px-2 py-1 rounded ${getPurchaseRequestStatusClass(request.status)}`}>
                                   {request.status.replace(/_/g, ' ')}
@@ -2050,6 +2289,202 @@ function IndividualProjectContent(): React.ReactElement {
                       </tbody>
                     </table>
                   </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {activeTab === 'client_pos' && (
+            <div className="p-6 space-y-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="text-lg font-semibold text-primary">Client POs</h3>
+                  <p className="text-sm text-secondary">Manage original, amended, supplemental, and replacement POs for this project.</p>
+                </div>
+                {['awarded', 'finalized', 'completed'].includes(String(project?.project_status || project?.status || '').toLowerCase()) && (
+                  <button
+                    onClick={() => setShowAddPOForm((prev) => !prev)}
+                    className="bg-accent-amber hover:bg-accent-amber/90 text-neutral-dark px-4 py-2 rounded-lg text-sm font-medium"
+                  >
+                    {showAddPOForm ? 'Close' : '+ Add PO'}
+                  </button>
+                )}
+              </div>
+
+              {showAddPOForm && (
+                <div className="bg-neutral-darker rounded-lg border border-neutral-medium p-4">
+                  <div className="grid md:grid-cols-5 gap-3">
+                    <div>
+                      <label className="block text-xs text-secondary mb-1">PO Number *</label>
+                      <input
+                        type="text"
+                        value={poForm.po_number}
+                        onChange={(e) => setPOForm((prev) => ({ ...prev, po_number: e.target.value }))}
+                        className="w-full px-3 py-2 rounded-lg border border-neutral-medium bg-neutral-dark text-primary"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs text-secondary mb-1">PO Date</label>
+                      <input
+                        type="date"
+                        value={poForm.po_date}
+                        onChange={(e) => setPOForm((prev) => ({ ...prev, po_date: e.target.value }))}
+                        className="w-full px-3 py-2 rounded-lg border border-neutral-medium bg-neutral-dark text-primary"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs text-secondary mb-1">PO Value</label>
+                      <input
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        value={poForm.po_value}
+                        onChange={(e) => setPOForm((prev) => ({ ...prev, po_value: e.target.value }))}
+                        className="w-full px-3 py-2 rounded-lg border border-neutral-medium bg-neutral-dark text-primary"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs text-secondary mb-1">PO Type</label>
+                      <select
+                        value={poForm.po_type}
+                        onChange={(e) => setPOForm((prev) => ({ ...prev, po_type: e.target.value as ProjectPOReferenceSummary['po_type'] }))}
+                        className="w-full px-3 py-2 rounded-lg border border-neutral-medium bg-neutral-dark text-primary"
+                      >
+                        <option value="original">Original</option>
+                        <option value="amendment">Amendment</option>
+                        <option value="supplemental">Supplemental</option>
+                        <option value="replacement">Replacement</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-xs text-secondary mb-1">Previous PO</label>
+                      <select
+                        value={poForm.previous_po_reference_id}
+                        onChange={(e) => setPOForm((prev) => ({ ...prev, previous_po_reference_id: e.target.value }))}
+                        className="w-full px-3 py-2 rounded-lg border border-neutral-medium bg-neutral-dark text-primary"
+                      >
+                        <option value="">None</option>
+                        {poReferences.map((po) => (
+                          <option key={po.id} value={po.id}>
+                            {po.po_number}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="md:col-span-5">
+                      <label className="block text-xs text-secondary mb-1">Notes</label>
+                      <textarea
+                        value={poForm.notes}
+                        onChange={(e) => setPOForm((prev) => ({ ...prev, notes: e.target.value }))}
+                        rows={2}
+                        className="w-full px-3 py-2 rounded-lg border border-neutral-medium bg-neutral-dark text-primary resize-none"
+                      />
+                    </div>
+                  </div>
+                  <div className="flex justify-end mt-4">
+                    <button
+                      onClick={addProjectPOReference}
+                      disabled={addingPO}
+                      className="px-4 py-2 rounded-lg bg-accent-amber text-neutral-dark font-medium hover:bg-accent-amber/90 disabled:opacity-50"
+                    >
+                      {addingPO ? 'Adding...' : 'Save PO'}
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              <div className="bg-neutral-darker rounded-lg border border-neutral-medium overflow-x-auto">
+                {poReferencesLoading ? (
+                  <div className="p-4 text-sm text-secondary">Loading project POs...</div>
+                ) : poReferences.length === 0 ? (
+                  <div className="p-4 text-sm text-secondary">
+                    No client POs linked to this project yet.
+                    {!['awarded', 'finalized', 'completed'].includes(String(project?.project_status || project?.status || '').toLowerCase())
+                      ? ' POs can be added once the project is awarded/finalized.'
+                      : ''}
+                  </div>
+                ) : (
+                  <table className="w-full text-sm">
+                    <thead className="bg-neutral-dark border-b border-neutral-medium">
+                      <tr>
+                        <th className="p-3 text-left text-secondary">PO Number</th>
+                        <th className="p-3 text-left text-secondary">Type</th>
+                        <th className="p-3 text-left text-secondary">Status</th>
+                        <th className="p-3 text-left text-secondary">Value</th>
+                        <th className="p-3 text-left text-secondary">Linked PRs</th>
+                        <th className="p-3 text-left text-secondary">Notes</th>
+                        <th className="p-3 text-left text-secondary">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {poReferences.map((po) => (
+                        <tr key={po.id} className="border-b border-neutral-medium/30">
+                          <td className="p-3 text-primary font-medium">
+                            {po.po_number}
+                            {po.is_default && <span className="ml-2 text-[10px] px-2 py-0.5 rounded bg-accent-amber/20 text-accent-amber uppercase">Default</span>}
+                          </td>
+                          <td className="p-3 text-secondary capitalize">{po.po_type}</td>
+                          <td className="p-3">
+                            <span className={`text-xs px-2 py-1 rounded ${
+                              po.status === 'active'
+                                ? 'bg-green-500/20 text-green-400'
+                                : po.status === 'exhausted'
+                                  ? 'bg-yellow-500/20 text-yellow-400'
+                                  : 'bg-neutral-medium text-secondary'
+                            }`}>
+                              {po.status}
+                            </span>
+                          </td>
+                          <td className="p-3 text-primary">{po.po_value ? formatCurrency(po.po_value) : '—'}</td>
+                          <td className="p-3 text-secondary">
+                            {po.request_count || 0} PRs
+                            <div className="text-xs">{po.linked_value ? formatCurrency(po.linked_value) : '₹0.00'}</div>
+                          </td>
+                          <td className="p-3 text-secondary">{po.notes || '—'}</td>
+                          <td className="p-3">
+                            <div className="flex flex-wrap gap-2">
+                              {!po.is_default && (
+                                <button
+                                  onClick={() => updateProjectPOStatus(po.id, { status: 'active', is_default: true })}
+                                  disabled={poActionLoadingId === po.id}
+                                  className="text-xs px-3 py-1 rounded border border-neutral-medium text-primary hover:bg-neutral-medium/30 disabled:opacity-50"
+                                >
+                                  Set Active
+                                </button>
+                              )}
+                              {po.status === 'active' && (
+                                <button
+                                  onClick={() => updateProjectPOStatus(po.id, { status: 'exhausted' })}
+                                  disabled={poActionLoadingId === po.id}
+                                  className="text-xs px-3 py-1 rounded border border-yellow-500/40 text-yellow-300 hover:bg-yellow-500/10 disabled:opacity-50"
+                                >
+                                  Mark Exhausted
+                                </button>
+                              )}
+                              {po.status !== 'closed' && (
+                                <button
+                                  onClick={() => updateProjectPOStatus(po.id, { status: 'closed' })}
+                                  disabled={poActionLoadingId === po.id}
+                                  className="text-xs px-3 py-1 rounded border border-neutral-medium text-secondary hover:bg-neutral-medium/20 disabled:opacity-50"
+                                >
+                                  Close
+                                </button>
+                              )}
+                              {po.status === 'active' && (
+                                <button
+                                  onClick={() => reassignOpenRequestsToPO(po.id, po.po_number)}
+                                  disabled={bulkReassigningPOId === po.id}
+                                  className="text-xs px-3 py-1 rounded border border-accent-blue/50 text-accent-blue hover:bg-accent-blue/10 disabled:opacity-50"
+                                >
+                                  {bulkReassigningPOId === po.id ? 'Reassigning...' : 'Move Open PRs Here'}
+                                </button>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
                 )}
               </div>
             </div>
@@ -2404,6 +2839,31 @@ function IndividualProjectContent(): React.ReactElement {
                     Vendor selection happens during the procurement process.
                   </p>
                 </div>
+
+                {['awarded', 'finalized', 'completed'].includes(String(project?.project_status || project?.status || '').toLowerCase()) && (
+                  <div className="bg-neutral-darker p-4 rounded-lg border border-neutral-medium">
+                    <label className="block text-sm font-medium text-secondary mb-2">Funding PO *</label>
+                    <select
+                      value={selectedPOForRequest}
+                      onChange={(e) => setSelectedPOForRequest(e.target.value)}
+                      className="w-full px-3 py-2 bg-neutral-dark border border-neutral-medium rounded text-primary text-sm focus:border-accent-amber focus:outline-none"
+                    >
+                      <option value="">Select active client PO</option>
+                      {poReferences
+                        .filter((po) => po.status === 'active')
+                        .map((po) => (
+                          <option key={po.id} value={po.id}>
+                            {po.po_number}{po.is_default ? ' (Default)' : ''}
+                          </option>
+                        ))}
+                    </select>
+                    {poReferences.filter((po) => po.status === 'active').length === 0 && (
+                      <p className="text-xs text-red-300 mt-2">
+                        No active client PO is available for this project. Add or activate one in the Client POs tab first.
+                      </p>
+                    )}
+                  </div>
+                )}
                 
                 {/* Materials List with Inputs */}
                 <div>
@@ -2429,7 +2889,7 @@ function IndividualProjectContent(): React.ReactElement {
                             </div>
                           </div>
                           
-                          <div className="grid grid-cols-1 md:grid-cols-6 gap-3">
+                          <div className="grid grid-cols-1 md:grid-cols-8 gap-3">
                             {/* Required Quantity (site unit) */}
                             <div>
                               <label className="block text-xs font-medium text-secondary mb-1">
@@ -2501,7 +2961,7 @@ function IndividualProjectContent(): React.ReactElement {
                                 Purchase Qty (Auto)
                               </label>
                               <div className="px-2 py-1 bg-neutral-medium/20 border border-neutral-medium rounded text-primary text-sm">
-                                {getComputedPurchaseQty(material.id).toLocaleString(undefined, { maximumFractionDigits: 3 })}
+                                {formatTwoDecimals(getComputedPurchaseQty(material.id))}
                               </div>
                             </div>
                             
@@ -2543,6 +3003,23 @@ function IndividualProjectContent(): React.ReactElement {
 
                             <div>
                               <label className="block text-xs font-medium text-secondary mb-1">
+                                Round Off (₹)
+                              </label>
+                              <input
+                                type="number"
+                                step="0.01"
+                                value={purchaseRoundOffs[material.id] ?? ''}
+                                onChange={(e) => setPurchaseRoundOffs(prev => ({
+                                  ...prev,
+                                  [material.id]: e.target.value === '' ? 0 : parseFloat(e.target.value) || 0
+                                }))}
+                                placeholder="0.00"
+                                className="w-full px-2 py-1 bg-neutral-dark border border-neutral-medium rounded text-primary text-sm focus:border-accent-amber focus:outline-none"
+                              />
+                            </div>
+
+                            <div>
+                              <label className="block text-xs font-medium text-secondary mb-1">
                                 HSN Code
                               </label>
                               <input
@@ -2563,21 +3040,13 @@ function IndividualProjectContent(): React.ReactElement {
                                 Total Amount
                               </label>
                               <div className="px-2 py-1 bg-neutral-medium/20 border border-neutral-medium rounded text-primary text-sm">
-                                {(() => {
-                                  const qty = parseFloat(purchaseQuantities[material.id] || '0');
-                                  const purchaseQty = getComputedPurchaseQty(material.id);
-                                  const rate = purchaseRates[material.id] || 0;
-                                  const tax = purchaseTax[material.id] || 0;
-                                  const subtotal = purchaseQty * rate;
-                                  const total = subtotal + (subtotal * tax / 100);
-                                  return formatCurrency(total || 0);
-                                })()}
+                                {formatCurrency(getLineTotal(material.id))}
                               </div>
                             </div>
                           </div>
 
                           <div className="mt-2 text-xs text-secondary">
-                            Coverage after rounding: {getNormalizedCoverageQty(material.id).toLocaleString(undefined, { maximumFractionDigits: 3 })} {material.unit || 'units'}
+                            Coverage after rounding: {formatTwoDecimals(getNormalizedCoverageQty(material.id))} {material.unit || 'units'}
                           </div>
                           
                           {/* Description / specs */}
@@ -2631,11 +3100,7 @@ function IndividualProjectContent(): React.ReactElement {
                       <span className="text-primary">
                         {(() => {
                           const total = Array.from(selectedMaterials).reduce((sum, materialId) => {
-                            const qty = getComputedPurchaseQty(materialId);
-                            const rate = purchaseRates[materialId] || 0;
-                            const tax = purchaseTax[materialId] || 0;
-                            const subtotal = qty * rate;
-                            return sum + subtotal + (subtotal * tax / 100);
+                            return sum + getLineTotal(materialId);
                           }, 0);
                           return formatCurrency(total);
                         })()}
@@ -2652,12 +3117,14 @@ function IndividualProjectContent(): React.ReactElement {
                     setPurchaseQuantities({});
                     setPurchaseRates({});
                     setPurchaseTax({});
+                    setPurchaseRoundOffs({});
                     setPurchaseHsn({});
-                          setPurchaseRemarks({});
-                          setPurchaseUnits({});
-                          setPurchaseConversions({});
-                          setPurchaseShippingLocation('');
-                          setSelectedVendor(null);
+                    setPurchaseRemarks({});
+                    setPurchaseUnits({});
+                    setPurchaseConversions({});
+                    setPurchaseShippingLocation('');
+                    setSelectedPOForRequest('');
+                    setSelectedVendor(null);
                   }}
                   className="px-4 py-2 text-secondary hover:text-primary transition-colors"
                 >
@@ -2701,11 +3168,19 @@ function IndividualProjectContent(): React.ReactElement {
                     
                     try {
                       console.log('🚀 Creating purchase request with normalized schema');
+                      const requiresPOForProject = ['awarded', 'finalized', 'completed'].includes(
+                        String(project?.project_status || project?.status || '').toLowerCase()
+                      );
+                      if (requiresPOForProject && !selectedPOForRequest) {
+                        alert('Select an active client PO before submitting this purchase request.');
+                        return;
+                      }
                       
                       // Prepare purchase request data for new normalized API
                       const purchaseRequestData = {
                         project_id: project.id,
                         contractor_id: contractor?.id,
+                        project_po_reference_id: selectedPOForRequest || null,
                         remarks: Array.from(selectedMaterials).map(materialId => 
                           purchaseRemarks[materialId] || ''
                         ).filter(remark => remark).join('; ') || null,
@@ -2729,11 +3204,12 @@ function IndividualProjectContent(): React.ReactElement {
                               conversion_factor: conversionFactor,
                               purchase_qty: purchaseQty,
                               normalized_qty: purchaseQty * conversionFactor,
-                              requested_qty: requiredQty,
-                            };
-                          })(),
+                          requested_qty: requiredQty,
+                        };
+                      })(),
                           unit_rate: purchaseRates[materialId] || 0,
-                          tax_percent: purchaseTax[materialId] || 0
+                          tax_percent: purchaseTax[materialId] || 0,
+                          round_off_amount: getRoundOffValue(materialId)
                         }))
                       };
                       
@@ -2754,6 +3230,7 @@ function IndividualProjectContent(): React.ReactElement {
                         
                         // Refresh project materials to reflect the new purchase request
                         await fetchProjectMaterials(project.id);
+                        await fetchProjectPOReferences(project.id);
                         
                         // Clear states and close dialog
                         setShowBatchPurchaseDialog(false);
@@ -2761,11 +3238,13 @@ function IndividualProjectContent(): React.ReactElement {
                         setPurchaseQuantities({});
                         setPurchaseRates({});
                         setPurchaseTax({});
+                        setPurchaseRoundOffs({});
                         setPurchaseHsn({});
                         setPurchaseRemarks({});
                         setPurchaseUnits({});
                         setPurchaseConversions({});
                         setPurchaseShippingLocation('');
+                        setSelectedPOForRequest('');
                         setSelectedVendor(null);
                       } else {
                         console.error('❌ Failed to create purchase request:', result);
@@ -2856,10 +3335,8 @@ function IndividualProjectContent(): React.ReactElement {
                         >
                           <option value="">Select material</option>
                           {addableMaterialsForEdit.map((material) => (
-                            <option key={material.id} value={material.id}>
-                              {material.name} ({material.max_requestable.toLocaleString(undefined, {
-                                maximumFractionDigits: 3
-                              })} {material.unit || 'unit'} available)
+                          <option key={material.id} value={material.id}>
+                              {material.name} ({formatTwoDecimals(material.max_requestable)} {material.unit || 'unit'} available)
                             </option>
                           ))}
                         </select>
@@ -2874,6 +3351,33 @@ function IndividualProjectContent(): React.ReactElement {
                       </div>
                     </div>
                   </div>
+
+                  {['awarded', 'finalized', 'completed'].includes(String(project?.project_status || project?.status || '').toLowerCase()) && (
+                    <div>
+                      <label className="block text-xs font-medium text-secondary mb-1">Funding PO</label>
+                      <select
+                        value={editingPurchaseRequest.project_po_reference_id || ''}
+                        disabled={!editingPurchaseRequest.editable}
+                        onChange={(e) =>
+                          setEditingPurchaseRequest({
+                            ...editingPurchaseRequest,
+                            project_po_reference_id: e.target.value || null,
+                            project_po_reference: poReferences.find((po) => po.id === e.target.value) || null,
+                          })
+                        }
+                        className="w-full px-3 py-2 rounded-lg border border-neutral-medium bg-neutral-darker text-primary focus:outline-none focus:ring-2 focus:ring-accent-amber disabled:opacity-50"
+                      >
+                        <option value="">Select active client PO</option>
+                        {poReferences
+                          .filter((po) => po.status === 'active')
+                          .map((po) => (
+                            <option key={po.id} value={po.id}>
+                              {po.po_number}{po.is_default ? ' (Default)' : ''}
+                            </option>
+                          ))}
+                      </select>
+                    </div>
+                  )}
 
                   <div>
                     <label className="block text-xs font-medium text-secondary mb-1">Shipping Location</label>
@@ -2901,6 +3405,7 @@ function IndividualProjectContent(): React.ReactElement {
                           <th className="p-3 text-left text-secondary">Unit</th>
                           <th className="p-3 text-left text-secondary">Rate</th>
                           <th className="p-3 text-left text-secondary">Tax %</th>
+                          <th className="p-3 text-left text-secondary">Round Off</th>
                           <th className="p-3 text-left text-secondary">HSN</th>
                           <th className="p-3 text-left text-secondary">Description / Specs</th>
                           <th className="p-3 text-left text-secondary">Action</th>
@@ -2917,7 +3422,7 @@ function IndividualProjectContent(): React.ReactElement {
                                 <div className="text-primary font-medium">{item.material_name || 'Material'}</div>
                                 {maxQty !== null && maxQty > 0 && (
                                   <div className="text-xs text-secondary mt-1">
-                                    Max addable now: {maxQty.toLocaleString(undefined, { maximumFractionDigits: 3 })}{' '}
+                                    Max addable now: {formatTwoDecimals(maxQty)}{' '}
                                     {item.unit || 'unit'}
                                   </div>
                                 )}
@@ -2953,6 +3458,16 @@ function IndividualProjectContent(): React.ReactElement {
                                   value={item.tax_percent ?? 0}
                                   disabled={!editingPurchaseRequest.editable}
                                   onChange={(e) => updateRequestEditItem(item.id, 'tax_percent', e.target.value)}
+                                  className="w-full px-2 py-1 rounded border border-neutral-medium bg-neutral-darker text-primary focus:outline-none focus:ring-2 focus:ring-accent-amber disabled:opacity-50"
+                                />
+                              </td>
+                              <td className="p-3 align-top min-w-[120px]">
+                                <input
+                                  type="number"
+                                  step="0.01"
+                                  value={item.round_off_amount ?? 0}
+                                  disabled={!editingPurchaseRequest.editable}
+                                  onChange={(e) => updateRequestEditItem(item.id, 'round_off_amount', e.target.value)}
                                   className="w-full px-2 py-1 rounded border border-neutral-medium bg-neutral-darker text-primary focus:outline-none focus:ring-2 focus:ring-accent-amber disabled:opacity-50"
                                 />
                               </td>

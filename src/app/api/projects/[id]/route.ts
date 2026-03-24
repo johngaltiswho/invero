@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase';
 import { auth } from '@clerk/nextjs/server';
+import { getDefaultPOReference, listProjectPOReferences } from '@/lib/project-po-references';
 
 // GET /api/projects/[id] - Get specific project by ID
 export async function GET(
@@ -49,9 +50,15 @@ export async function GET(
       }, { status: 404 });
     }
 
+    const poReferences = await listProjectPOReferences(projectId);
+
     return NextResponse.json({
       success: true,
-      data: project
+      data: {
+        ...project,
+        po_references: poReferences,
+        active_po_reference: getDefaultPOReference(poReferences)
+      }
     });
 
   } catch (error) {

@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { currentUser } from '@clerk/nextjs/server';
 import { createClient } from '@supabase/supabase-js';
 
-const EDITABLE_STATUSES = new Set(['draft', 'submitted', 'rejected']);
+const EDITABLE_STATUSES = new Set(['draft', 'submitted', 'approved']);
 
 type RouteContext = {
   params: Promise<{ id: string }>;
@@ -22,6 +22,7 @@ type PurchaseRequestItemWithMaterial = {
   approved_qty: number | null;
   unit_rate: number | null;
   tax_percent: number | null;
+  round_off_amount: number | null;
   hsn_code: string | null;
   status: string;
   created_at: string;
@@ -63,6 +64,34 @@ async function getContractorIdForUser(userId: string): Promise<string | null> {
   return contractor?.id || null;
 }
 
+async function resolveProjectPOReferenceForRequest(
+  supabase: any,
+  projectId: string,
+  projectStatus: string | null | undefined,
+  requestedPOReferenceId?: string | null
+) {
+  const normalizedStatus = String(projectStatus || '').toLowerCase();
+  const requiresPO = ['awarded', 'finalized', 'completed'].includes(normalizedStatus);
+  if (!requiresPO) return null;
+  if (!requestedPOReferenceId) {
+    throw new Error('An active client PO is required for this project');
+  }
+
+  const { data: poReferences, error } = await supabase
+    .from('project_po_references')
+    .select('id, status')
+    .eq('project_id', projectId);
+
+  if (error) {
+    throw new Error(`Failed to fetch project POs: ${error.message}`);
+  }
+
+  const requested = (poReferences || []).find((po: any) => po.id === requestedPOReferenceId);
+  if (!requested) throw new Error('Selected client PO does not belong to this project');
+  if (requested.status !== 'active') throw new Error('Selected client PO is not active');
+  return requested.id;
+}
+
 export async function GET(_request: NextRequest, context: RouteContext) {
   try {
     const user = await currentUser();
@@ -84,7 +113,27 @@ export async function GET(_request: NextRequest, context: RouteContext) {
 
     const { data: requestRow, error: requestError } = await supabase
       .from('purchase_requests')
-      .select('id, project_id, contractor_id, status, remarks, shipping_location, created_at, updated_at, submitted_at, approved_at, funded_at')
+      .select(`
+        id,
+        project_id,
+        project_po_reference_id,
+        contractor_id,
+        status,
+        remarks,
+        shipping_location,
+        created_at,
+        updated_at,
+        submitted_at,
+        approved_at,
+        funded_at,
+        project_po_references:project_po_reference_id (
+          id,
+          po_number,
+          po_type,
+          status,
+          is_default
+        )
+      `)
       .eq('id', requestId)
       .eq('contractor_id', contractorId)
       .single();
@@ -112,6 +161,7 @@ export async function GET(_request: NextRequest, context: RouteContext) {
         approved_qty,
         unit_rate,
         tax_percent,
+        round_off_amount,
         hsn_code,
         status,
         created_at,
@@ -130,7 +180,13 @@ export async function GET(_request: NextRequest, context: RouteContext) {
     items = (itemsWithConversion.data as PurchaseRequestItemWithMaterial[] | null) ?? null;
     itemsError = itemsWithConversion.error;
 
-    if (itemsError && String(itemsError.message || '').includes('purchase_qty')) {
+    if (
+      itemsError &&
+      (
+        String(itemsError.message || '').includes('purchase_qty') ||
+        String(itemsError.message || '').includes('round_off_amount')
+      )
+    ) {
       const fallbackItems = await supabase
         .from('purchase_request_items')
         .select(`
@@ -213,6 +269,12 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
     const body = await request.json();
     const remarks = typeof body.remarks === 'string' ? body.remarks : null;
     const shippingLocation = typeof body.shipping_location === 'string' ? body.shipping_location.trim() || null : null;
+    const requestedPOReferenceId =
+      typeof body.project_po_reference_id === 'string' && body.project_po_reference_id.trim()
+        ? body.project_po_reference_id.trim()
+        : body.project_po_reference_id === null
+          ? null
+          : undefined;
     const items = Array.isArray(body.items) ? body.items : [];
 
     const contractorId = await getContractorIdForUser(user.id);
@@ -224,7 +286,7 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
 
     const { data: requestRow, error: requestError } = await supabase
       .from('purchase_requests')
-      .select('id, status, contractor_id, project_id, shipping_location')
+      .select('id, status, contractor_id, project_id, project_po_reference_id, shipping_location')
       .eq('id', requestId)
       .eq('contractor_id', contractorId)
       .single();
@@ -239,6 +301,33 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
         { error: `Purchase request cannot be edited in '${requestRow.status}' status` },
         { status: 400 }
       );
+    }
+
+    const { data: project } = await supabase
+      .from('projects')
+      .select('id, project_status')
+      .eq('id', requestRow.project_id)
+      .maybeSingle();
+
+    if (!project) {
+      return NextResponse.json({ error: 'Linked project not found' }, { status: 404 });
+    }
+
+    let nextProjectPOReferenceId = requestRow.project_po_reference_id || null;
+    if (requestedPOReferenceId !== undefined) {
+      try {
+        nextProjectPOReferenceId = await resolveProjectPOReferenceForRequest(
+          supabase,
+          requestRow.project_id,
+          (project as any).project_status,
+          requestedPOReferenceId
+        );
+      } catch (error) {
+        return NextResponse.json(
+          { error: error instanceof Error ? error.message : 'Invalid client PO selection' },
+          { status: 400 }
+        );
+      }
     }
 
     const { data: existingItems, error: existingItemsError } = await supabase
@@ -308,16 +397,30 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
         normalized_qty: normalizedQty,
         unit_rate: item.unit_rate === null || item.unit_rate === '' ? null : Number(item.unit_rate),
         tax_percent: item.tax_percent === null || item.tax_percent === '' ? 0 : Number(item.tax_percent),
+        round_off_amount:
+          item.round_off_amount === null || item.round_off_amount === undefined || item.round_off_amount === ''
+            ? 0
+            : Number(item.round_off_amount),
         hsn_code: item.hsn_code?.toString().trim() || null,
         updated_at: new Date().toISOString()
       };
 
       if (itemId && existingIds.has(itemId)) {
-        const { error: itemUpdateError } = await supabase
+        let { error: itemUpdateError } = await supabase
           .from('purchase_request_items')
           .update(updatePayload)
           .eq('id', itemId)
           .eq('purchase_request_id', requestId);
+
+        if (itemUpdateError && String(itemUpdateError.message || '').includes('round_off_amount')) {
+          const { round_off_amount: _roundOffAmount, ...legacyUpdatePayload } = updatePayload;
+          const legacyUpdate = await supabase
+            .from('purchase_request_items')
+            .update(legacyUpdatePayload)
+            .eq('id', itemId)
+            .eq('purchase_request_id', requestId);
+          itemUpdateError = legacyUpdate.error;
+        }
 
         if (itemUpdateError) {
           console.error('Failed to update purchase request item:', itemUpdateError);
@@ -337,6 +440,7 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
           requested_qty: updatePayload.requested_qty,
           unit_rate: updatePayload.unit_rate,
           tax_percent: updatePayload.tax_percent,
+          round_off_amount: updatePayload.round_off_amount,
           status: 'pending',
           created_at: new Date().toISOString(),
           updated_at: new Date().toISOString()
@@ -388,9 +492,17 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
         }
       }
 
-      const { error: insertError } = await supabase
+      let { error: insertError } = await supabase
         .from('purchase_request_items')
         .insert(newItems);
+
+      if (insertError && String(insertError.message || '').includes('round_off_amount')) {
+        const legacyNewItems = newItems.map(({ round_off_amount: _roundOffAmount, ...rest }) => rest);
+        const legacyInsert = await supabase
+          .from('purchase_request_items')
+          .insert(legacyNewItems);
+        insertError = legacyInsert.error;
+      }
 
       if (insertError) {
         console.error('Failed to insert new purchase request items:', insertError);
@@ -403,11 +515,12 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
       .update({
         remarks,
         shipping_location: shippingLocation,
+        project_po_reference_id: nextProjectPOReferenceId,
         updated_at: new Date().toISOString(),
       })
       .eq('id', requestId)
       .eq('contractor_id', contractorId)
-      .select('id, project_id, contractor_id, status, remarks, shipping_location, updated_at')
+      .select('id, project_id, project_po_reference_id, contractor_id, status, remarks, shipping_location, updated_at')
       .single();
 
     if (requestUpdateError || !updatedRequest) {

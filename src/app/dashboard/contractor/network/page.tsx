@@ -15,7 +15,7 @@ interface Vendor {
   email: string;
   address: string;
   gstNumber: string;
-  specialties: string;
+  specialties: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -87,6 +87,12 @@ export default function NetworkPage() {
     }
   }, [contractor?.id]);
 
+  const getVendorSpecialties = (vendor: Vendor) =>
+    (vendor.specialties || '')
+      .split(',')
+      .map((specialty) => specialty.trim())
+      .filter(Boolean);
+
   const fetchVendors = async () => {
     try {
       setLoading(true);
@@ -131,13 +137,13 @@ export default function NetworkPage() {
   const handleEditVendor = (vendor: Vendor) => {
     setEditingVendor(vendor);
     setVendorForm({
-      name: vendor.name,
-      contactPerson: vendor.contactPerson,
-      phone: vendor.phone,
-      email: vendor.email,
-      address: vendor.address,
-      specialties: vendor.specialties,
-      gstNumber: vendor.gstNumber
+      name: vendor.name || '',
+      contactPerson: vendor.contactPerson || '',
+      phone: vendor.phone || '',
+      email: vendor.email || '',
+      address: vendor.address || '',
+      specialties: vendor.specialties || '',
+      gstNumber: vendor.gstNumber || ''
     });
     setShowVendorDialog(true);
   };
@@ -396,7 +402,7 @@ export default function NetworkPage() {
               <div className="bg-neutral-dark border border-neutral-medium rounded-lg p-4">
                 <div className="text-accent-amber text-sm font-mono mb-2">SPECIALTIES</div>
                 <div className="text-2xl font-bold text-primary mb-1">
-                  {new Set(vendors.flatMap(v => v.specialties.split(',').map(s => s.trim()))).size}
+                  {new Set(vendors.flatMap(getVendorSpecialties)).size}
                 </div>
                 <div className="text-xs text-secondary">Material categories</div>
               </div>
@@ -568,16 +574,16 @@ export default function NetworkPage() {
                           <td className="py-3 px-4">
                             {vendor.specialties && (
                               <div className="flex flex-wrap gap-1">
-                                {vendor.specialties.split(',').slice(0, 2).map((specialty, index) => (
+                                {getVendorSpecialties(vendor).slice(0, 2).map((specialty, index) => (
                                   <span
                                     key={index}
                                     className="bg-accent-amber/20 text-accent-amber text-xs px-2 py-1 rounded"
                                   >
-                                    {specialty.trim()}
+                                    {specialty}
                                   </span>
                                 ))}
-                                {vendor.specialties.split(',').length > 2 && (
-                                  <span className="text-xs text-secondary">+{vendor.specialties.split(',').length - 2}</span>
+                                {getVendorSpecialties(vendor).length > 2 && (
+                                  <span className="text-xs text-secondary">+{getVendorSpecialties(vendor).length - 2}</span>
                                 )}
                               </div>
                             )}

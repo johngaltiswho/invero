@@ -21,7 +21,7 @@ WHERE p.client_id = c.id
 UPDATE projects p
 SET project_address = c.address
 FROM clients c
-WHERE LOWER(TRIM(p.client_name)) = LOWER(TRIM(c.name))
+WHERE LOWER(TRIM(COALESCE(p.client_name, ''))) = LOWER(TRIM(COALESCE(c.name, '')))
   AND p.contractor_id = c.contractor_id
   AND COALESCE(NULLIF(TRIM(p.project_address), ''), '') = ''
   AND COALESCE(NULLIF(TRIM(c.address), ''), '') <> '';
@@ -30,8 +30,7 @@ WHERE LOWER(TRIM(p.client_name)) = LOWER(TRIM(c.name))
 UPDATE purchase_requests pr
 SET shipping_location = COALESCE(
   NULLIF(TRIM(p.project_address), ''),
-  NULLIF(TRIM(c.address), ''),
-  NULLIF(TRIM(p.location), '')
+  NULLIF(TRIM(c.address), '')
 )
 FROM projects p
 LEFT JOIN clients c
@@ -40,5 +39,5 @@ LEFT JOIN clients c
     p.contractor_id = c.contractor_id
     AND LOWER(TRIM(COALESCE(p.client_name, ''))) = LOWER(TRIM(COALESCE(c.name, '')))
   )
-WHERE pr.project_id = p.id
+WHERE pr.project_id = p.id::text
   AND COALESCE(NULLIF(TRIM(pr.shipping_location), ''), '') = '';
