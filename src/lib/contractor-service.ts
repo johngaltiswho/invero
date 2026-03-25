@@ -14,6 +14,21 @@ import type {
 
 // Contractor CRUD operations
 export class ContractorService {
+  static async getContractorById(id: string): Promise<Contractor | null> {
+    const { data, error } = await supabaseAdmin
+      .from('contractors')
+      .select('*')
+      .eq('id', id)
+      .maybeSingle()
+
+    if (error) {
+      console.error('Error fetching contractor by id:', error)
+      return null
+    }
+
+    return data
+  }
+
   // Get contractor by email (for login)
   static async getContractorByEmail(email: string): Promise<Contractor | null> {
     const { data, error } = await supabaseAdmin

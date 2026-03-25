@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
 import { ContractorService } from '@/lib/contractor-service';
 import { supabaseAdmin } from '@/lib/supabase';
+import { calculateCapitalAccrualMetrics, groupTransactionsByPurchaseRequest } from '@/lib/capital-accrual';
 
 type PurchaseRequestRow = {
   id: string;
@@ -127,22 +128,7 @@ export async function GET() {
       requestTotals.set(item.purchase_request_id, current + base + tax);
     });
 
-    const fundedTotals = new Map<string, number>();
-    const firstDeploymentAt = new Map<string, string>();
-    (capitalTransactions as CapitalTransactionRow[] | null)?.forEach((row) => {
-      if (!row.purchase_request_id) return;
-      const amount = Number(row.amount ?? 0);
-      if (row.transaction_type === 'deployment') {
-        const current = fundedTotals.get(row.purchase_request_id) || 0;
-        fundedTotals.set(row.purchase_request_id, current + amount);
-        if (row.created_at) {
-          const existing = firstDeploymentAt.get(row.purchase_request_id);
-          if (!existing || new Date(row.created_at).getTime() < new Date(existing).getTime()) {
-            firstDeploymentAt.set(row.purchase_request_id, row.created_at);
-          }
-        }
-      }
-    });
+    const transactionsByRequest = groupTransactionsByPurchaseRequest((capitalTransactions as CapitalTransactionRow[] | null) || []);
 
     const projectIds = Array.from(new Set(requests.map((request) => request.project_id).filter(Boolean))) as string[];
     const projectMap = new Map<string, ProjectRow>();
@@ -174,18 +160,12 @@ export async function GET() {
 
     const requestRows = requests.map((request) => {
       const requestTotal = requestTotals.get(request.id) || 0;
-      const funded = fundedTotals.get(request.id) || 0;
       const project = request.project_id ? projectMap.get(request.project_id) : null;
-      const deployedAt = firstDeploymentAt.get(request.id);
-      const daysOutstanding = deployedAt
-        ? Math.max(
-            0,
-            Math.floor((Date.now() - new Date(deployedAt).getTime()) / (1000 * 60 * 60 * 24))
-          )
-        : 0;
-      const platformFee = Math.min(funded * terms.platform_fee_rate, terms.platform_fee_cap);
-      const participationFee = funded * terms.participation_fee_rate_daily * daysOutstanding;
-      const totalDue = funded + platformFee + participationFee;
+      const metrics = calculateCapitalAccrualMetrics({
+        transactions: transactionsByRequest.get(request.id) || [],
+        terms,
+        purchaseRequestTotal: requestTotal
+      });
 
       return {
         id: request.id,
@@ -194,11 +174,11 @@ export async function GET() {
         status: request.status ?? 'draft',
         created_at: request.created_at ?? null,
         total_requested: requestTotal,
-        total_funded: funded,
-        platform_fee: platformFee,
-        participation_fee: participationFee,
-        total_due: totalDue,
-        days_outstanding: daysOutstanding
+        total_funded: metrics.fundedAmount,
+        platform_fee: metrics.platformFee,
+        participation_fee: metrics.participationFee,
+        total_due: metrics.totalDue,
+        days_outstanding: metrics.daysOutstanding
       };
     });
 
@@ -210,17 +190,15 @@ export async function GET() {
     requests.forEach((request) => {
       if (!request.project_id) return;
       const requestTotal = requestTotals.get(request.id) || 0;
-      const funded = fundedTotals.get(request.id) || 0;
-      const deployedAt = firstDeploymentAt.get(request.id);
-      const daysOutstanding = deployedAt
-        ? Math.max(
-            0,
-            Math.floor((Date.now() - new Date(deployedAt).getTime()) / (1000 * 60 * 60 * 24))
-          )
-        : 0;
-      const platformFee = Math.min(funded * terms.platform_fee_rate, terms.platform_fee_cap);
-      const participationFee = funded * terms.participation_fee_rate_daily * daysOutstanding;
-      const totalDue = funded + platformFee + participationFee;
+      const metrics = calculateCapitalAccrualMetrics({
+        transactions: transactionsByRequest.get(request.id) || [],
+        terms,
+        purchaseRequestTotal: requestTotal
+      });
+      const funded = metrics.fundedAmount;
+      const platformFee = metrics.platformFee;
+      const participationFee = metrics.participationFee;
+      const totalDue = metrics.totalDue;
 
       totalRequestedValue += requestTotal;
       totalFunded += funded;

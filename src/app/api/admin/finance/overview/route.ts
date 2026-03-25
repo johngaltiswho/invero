@@ -1,12 +1,14 @@
 import { NextResponse } from 'next/server';
 import { requireAdmin } from '@/lib/admin-auth';
 import { supabaseAdmin } from '@/lib/supabase';
+import { calculateCapitalAccrualMetrics, groupTransactionsByPurchaseRequest } from '@/lib/capital-accrual';
 
 type PurchaseRequestRow = {
   id: string;
   project_id: string | null;
   contractor_id: string | null;
   status: string | null;
+  vendor_id?: number | null;
 };
 
 type PurchaseRequestItemRow = {
@@ -86,6 +88,25 @@ type InvestorTransactionRow = {
   created_at: string | null;
 };
 
+type VendorRow = {
+  id: number;
+  name: string | null;
+};
+
+type FundingLedgerEntry = {
+  purchase_request_id: string;
+  project_id: string | null;
+  project_name: string | null;
+  contractor_name: string | null;
+  vendor_name: string | null;
+  event_type: 'deployment' | 'return';
+  event_date: string | null;
+  amount: number;
+  running_principal_outstanding: number;
+  running_fee_outstanding: number;
+  running_total_outstanding: number;
+};
+
 const computeXirr = (cashflows: CashflowPoint[]) => {
   if (!cashflows || cashflows.length < 2) return 0;
   const sorted = [...cashflows].sort((a, b) => a.date.getTime() - b.date.getTime());
@@ -119,12 +140,12 @@ export async function GET() {
     // Get all purchase requests for historical data
     const { data: purchaseRequests, error: purchaseRequestError } = await supabaseAdmin
       .from('purchase_requests')
-      .select('id, project_id, contractor_id, status');
+      .select('id, project_id, contractor_id, status, vendor_id');
 
     // Also get only requests that need funding (submitted/approved, not yet fully funded)
     const { data: openRequests, error: openRequestsError } = await supabaseAdmin
       .from('purchase_requests')
-      .select('id, project_id, contractor_id, status')
+      .select('id, project_id, contractor_id, status, vendor_id')
       .in('status', ['submitted', 'approved']);
 
     if (purchaseRequestError) {
@@ -273,26 +294,7 @@ export async function GET() {
       requestTotals.set(item.purchase_request_id, current + base + tax);
     });
 
-    const fundedTotals = new Map<string, number>();
-    const returnTotals = new Map<string, number>();
-    const firstDeploymentAtByRequest = new Map<string, string>();
-    (capitalTransactions as CapitalTransactionRow[] | null)?.forEach((row) => {
-      if (!row.purchase_request_id) return;
-      const amount = Number(row.amount ?? 0);
-      if (row.transaction_type === 'deployment') {
-        const current = fundedTotals.get(row.purchase_request_id) || 0;
-        fundedTotals.set(row.purchase_request_id, current + amount);
-        if (row.created_at) {
-          const existing = firstDeploymentAtByRequest.get(row.purchase_request_id);
-          if (!existing || new Date(row.created_at).getTime() < new Date(existing).getTime()) {
-            firstDeploymentAtByRequest.set(row.purchase_request_id, row.created_at);
-          }
-        }
-      } else if (row.transaction_type === 'return') {
-        const current = returnTotals.get(row.purchase_request_id) || 0;
-        returnTotals.set(row.purchase_request_id, current + amount);
-      }
-    });
+    const transactionsByRequest = groupTransactionsByPurchaseRequest((capitalTransactions as CapitalTransactionRow[] | null) || []);
 
     const projectIds = Array.from(
       new Set(
@@ -383,6 +385,23 @@ export async function GET() {
       }
     }
 
+    const vendorIds = Array.from(new Set(requests.map((request) => request.vendor_id).filter(Boolean))) as number[];
+    const vendorMap = new Map<number, VendorRow>();
+    if (vendorIds.length > 0) {
+      const { data: vendors, error: vendorsError } = await supabaseAdmin
+        .from('vendors')
+        .select('id, name')
+        .in('id', vendorIds);
+
+      if (vendorsError) {
+        console.error('Failed to load vendors:', vendorsError);
+      } else {
+        (vendors as VendorRow[] | null)?.forEach((vendor) => {
+          vendorMap.set(vendor.id, vendor);
+        });
+      }
+    }
+
     const requestById = new Map<string, PurchaseRequestRow>();
     requests.forEach((request) => {
       requestById.set(request.id, request);
@@ -463,12 +482,33 @@ export async function GET() {
     let totalPlatformFee = 0;
     let totalParticipationFee = 0;
     let fundingRequired = 0; // Only for open (submitted/approved) requests
+    const fundingLedger: FundingLedgerEntry[] = [];
+    const requestSummaries: Array<{
+      purchase_request_id: string;
+      project_id: string | null;
+      project_name: string | null;
+      contractor_name: string | null;
+      vendor_name: string | null;
+      status: string | null;
+      requested_total: number;
+      funded_total: number;
+      returned_total: number;
+      outstanding_principal: number;
+      outstanding_fee: number;
+      outstanding_total: number;
+      platform_fee: number;
+      participation_fee: number;
+      days_outstanding: number;
+    }> = [];
 
     // Calculate funding required for open requests only
     const openRequestIds = new Set<string>((openRequests || []).map(r => r.id as string));
     openRequestIds.forEach((requestId) => {
       const requestTotal = requestTotals.get(requestId) || 0;
-      const funded = fundedTotals.get(requestId) || 0;
+      const funded = calculateCapitalAccrualMetrics({
+        transactions: transactionsByRequest.get(requestId) || [],
+        purchaseRequestTotal: requestTotal
+      }).fundedAmount;
       // Funding required = requested - already funded
       fundingRequired += Math.max(requestTotal - funded, 0);
     });
@@ -477,25 +517,67 @@ export async function GET() {
       if (!request.project_id) return;
       const normalizedProjectId = request.project_id.trim();
       const requestTotal = requestTotals.get(request.id) || 0;
-      const funded = fundedTotals.get(request.id) || 0;
-      const returns = returnTotals.get(request.id) || 0;
       const contractor = request.contractor_id ? contractorMap.get(request.contractor_id) : null;
-      const deployedAt = firstDeploymentAtByRequest.get(request.id);
-      const daysOutstanding = deployedAt
-        ? Math.max(0, Math.floor((Date.now() - new Date(deployedAt).getTime()) / (1000 * 60 * 60 * 24)))
-        : 0;
-      const platformFeeRate = Number(contractor?.platform_fee_rate ?? 0.0025);
-      const platformFeeCap = Number(contractor?.platform_fee_cap ?? 25000);
-      const participationFeeRate = Number(contractor?.participation_fee_rate_daily ?? 0.001);
-      const platformFee = Math.min(funded * platformFeeRate, platformFeeCap);
-      const participationFee = funded * participationFeeRate * daysOutstanding;
-      const outstandingForRequest = Math.max(funded + platformFee + participationFee - returns, 0);
+      const vendor = request.vendor_id ? vendorMap.get(request.vendor_id) : null;
+      const metrics = calculateCapitalAccrualMetrics({
+        transactions: transactionsByRequest.get(request.id) || [],
+        terms: contractor,
+        purchaseRequestTotal: requestTotal
+      });
+      const funded = metrics.fundedAmount;
+      const returns = metrics.returnedAmount;
+      const platformFee = metrics.platformFee;
+      const participationFee = metrics.participationFee;
+      const outstandingForRequest = metrics.remainingDue;
 
       totalRequestedValue += requestTotal;
       totalFunded += funded;
       totalReturns += returns;
       totalPlatformFee += platformFee;
       totalParticipationFee += participationFee;
+
+      requestSummaries.push({
+        purchase_request_id: request.id,
+        project_id: normalizedProjectId,
+        project_name: projectMap.get(normalizedProjectId)?.project_name ?? projectMap.get(normalizedProjectId)?.project_id_external ?? normalizedProjectId,
+        contractor_name: contractor?.company_name ?? null,
+        vendor_name: vendor?.name ?? null,
+        status: request.status,
+        requested_total: requestTotal,
+        funded_total: funded,
+        returned_total: returns,
+        outstanding_principal: metrics.outstandingPrincipal,
+        outstanding_fee: metrics.outstandingParticipationFee,
+        outstanding_total: metrics.remainingInvestorDue,
+        platform_fee: platformFee,
+        participation_fee: participationFee,
+        days_outstanding: metrics.daysOutstanding
+      });
+
+      const requestTransactions = [...(transactionsByRequest.get(request.id) || [])]
+        .sort((a, b) => new Date(a.created_at || 0).getTime() - new Date(b.created_at || 0).getTime());
+
+      requestTransactions.forEach((transaction, index) => {
+        const ledgerMetrics = calculateCapitalAccrualMetrics({
+          transactions: requestTransactions.slice(0, index + 1),
+          terms: contractor,
+          purchaseRequestTotal: requestTotal
+        });
+
+        fundingLedger.push({
+          purchase_request_id: request.id,
+          project_id: normalizedProjectId,
+          project_name: projectMap.get(normalizedProjectId)?.project_name ?? projectMap.get(normalizedProjectId)?.project_id_external ?? normalizedProjectId,
+          contractor_name: contractor?.company_name ?? null,
+          vendor_name: vendor?.name ?? null,
+          event_type: transaction.transaction_type === 'return' ? 'return' : 'deployment',
+          event_date: transaction.created_at || null,
+          amount: Number(transaction.amount || 0),
+          running_principal_outstanding: ledgerMetrics.outstandingPrincipal,
+          running_fee_outstanding: ledgerMetrics.outstandingParticipationFee,
+          running_total_outstanding: ledgerMetrics.remainingInvestorDue
+        });
+      });
 
       const existing = projectTotals.get(normalizedProjectId);
       const project = projectMap.get(normalizedProjectId);
@@ -522,7 +604,10 @@ export async function GET() {
       projectTotals.set(normalizedProjectId, base);
     });
 
-    const totalOutstanding = Math.max(totalFunded + totalPlatformFee + totalParticipationFee - totalReturns, 0);
+    const totalOutstanding = Math.max(
+      Array.from(projectTotals.values()).reduce((sum, project) => sum + project.total_outstanding, 0),
+      0
+    );
 
     return NextResponse.json({
       summary: {
@@ -539,7 +624,9 @@ export async function GET() {
       },
       investors: investorSummariesWithDisbursements,
       projects: Array.from(projectTotals.values())
-        .sort((a, b) => b.total_funded - a.total_funded)
+        .sort((a, b) => b.total_funded - a.total_funded),
+      requests: requestSummaries.sort((a, b) => b.outstanding_total - a.outstanding_total),
+      funding_ledger: fundingLedger.sort((a, b) => new Date(b.event_date || 0).getTime() - new Date(a.event_date || 0).getTime())
     });
   } catch (error) {
     console.error('Error in GET /api/admin/finance/overview:', error);

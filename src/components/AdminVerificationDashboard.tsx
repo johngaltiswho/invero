@@ -234,6 +234,8 @@ export default function AdminVerificationDashboard(): React.ReactElement {
   const [purchaseAdminNotes, setPurchaseAdminNotes] = useState('');
   const [fuelPumps, setFuelPumps] = useState<any[]>([]);
   const [showAddPump, setShowAddPump] = useState(false);
+  const [emailForm, setEmailForm] = useState({ value: '' });
+  const [emailSaving, setEmailSaving] = useState(false);
   const [addPumpForm, setAddPumpForm] = useState({
     pump_name: '',
     address: '',
@@ -305,6 +307,10 @@ export default function AdminVerificationDashboard(): React.ReactElement {
     if (!selectedContractor) return;
     loadFuelSettings(selectedContractor.id);
   }, [selectedContractor]);
+
+  useEffect(() => {
+    setEmailForm({ value: selectedContractor?.email ?? '' });
+  }, [selectedContractor?.id, selectedContractor?.email]);
 
   const loadContractors = async () => {
     try {
@@ -378,6 +384,62 @@ export default function AdminVerificationDashboard(): React.ReactElement {
       alert(error instanceof Error ? error.message : 'Failed to update finance terms');
     } finally {
       setTermsSaving(false);
+    }
+  };
+
+  const handleSaveContractorEmail = async () => {
+    if (!selectedContractor) return;
+
+    const normalizedEmail = emailForm.value.trim().toLowerCase();
+    if (!normalizedEmail) {
+      alert('Email is required.');
+      return;
+    }
+
+    if (normalizedEmail === selectedContractor.email.toLowerCase()) {
+      alert('No email change to save.');
+      return;
+    }
+
+    setEmailSaving(true);
+    try {
+      const response = await fetch('/api/admin/contractors', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contractorId: selectedContractor.id,
+          action: 'update_email',
+          email: normalizedEmail
+        })
+      });
+
+      const result = await response.json();
+      if (!response.ok || !result.success) {
+        throw new Error(result.error || 'Failed to update contractor email');
+      }
+
+      const updatedEmail = result.data?.email || normalizedEmail;
+
+      setSelectedContractor({
+        ...selectedContractor,
+        email: updatedEmail
+      });
+
+      setContractors((prev) =>
+        prev.map((contractor) =>
+          contractor.id === selectedContractor.id
+            ? { ...contractor, email: updatedEmail }
+            : contractor
+        )
+      );
+
+      setEmailForm({ value: updatedEmail });
+      alert('Contractor email updated successfully.');
+    } catch (error) {
+      console.error('Failed to update contractor email:', error);
+      alert(error instanceof Error ? error.message : 'Failed to update contractor email');
+    } finally {
+      setEmailSaving(false);
     }
   };
 
@@ -1391,6 +1453,28 @@ export default function AdminVerificationDashboard(): React.ReactElement {
               </div>
 
               <div className="p-6">
+                <div className="bg-neutral-darker/60 border border-neutral-medium rounded-lg p-4 mb-6">
+                  <div className="flex items-center justify-between mb-4">
+                    <div>
+                      <h3 className="text-lg font-semibold text-primary">Registered Email</h3>
+                      <p className="text-xs text-secondary">Updates the contractor login/contact email in Finverno and Clerk.</p>
+                    </div>
+                    <Button variant="primary" size="sm" onClick={handleSaveContractorEmail} disabled={emailSaving}>
+                      {emailSaving ? 'Updating...' : 'Update Email'}
+                    </Button>
+                  </div>
+                  <label className="block text-sm">
+                    <span className="text-secondary">Contractor Email</span>
+                    <input
+                      type="email"
+                      value={emailForm.value}
+                      onChange={(event) => setEmailForm({ value: event.target.value })}
+                      className="mt-2 w-full px-3 py-2 rounded-lg border border-neutral-medium bg-neutral-dark text-primary focus:outline-none focus:ring-2 focus:ring-accent-orange"
+                      placeholder="Enter contractor email"
+                    />
+                  </label>
+                </div>
+
                 <div className="bg-neutral-darker/60 border border-neutral-medium rounded-lg p-4 mb-6">
                   <div className="flex items-center justify-between mb-4">
                     <div>

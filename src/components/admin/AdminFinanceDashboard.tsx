@@ -50,6 +50,38 @@ type InvestorFinanceRow = {
   }>;
 };
 
+type RequestFinanceRow = {
+  purchase_request_id: string;
+  project_id: string | null;
+  project_name: string | null;
+  contractor_name: string | null;
+  vendor_name: string | null;
+  status: string | null;
+  requested_total: number;
+  funded_total: number;
+  returned_total: number;
+  outstanding_principal: number;
+  outstanding_fee: number;
+  outstanding_total: number;
+  platform_fee: number;
+  participation_fee: number;
+  days_outstanding: number;
+};
+
+type FundingLedgerRow = {
+  purchase_request_id: string;
+  project_id: string | null;
+  project_name: string | null;
+  contractor_name: string | null;
+  vendor_name: string | null;
+  event_type: 'deployment' | 'return';
+  event_date: string | null;
+  amount: number;
+  running_principal_outstanding: number;
+  running_fee_outstanding: number;
+  running_total_outstanding: number;
+};
+
 const formatCurrency = (amount: number) =>
   new Intl.NumberFormat('en-IN', {
     style: 'currency',
@@ -62,6 +94,8 @@ const AdminFinanceDashboard: React.FC = () => {
   const [summary, setSummary] = useState<FinanceSummary | null>(null);
   const [projects, setProjects] = useState<ProjectFinanceRow[]>([]);
   const [investors, setInvestors] = useState<InvestorFinanceRow[]>([]);
+  const [requests, setRequests] = useState<RequestFinanceRow[]>([]);
+  const [fundingLedger, setFundingLedger] = useState<FundingLedgerRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -77,6 +111,8 @@ const AdminFinanceDashboard: React.FC = () => {
         setSummary(data.summary);
         setProjects(data.projects || []);
         setInvestors(data.investors || []);
+        setRequests(data.requests || []);
+        setFundingLedger(data.funding_ledger || []);
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Failed to load finance overview');
       } finally {
@@ -220,6 +256,127 @@ const AdminFinanceDashboard: React.FC = () => {
                 <tr>
                   <td className="px-6 py-6 text-center text-secondary" colSpan={9}>
                     No purchase request funding data available yet.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div className="mt-8 bg-neutral-dark rounded-lg border border-neutral-medium overflow-hidden">
+        <div className="p-6 border-b border-neutral-medium flex items-center justify-between">
+          <div>
+            <h2 className="text-xl font-semibold text-primary">Purchase Request Reconciliation</h2>
+            <p className="text-sm text-secondary">Outstanding principal, accrued fee, and returns by purchase request.</p>
+          </div>
+          <div className="text-sm text-secondary">
+            {requests.length} requests
+          </div>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="min-w-full text-sm text-left">
+            <thead className="bg-neutral-darker text-secondary text-xs uppercase tracking-wide">
+              <tr>
+                <th className="px-6 py-4">Purchase Request</th>
+                <th className="px-6 py-4">Project</th>
+                <th className="px-6 py-4">Contractor / Vendor</th>
+                <th className="px-6 py-4">Funded</th>
+                <th className="px-6 py-4">Returned</th>
+                <th className="px-6 py-4">Principal Outstanding</th>
+                <th className="px-6 py-4">Accrued Fee Outstanding</th>
+                <th className="px-6 py-4">Total Investor Due</th>
+                <th className="px-6 py-4">Status</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-neutral-medium">
+              {requests.map((request) => (
+                <tr key={request.purchase_request_id} className="hover:bg-neutral-medium/20">
+                  <td className="px-6 py-4 text-primary font-medium">
+                    PR-{request.purchase_request_id.slice(0, 8).toUpperCase()}
+                  </td>
+                  <td className="px-6 py-4 text-secondary">
+                    <div>{request.project_name || 'Unnamed Project'}</div>
+                    <div className="text-xs text-secondary/70">{request.days_outstanding} days outstanding</div>
+                  </td>
+                  <td className="px-6 py-4 text-secondary">
+                    <div>{request.contractor_name || '—'}</div>
+                    <div className="text-xs text-secondary/70">Vendor: {request.vendor_name || '—'}</div>
+                  </td>
+                  <td className="px-6 py-4 text-success">{formatCurrency(request.funded_total)}</td>
+                  <td className="px-6 py-4 text-accent-amber">{formatCurrency(request.returned_total)}</td>
+                  <td className="px-6 py-4 text-primary">{formatCurrency(request.outstanding_principal)}</td>
+                  <td className="px-6 py-4 text-accent-blue">{formatCurrency(request.outstanding_fee)}</td>
+                  <td className="px-6 py-4 text-accent-blue font-medium">{formatCurrency(request.outstanding_total)}</td>
+                  <td className="px-6 py-4 text-secondary uppercase text-xs">{request.status || '—'}</td>
+                </tr>
+              ))}
+              {requests.length === 0 && (
+                <tr>
+                  <td className="px-6 py-6 text-center text-secondary" colSpan={9}>
+                    No purchase request reconciliation data available yet.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div className="mt-8 bg-neutral-dark rounded-lg border border-neutral-medium overflow-hidden">
+        <div className="p-6 border-b border-neutral-medium flex items-center justify-between">
+          <div>
+            <h2 className="text-xl font-semibold text-primary">Funding Ledger</h2>
+            <p className="text-sm text-secondary">Running deployment and repayment entries with outstanding balance after each event.</p>
+          </div>
+          <div className="text-sm text-secondary">
+            {fundingLedger.length} ledger entries
+          </div>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="min-w-full text-sm text-left">
+            <thead className="bg-neutral-darker text-secondary text-xs uppercase tracking-wide">
+              <tr>
+                <th className="px-6 py-4">Date</th>
+                <th className="px-6 py-4">Purchase Request</th>
+                <th className="px-6 py-4">Project</th>
+                <th className="px-6 py-4">Contractor / Vendor</th>
+                <th className="px-6 py-4">Event</th>
+                <th className="px-6 py-4">Amount</th>
+                <th className="px-6 py-4">Principal Outstanding</th>
+                <th className="px-6 py-4">Fee Outstanding</th>
+                <th className="px-6 py-4">Total Outstanding</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-neutral-medium">
+              {fundingLedger.map((entry, index) => (
+                <tr key={`${entry.purchase_request_id}-${entry.event_type}-${entry.event_date}-${index}`} className="hover:bg-neutral-medium/20">
+                  <td className="px-6 py-4 text-secondary">
+                    {entry.event_date ? new Date(entry.event_date).toLocaleDateString() : '—'}
+                  </td>
+                  <td className="px-6 py-4 text-primary font-medium">
+                    PR-{entry.purchase_request_id.slice(0, 8).toUpperCase()}
+                  </td>
+                  <td className="px-6 py-4 text-secondary">{entry.project_name || 'Unnamed Project'}</td>
+                  <td className="px-6 py-4 text-secondary">
+                    <div>{entry.contractor_name || '—'}</div>
+                    <div className="text-xs text-secondary/70">Vendor: {entry.vendor_name || '—'}</div>
+                  </td>
+                  <td className="px-6 py-4">
+                    <span className={entry.event_type === 'deployment' ? 'text-accent-blue' : 'text-success'}>
+                      {entry.event_type === 'deployment' ? 'Deployment' : 'Return'}
+                    </span>
+                  </td>
+                  <td className="px-6 py-4 text-primary">{formatCurrency(entry.amount)}</td>
+                  <td className="px-6 py-4 text-primary">{formatCurrency(entry.running_principal_outstanding)}</td>
+                  <td className="px-6 py-4 text-accent-blue">{formatCurrency(entry.running_fee_outstanding)}</td>
+                  <td className="px-6 py-4 text-accent-blue font-medium">{formatCurrency(entry.running_total_outstanding)}</td>
+                </tr>
+              ))}
+              {fundingLedger.length === 0 && (
+                <tr>
+                  <td className="px-6 py-6 text-center text-secondary" colSpan={9}>
+                    No funding ledger entries available yet.
                   </td>
                 </tr>
               )}

@@ -4,6 +4,7 @@ import { sendEmail } from '@/lib/email';
 import { purchaseRequestStatusEmail } from '@/lib/notifications/email-templates';
 import { createSignedUrlWithFallback } from '@/lib/storage-url';
 import { auditPurchaseRequest, auditVendorAssignment } from '@/lib/audit';
+import { calculateCapitalAccrualMetrics, groupTransactionsByPurchaseRequest } from '@/lib/capital-accrual';
 import { currentUser } from '@clerk/nextjs/server';
 import { validateRequestBody, updatePurchaseRequestSchema } from '@/lib/validations';
 import { rateLimit, RateLimitPresets } from '@/lib/rate-limit';
@@ -352,9 +353,7 @@ async function fetchPurchaseRequests(options: FetchOptions = {}) {
     };
   }));
 
-  const fundingTotals = new Map<string, number>();
-  const returnTotals = new Map<string, number>();
-  const firstDeploymentAt = new Map<string, string>();
+  const transactionsByRequest = new Map<string, Array<{ purchase_request_id: string; amount: number; transaction_type: string; created_at?: string | null }>>();
   if (requestIds.length > 0) {
     const { data: fundingRows, error: fundingError } = await supabaseAdmin
       .from('capital_transactions')
@@ -366,60 +365,40 @@ async function fetchPurchaseRequests(options: FetchOptions = {}) {
     if (fundingError) {
       console.error('Failed to load funding totals for purchase requests:', fundingError);
     } else {
-      fundingRows?.forEach((row: { purchase_request_id: string; amount: number; transaction_type: string; created_at?: string | null }) => {
-        if (!row.purchase_request_id) return;
-        const amount = Number(row.amount) || 0;
-        if (row.transaction_type === 'deployment') {
-          const current = fundingTotals.get(row.purchase_request_id) || 0;
-          fundingTotals.set(row.purchase_request_id, current + amount);
-          if (row.created_at) {
-            const existing = firstDeploymentAt.get(row.purchase_request_id);
-            if (!existing || new Date(row.created_at).getTime() < new Date(existing).getTime()) {
-              firstDeploymentAt.set(row.purchase_request_id, row.created_at);
-            }
-          }
-        }
-        if (row.transaction_type === 'return') {
-          const current = returnTotals.get(row.purchase_request_id) || 0;
-          returnTotals.set(row.purchase_request_id, current + amount);
-        }
+      const grouped = groupTransactionsByPurchaseRequest(
+        fundingRows as Array<{ purchase_request_id: string; amount: number; transaction_type: string; created_at?: string | null }>
+      );
+      grouped.forEach((rows, requestId) => {
+        transactionsByRequest.set(requestId, rows);
       });
     }
   }
 
   const enrichedRequests = normalizedRequests.map((request: any) => {
-    const fundedAmount = fundingTotals.get(request.id) || 0;
-    const returnedAmount = returnTotals.get(request.id) || 0;
     const estimatedTotal = request.estimated_total || 0;
-    const remainingAmount = Math.max(estimatedTotal - fundedAmount, 0);
-    const fundingProgress = estimatedTotal > 0 ? Math.min(fundedAmount / estimatedTotal, 1) : null;
-    const platformRate = request.contractors?.platform_fee_rate ?? 0.0025;
-    const platformCap = request.contractors?.platform_fee_cap ?? 25000;
-    const participationFeeRate = request.contractors?.participation_fee_rate_daily ?? 0.001;
-    const deployedAt = firstDeploymentAt.get(request.id);
-    const daysOutstanding = deployedAt
-      ? Math.max(0, Math.floor((Date.now() - new Date(deployedAt).getTime()) / (1000 * 60 * 60 * 24)))
-      : 0;
-    const platformFee = Math.min(fundedAmount * platformRate, platformCap);
-    const participationFee = fundedAmount * participationFeeRate * daysOutstanding;
-    const totalDue = fundedAmount + platformFee + participationFee;
-    const investorDue = fundedAmount + participationFee;
-    const remainingDue = Math.max(totalDue - returnedAmount, 0);
-    const remainingInvestorDue = Math.max(investorDue - returnedAmount, 0);
+    const metrics = calculateCapitalAccrualMetrics({
+      transactions: transactionsByRequest.get(request.id) || [],
+      terms: {
+        platform_fee_rate: request.contractors?.platform_fee_rate,
+        platform_fee_cap: request.contractors?.platform_fee_cap,
+        participation_fee_rate_daily: request.contractors?.participation_fee_rate_daily
+      },
+      purchaseRequestTotal: estimatedTotal
+    });
 
     return {
       ...request,
-      funded_amount: fundedAmount,
-      returned_amount: returnedAmount,
-      remaining_amount: remainingAmount,
-      funding_progress: fundingProgress,
-      platform_fee: platformFee,
-      participation_fee: participationFee,
-      total_due: totalDue,
-      remaining_due: remainingDue,
-      investor_due: investorDue,
-      remaining_investor_due: remainingInvestorDue,
-      days_outstanding: daysOutstanding
+      funded_amount: metrics.fundedAmount,
+      returned_amount: metrics.returnedAmount,
+      remaining_amount: metrics.remainingAmount,
+      funding_progress: metrics.fundingProgress,
+      platform_fee: metrics.platformFee,
+      participation_fee: metrics.participationFee,
+      total_due: metrics.totalDue,
+      remaining_due: metrics.remainingDue,
+      investor_due: metrics.investorDue,
+      remaining_investor_due: metrics.remainingInvestorDue,
+      days_outstanding: metrics.daysOutstanding
     };
   });
 

@@ -1,7 +1,100 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { clerkClient } from '@clerk/nextjs/server';
 import { ContractorService } from '@/lib/contractor-service';
 import { DocumentService } from '@/lib/document-service';
 import { requireAdmin } from '@/lib/admin-auth';
+
+function isValidEmail(value: string): boolean {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
+}
+
+async function syncContractorEmailWithClerk(contractorId: string, nextEmail: string) {
+  const contractor = await ContractorService.getContractorById(contractorId);
+  if (!contractor) {
+    throw new Error('Contractor not found');
+  }
+
+  const normalizedEmail = nextEmail.toLowerCase().trim();
+  const existingContractor = await ContractorService.getContractorByEmail(normalizedEmail);
+  if (existingContractor && existingContractor.id !== contractorId) {
+    return { success: false, error: 'A contractor with this email already exists' };
+  }
+
+  if (contractor.clerk_user_id) {
+    const client = await clerkClient();
+    const clerkUser = await client.users.getUser(contractor.clerk_user_id);
+    const existingEmail = clerkUser.emailAddresses.find(
+      (emailAddress) => emailAddress.emailAddress.toLowerCase() === normalizedEmail
+    );
+
+    if (existingEmail) {
+      await client.emailAddresses.updateEmailAddress(existingEmail.id, {
+        primary: true,
+        verified: true
+      });
+      await client.users.updateUser(contractor.clerk_user_id, {
+        primaryEmailAddressID: existingEmail.id,
+        notifyPrimaryEmailAddressChanged: true
+      });
+    } else {
+      const createdEmail = await client.emailAddresses.createEmailAddress({
+        userId: contractor.clerk_user_id,
+        emailAddress: normalizedEmail,
+        primary: true,
+        verified: true
+      });
+
+      await client.users.updateUser(contractor.clerk_user_id, {
+        primaryEmailAddressID: createdEmail.id,
+        notifyPrimaryEmailAddressChanged: true
+      });
+
+      const staleEmails = clerkUser.emailAddresses.filter(
+        (emailAddress) => emailAddress.emailAddress.toLowerCase() !== normalizedEmail
+      );
+
+      for (const staleEmail of staleEmails) {
+        try {
+          await client.emailAddresses.deleteEmailAddress(staleEmail.id);
+        } catch (deleteError) {
+          console.warn(`Failed to delete stale Clerk email ${staleEmail.emailAddress}:`, deleteError);
+        }
+      }
+    }
+  } else {
+    const clerkSecretKey = process.env.CLERK_SECRET_KEY;
+    if (clerkSecretKey) {
+      try {
+        const inviteRes = await fetch('https://api.clerk.com/v1/invitations', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${clerkSecretKey}`
+          },
+          body: JSON.stringify({
+            email_address: normalizedEmail,
+            public_metadata: { role: 'contractor', name: contractor.contact_person?.trim() || contractor.company_name }
+          })
+        });
+
+        if (!inviteRes.ok) {
+          const err = await inviteRes.json().catch(() => ({}));
+          if (inviteRes.status !== 409 && !(err as any)?.errors?.[0]?.code?.includes('duplicate')) {
+            console.warn('Clerk invitation warning during contractor email change:', err);
+          }
+        }
+      } catch (inviteErr) {
+        console.warn('Failed to send Clerk invite after contractor email change:', inviteErr);
+      }
+    }
+  }
+
+  const updated = await ContractorService.updateContractor(contractorId, {
+    email: normalizedEmail
+  });
+
+  return { success: !!updated, data: updated };
+}
 
 // GET - Fetch all contractors for admin dashboard
 export async function GET(request: NextRequest) {
@@ -117,8 +210,7 @@ export async function POST(request: NextRequest) {
       }, { status: 400 });
     }
 
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(email)) {
+    if (!isValidEmail(email)) {
       return NextResponse.json({ success: false, error: 'Invalid email address' }, { status: 400 });
     }
 
@@ -183,6 +275,7 @@ export async function PUT(request: NextRequest) {
     const {
       contractorId,
       action,
+      email,
       documentType,
       rejectionReason,
       platform_fee_rate,
@@ -286,6 +379,27 @@ export async function PUT(request: NextRequest) {
         break;
       }
 
+      case 'update_email': {
+        const requestedEmail = typeof email === 'string' ? email.trim() : '';
+
+        if (!requestedEmail) {
+          return NextResponse.json({
+            success: false,
+            error: 'Email is required'
+          }, { status: 400 });
+        }
+
+        if (!isValidEmail(requestedEmail)) {
+          return NextResponse.json({
+            success: false,
+            error: 'Invalid email address'
+          }, { status: 400 });
+        }
+
+        result = await syncContractorEmailWithClerk(contractorId, requestedEmail);
+        break;
+      }
+
       default:
         return NextResponse.json({
           success: false,
@@ -305,7 +419,8 @@ export async function PUT(request: NextRequest) {
 
       return NextResponse.json({
         success: true,
-        message: 'Action completed successfully'
+        message: 'Action completed successfully',
+        data: result.data ?? null
       });
     } else {
       return NextResponse.json({

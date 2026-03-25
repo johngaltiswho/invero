@@ -238,6 +238,22 @@ const CapitalTransactions: React.FC = () => {
     return Math.max(totalDue - returned, 0);
   }, []);
 
+  const getTotalDue = useCallback((request?: FundingPurchaseRequest | null) => {
+    if (!request) return null;
+    if (typeof request.investor_due === 'number') {
+      return request.investor_due;
+    }
+    if (typeof request.total_due === 'number') {
+      return request.total_due;
+    }
+    const fundedAmount = Number(request.funded_amount ?? 0);
+    if (!fundedAmount) {
+      return null;
+    }
+    const participationFee = Number(request.participation_fee ?? 0);
+    return fundedAmount + participationFee;
+  }, []);
+
   const fetchPurchaseRequests = useCallback(async () => {
     try {
       setPurchaseRequestsLoading(true);
@@ -985,6 +1001,7 @@ const CapitalTransactions: React.FC = () => {
                     const remainingDue = getRemainingDue(request);
                     const requestedAmount = Number(request.estimated_total || 0);
                     const fundedAmount = Number(request.funded_amount || 0);
+                    const returnedAmount = Number(request.returned_amount || 0);
                     const formattedRemaining = remainingAmount !== null
                       ? formatCurrency(remainingAmount)
                       : 'N/A';
@@ -997,7 +1014,7 @@ const CapitalTransactions: React.FC = () => {
                         key={request.id}
                         value={request.id}
                       >
-                        {projectName} • {contractorName} • Requested {formatCurrency(requestedAmount)} • Funded {formatCurrency(fundedAmount)} • Remaining {formattedRemaining} • Investor Due {formattedRemainingDue}
+                        {projectName} • {contractorName} • Requested {formatCurrency(requestedAmount)} • Funded {formatCurrency(fundedAmount)} • Returned {formatCurrency(returnedAmount)} • Remaining Funding {formattedRemaining} • Repayable Due {formattedRemainingDue}
                       </option>
                     );
                   })}
@@ -1007,11 +1024,12 @@ const CapitalTransactions: React.FC = () => {
                     if (!request) return null;
                     const remainingAmount = getRemainingAmount(request);
                     const remainingDue = getRemainingDue(request);
+                    const totalDue = getTotalDue(request);
                     const fundedAmount = Number(request.funded_amount || 0);
                     const requestedAmount = Number(request.estimated_total || 0);
                     const platformFee = Number(request.platform_fee || 0);
                     const participationFee = Number(request.participation_fee || 0);
-                    const totalDue = Number(request.investor_due || request.total_due || 0);
+                    const returnedAmount = Number(request.returned_amount || 0);
                     const contractorName = request.contractors?.company_name || 'N/A';
                     const projectName = request.project?.name || request.project_id;
                     const progressPercentage = remainingAmount === null || requestedAmount === 0
@@ -1030,10 +1048,11 @@ const CapitalTransactions: React.FC = () => {
                         <div>Remaining: {remainingAmount !== null ? formatCurrency(remainingAmount) : 'Awaiting vendor quotes'}</div>
                         {formData.transaction_type === 'return' && (
                           <>
-                            <div>Platform Fees: {formatCurrency(platformFee)}</div>
-                            <div>Project Participation Fee: {formatCurrency(participationFee)}</div>
-                            <div>Investor Due: {formatCurrency(totalDue)}</div>
-                            <div>Remaining Investor Due: {remainingDue !== null ? formatCurrency(remainingDue) : 'N/A'}</div>
+                            <div>Returned: {formatCurrency(returnedAmount)}</div>
+                            <div>Platform Fee: {formatCurrency(platformFee)}</div>
+                            <div>Accrued Participation Fee: {formatCurrency(participationFee)}</div>
+                            <div>Total Investor Due: {totalDue !== null ? formatCurrency(totalDue) : 'N/A'}</div>
+                            <div>Repayable Balance: {remainingDue !== null ? formatCurrency(remainingDue) : 'N/A'}</div>
                           </>
                         )}
                         {progressPercentage !== null && (
@@ -1054,7 +1073,7 @@ const CapitalTransactions: React.FC = () => {
                   })()}
                   {formData.transaction_type === 'return' && (
                     <p className="text-xs text-secondary">
-                      Repayments are automatically distributed to all investors who funded this purchase request, based on their share of deployed capital.
+                      Repayments are capped by the current investor due and are applied against accrued participation fee first, then principal across the funded tranches.
                     </p>
                   )}
                   {formData.transaction_type === 'deployment' && (

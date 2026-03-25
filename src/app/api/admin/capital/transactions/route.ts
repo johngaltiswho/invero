@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { requireAdmin, getAdminUser } from '@/lib/admin-auth';
 import { createClient } from '@supabase/supabase-js';
 import { sendEmail, formatCurrency } from '@/lib/email';
+import { calculateCapitalAccrualMetrics } from '@/lib/capital-accrual';
 import {
   capitalReturnProcessedEmail,
   capitalUpdateInvestorEmail,
@@ -350,7 +351,7 @@ export async function POST(request: NextRequest) {
 
       const { data: contractorTerms, error: contractorTermsError } = await supabase
         .from('contractors')
-        .select('participation_fee_rate_daily')
+        .select('platform_fee_rate, platform_fee_cap, participation_fee_rate_daily')
         .eq('id', purchaseRequest.contractor_id)
         .single();
 
@@ -358,23 +359,9 @@ export async function POST(request: NextRequest) {
         console.error('Failed to load contractor terms for return allocation:', contractorTermsError);
       }
 
-      const lateFeeRate = contractorTerms?.participation_fee_rate_daily ?? 0.001;
-
-      const firstDeploymentAt = deployments
-        ?.filter((deployment) => deployment.created_at)
-        .map((deployment) => new Date(deployment.created_at as string).getTime())
-        .sort((a, b) => a - b)[0];
-
-      const daysOutstanding = firstDeploymentAt
-        ? Math.max(0, Math.floor((Date.now() - firstDeploymentAt) / (1000 * 60 * 60 * 24)))
-        : 0;
-
-      const lateFees = totalDeployed * lateFeeRate * daysOutstanding;
-      const investorDue = totalDeployed + lateFees;
-
       const { data: existingReturns, error: existingReturnsError } = await supabase
         .from('capital_transactions')
-        .select('amount')
+        .select('purchase_request_id, transaction_type, amount, created_at')
         .eq('transaction_type', 'return')
         .eq('status', 'completed')
         .eq('purchase_request_id', normalizedPurchaseRequestId);
@@ -383,10 +370,39 @@ export async function POST(request: NextRequest) {
         console.error('Failed to load existing returns for purchase request:', existingReturnsError);
       }
 
-      const existingReturnTotal = (existingReturns || []).reduce(
-        (sum, row) => sum + (Number(row.amount) || 0),
-        0
-      );
+      const metricsBeforeReturn = calculateCapitalAccrualMetrics({
+        transactions: [
+          ...(deployments || []).map((row) => ({
+            purchase_request_id: normalizedPurchaseRequestId,
+            transaction_type: 'deployment',
+            amount: row.amount,
+            created_at: row.created_at
+          })),
+          ...((existingReturns || []).map((row: { purchase_request_id?: string | null; transaction_type?: string | null; amount?: number | null; created_at?: string | null }) => ({
+            purchase_request_id: normalizedPurchaseRequestId,
+            transaction_type: 'return',
+            amount: row.amount,
+            created_at: row.created_at
+          })))
+        ],
+        terms: contractorTerms
+      });
+
+      if (metricsBeforeReturn.remainingInvestorDue <= 0) {
+        return NextResponse.json(
+          { error: 'This purchase request has already been fully returned' },
+          { status: 400 }
+        );
+      }
+
+      if (numAmount - metricsBeforeReturn.remainingInvestorDue > 1e-2) {
+        return NextResponse.json(
+          {
+            error: `Only ${formatCurrency(metricsBeforeReturn.remainingInvestorDue)} remains due for this purchase request`
+          },
+          { status: 400 }
+        );
+      }
 
       const { data: insertedReturns, error: insertReturnsError } = await supabase
         .from('capital_transactions')
@@ -435,8 +451,31 @@ export async function POST(request: NextRequest) {
         })
       );
 
-      const newReturnTotal = existingReturnTotal + numAmount;
-      if (investorDue > 0 && newReturnTotal >= investorDue && purchaseRequest.status !== 'completed') {
+      const metricsAfterReturn = calculateCapitalAccrualMetrics({
+        transactions: [
+          ...(deployments || []).map((row) => ({
+            purchase_request_id: normalizedPurchaseRequestId,
+            transaction_type: 'deployment',
+            amount: row.amount,
+            created_at: row.created_at
+          })),
+          ...((existingReturns || []).map((row: { purchase_request_id?: string | null; transaction_type?: string | null; amount?: number | null; created_at?: string | null }) => ({
+            purchase_request_id: normalizedPurchaseRequestId,
+            transaction_type: 'return',
+            amount: row.amount,
+            created_at: row.created_at
+          }))),
+          {
+            purchase_request_id: normalizedPurchaseRequestId,
+            transaction_type: 'return',
+            amount: numAmount,
+            created_at: transactionTimestamp.toISOString()
+          }
+        ],
+        terms: contractorTerms
+      });
+
+      if (metricsAfterReturn.remainingInvestorDue <= 1e-2 && purchaseRequest.status !== 'completed') {
         const { error: closeError } = await supabase
           .from('purchase_requests')
           .update({ status: 'completed', updated_at: new Date().toISOString() })
