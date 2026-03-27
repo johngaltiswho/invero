@@ -7,6 +7,7 @@ const GOOGLE_PRIVATE_KEY = process.env.GOOGLE_PRIVATE_KEY;
 const GOOGLE_PROJECT_ID = process.env.GOOGLE_PROJECT_ID;
 const GOOGLE_API_KEY = process.env.GOOGLE_API_KEY;
 const CREDENTIALS = process.env.GOOGLE_SERVICE_ACCOUNT_KEY;
+const CREDENTIALS_BASE64 = process.env.GOOGLE_SERVICE_ACCOUNT_KEY_BASE64;
 const GOOGLE_WORKBOOK_PARENT_FOLDER_ID =
   process.env.GOOGLE_WORKBOOK_PARENT_FOLDER_ID;
 
@@ -26,19 +27,38 @@ class GoogleDriveAPI {
 
   private initializeAuth(config: GoogleDriveConfig) {
     try {
-      // Try individual environment variables first (for service account)
-      if (GOOGLE_CLIENT_EMAIL && GOOGLE_PRIVATE_KEY && GOOGLE_PROJECT_ID) {
+      // Try base64-encoded credentials first (most reliable for Vercel)
+      if (CREDENTIALS_BASE64) {
+        console.log('🔐 Using base64-encoded service account credentials');
+        const decodedCredentials = Buffer.from(CREDENTIALS_BASE64, 'base64').toString('utf-8');
+        const credentials = JSON.parse(decodedCredentials);
+
+        if (credentials.private_key) {
+          credentials.private_key = credentials.private_key.replace(/\\n/g, '\n');
+        }
+
+        this.auth = new google.auth.GoogleAuth({
+          credentials,
+          scopes: [
+            'https://www.googleapis.com/auth/drive.file',
+            'https://www.googleapis.com/auth/drive.readonly',
+          ],
+        });
+      }
+      // Try individual environment variables (for service account)
+      else if (GOOGLE_CLIENT_EMAIL && GOOGLE_PRIVATE_KEY && GOOGLE_PROJECT_ID) {
+        console.log('🔐 Using individual service account environment variables');
         // Fix private key format - handle both escaped and unescaped newlines
         let privateKey = GOOGLE_PRIVATE_KEY;
         if (privateKey.includes('\\n')) {
           privateKey = privateKey.replace(/\\n/g, '\n');
         }
-        
+
         // Ensure proper formatting
         if (!privateKey.startsWith('-----BEGIN PRIVATE KEY-----')) {
           throw new Error('Invalid private key format');
         }
-        
+
         this.auth = new google.auth.GoogleAuth({
           credentials: {
             client_email: GOOGLE_CLIENT_EMAIL,
@@ -52,9 +72,10 @@ class GoogleDriveAPI {
           ],
         });
       } else if (CREDENTIALS) {
+        console.log('🔐 Using JSON service account credentials');
         // Fallback to JSON credentials
         const credentials = JSON.parse(config.credentials);
-        
+
         if (credentials.private_key) {
           credentials.private_key = credentials.private_key.replace(/\\n/g, '\n');
         }
@@ -301,15 +322,17 @@ let driveAPI: GoogleDriveAPI | null = null;
 
 export function getGoogleDriveAPI(): GoogleDriveAPI {
   console.log('🔧 Initializing Google Drive API...');
-  
+
   // Check available authentication methods
+  const hasBase64Credentials = !!CREDENTIALS_BASE64;
   const hasIndividualVars = GOOGLE_CLIENT_EMAIL && GOOGLE_PRIVATE_KEY && GOOGLE_PROJECT_ID;
   const hasJsonCredentials = !!CREDENTIALS;
-  
-  if (!hasIndividualVars && !hasJsonCredentials) {
+
+  if (!hasBase64Credentials && !hasIndividualVars && !hasJsonCredentials) {
     console.error('❌ Missing Google credentials for Drive. Need one of:');
-    console.error('  Option 1: GOOGLE_CLIENT_EMAIL, GOOGLE_PRIVATE_KEY, GOOGLE_PROJECT_ID');
-    console.error('  Option 2: GOOGLE_SERVICE_ACCOUNT_KEY (JSON)');
+    console.error('  Option 1 (Recommended for Vercel): GOOGLE_SERVICE_ACCOUNT_KEY_BASE64');
+    console.error('  Option 2: GOOGLE_CLIENT_EMAIL, GOOGLE_PRIVATE_KEY, GOOGLE_PROJECT_ID');
+    console.error('  Option 3: GOOGLE_SERVICE_ACCOUNT_KEY (JSON)');
     throw new Error('Google Drive credentials environment variables are missing');
   }
 

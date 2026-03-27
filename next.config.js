@@ -9,10 +9,10 @@ const nextConfig = {
         // Apply security headers to all routes
         source: '/:path*',
         headers: [
-          // Prevent clickjacking attacks
+          // Prevent clickjacking attacks (allow same-origin for PDF viewer)
           {
             key: 'X-Frame-Options',
-            value: 'DENY',
+            value: 'SAMEORIGIN',
           },
           // Prevent MIME type sniffing
           {
@@ -71,8 +71,8 @@ const nextConfig = {
               "base-uri 'self'",
               // Form actions: Allow same origin
               "form-action 'self'",
-              // Frame ancestors: Deny (same as X-Frame-Options)
-              "frame-ancestors 'none'",
+              // Frame ancestors: Allow same origin (required for PDF viewer iframes)
+              "frame-ancestors 'self'",
               // Upgrade insecure requests in production
               // "upgrade-insecure-requests",
             ].join('; '),

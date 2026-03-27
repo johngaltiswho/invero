@@ -107,7 +107,8 @@ Please provide a clear, structured report that follows this cascading approach.`
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 120000); // 120 second timeout
       
-      const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${geminiApiKey}`, {
+      // Use Gemini 2.0 Flash (experimental) - best for vision tasks
+      const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent?key=${geminiApiKey}`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -165,9 +166,23 @@ Please provide a clear, structured report that follows this cascading approach.`
         console.error('Gemini API Error:', {
           status: response.status,
           statusText: response.statusText,
-          body: errorText
+          body: errorText,
+          model: 'gemini-1.5-flash'
         });
-        throw new Error(`Gemini API error: ${response.status} - ${errorText}`);
+
+        // Parse error message for better user feedback
+        let userMessage = `Gemini API error: ${response.status}`;
+        try {
+          const errorJson = JSON.parse(errorText);
+          if (errorJson.error?.message) {
+            userMessage = errorJson.error.message;
+          }
+        } catch {
+          // Use raw error text if not JSON
+          userMessage = errorText.substring(0, 200);
+        }
+
+        throw new Error(userMessage);
       }
 
       const result = await response.json();
@@ -258,6 +273,7 @@ Please provide a clear, structured report that follows this cascading approach.`
           fileName,
           projectType,
           analysisMethod: 'gemini-cascading-report',
+          modelVersion: 'gemini-2.0-flash-exp',
           processingTime: endTime - startTime,
           reportGenerated: true
         }
