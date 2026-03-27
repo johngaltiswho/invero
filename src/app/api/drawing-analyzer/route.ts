@@ -107,8 +107,8 @@ Please provide a clear, structured report that follows this cascading approach.`
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 120000); // 120 second timeout
       
-      // Use Gemini 2.0 Flash (experimental) - best for vision tasks
-      const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent?key=${geminiApiKey}`, {
+      // Use Gemini 2.5 Flash - latest model with best vision capabilities
+      const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${geminiApiKey}`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -273,7 +273,7 @@ Please provide a clear, structured report that follows this cascading approach.`
           fileName,
           projectType,
           analysisMethod: 'gemini-cascading-report',
-          modelVersion: 'gemini-2.0-flash-exp',
+          modelVersion: 'gemini-2.5-flash',
           processingTime: endTime - startTime,
           reportGenerated: true
         }
