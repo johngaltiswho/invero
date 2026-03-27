@@ -172,6 +172,32 @@ export default function InvestorAgreementPanel({ investor }: Props): React.React
     }
   };
 
+  const handleRenew = async () => {
+    try {
+      setProcessing('renew');
+      await requestJson('/api/admin/investor-agreements', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          investor_id: investor.id,
+          commitment_amount: Number(form.commitment_amount) || Number(agreement?.commitment_amount) || 100000,
+          agreement_date: new Date().toISOString().slice(0, 10),
+          investor_pan: form.investor_pan || agreement?.investor_pan || investor.pan_number || null,
+          investor_address: form.investor_address || agreement?.investor_address || investor.address || null,
+          company_signatory_name: form.company_signatory_name || agreement?.company_signatory_name || defaultForm.company_signatory_name,
+          company_signatory_title: form.company_signatory_title || agreement?.company_signatory_title || defaultForm.company_signatory_title,
+          notes: form.notes || agreement?.notes || null,
+        }),
+      });
+      await loadAgreement();
+      setShowDraftModal(false);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Failed to renew agreement');
+    } finally {
+      setProcessing(null);
+    }
+  };
+
   const handleGenerate = async () => {
     if (!agreement) return;
     try {
@@ -248,7 +274,7 @@ export default function InvestorAgreementPanel({ investor }: Props): React.React
     }
   };
 
-  const canEditDraft = !agreement || ['draft', 'generated'].includes(agreement.status);
+  const canEditDraft = !agreement || ['draft', 'generated', 'issued'].includes(agreement.status);
   const statusLabelMap: Record<string, string> = {
     draft: 'Draft Created',
     generated: 'Draft PDF Ready',
@@ -344,6 +370,14 @@ export default function InvestorAgreementPanel({ investor }: Props): React.React
                 </div>
 
                 <div className="flex flex-wrap gap-3">
+                  {agreement.status === 'executed' && (
+                    <Button
+                      onClick={handleRenew}
+                      disabled={processing === 'renew'}
+                    >
+                      {processing === 'renew' ? 'Creating Renewal Draft...' : 'Renew Agreement'}
+                    </Button>
+                  )}
                   <Button
                     variant="secondary"
                     onClick={() => setShowDraftModal(true)}
@@ -353,9 +387,13 @@ export default function InvestorAgreementPanel({ investor }: Props): React.React
                   </Button>
                   <Button
                     onClick={handleGenerate}
-                    disabled={processing === 'generate' || !['draft', 'generated'].includes(agreement.status)}
+                    disabled={processing === 'generate' || !['draft', 'generated', 'issued'].includes(agreement.status)}
                   >
-                    {processing === 'generate' ? 'Generating...' : 'Generate / Refresh Draft PDF'}
+                    {processing === 'generate'
+                      ? 'Generating...'
+                      : agreement.status === 'issued'
+                        ? 'Generate Updated Draft PDF'
+                        : 'Generate / Refresh Draft PDF'}
                   </Button>
                   <Button
                     variant="secondary"
@@ -387,6 +425,18 @@ export default function InvestorAgreementPanel({ investor }: Props): React.React
                     </Button>
                   )}
                 </div>
+
+                {agreement.status === 'executed' && (
+                  <div className="rounded-lg border border-accent-amber/20 bg-accent-amber/10 px-4 py-3 text-sm text-primary">
+                    Executed agreements are kept immutable for audit purposes. Renewing creates a new draft agreement for this investor and preserves the completed copy in history.
+                  </div>
+                )}
+
+                {agreement.status === 'issued' && (
+                  <div className="rounded-lg border border-accent-amber/20 bg-accent-amber/10 px-4 py-3 text-sm text-primary">
+                    This agreement has been sent but not yet signed. You can update the draft, regenerate the PDF, and then issue it again to send the revised version to the investor.
+                  </div>
+                )}
 
                 <div className="grid md:grid-cols-3 gap-4">
                   <div className="rounded-lg border border-neutral-medium p-4">

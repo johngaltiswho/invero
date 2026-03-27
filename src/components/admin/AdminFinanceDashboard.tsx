@@ -82,6 +82,42 @@ type FundingLedgerRow = {
   running_total_outstanding: number;
 };
 
+type PoolSummary = {
+  valuation_date: string;
+  total_committed_capital: number;
+  total_pool_units: number;
+  gross_nav_per_unit: number;
+  net_nav_per_unit: number;
+  pool_cash: number;
+  deployed_principal: number;
+  accrued_participation_income: number;
+  realized_participation_income: number;
+  preferred_return_accrued: number;
+  management_fee_accrued: number;
+  realized_carry_accrued: number;
+  potential_carry: number;
+  gross_pool_value: number;
+  net_pool_value: number;
+  realized_xirr: number;
+  projected_gross_xirr: number;
+  projected_net_xirr: number;
+};
+
+type InvestorPoolPosition = {
+  investor_id: string;
+  investor_name: string | null;
+  investor_email: string | null;
+  investor_type: string | null;
+  contributed_capital: number;
+  units_held: number;
+  ownership_percent: number;
+  entry_nav_per_unit: number;
+  gross_value: number;
+  net_value: number;
+  gross_gain: number;
+  net_gain: number;
+};
+
 const formatCurrency = (amount: number) =>
   new Intl.NumberFormat('en-IN', {
     style: 'currency',
@@ -92,8 +128,10 @@ const formatCurrency = (amount: number) =>
 
 const AdminFinanceDashboard: React.FC = () => {
   const [summary, setSummary] = useState<FinanceSummary | null>(null);
+  const [poolSummary, setPoolSummary] = useState<PoolSummary | null>(null);
   const [projects, setProjects] = useState<ProjectFinanceRow[]>([]);
   const [investors, setInvestors] = useState<InvestorFinanceRow[]>([]);
+  const [investorPositions, setInvestorPositions] = useState<InvestorPoolPosition[]>([]);
   const [requests, setRequests] = useState<RequestFinanceRow[]>([]);
   const [fundingLedger, setFundingLedger] = useState<FundingLedgerRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -109,8 +147,10 @@ const AdminFinanceDashboard: React.FC = () => {
           throw new Error(data.error || 'Failed to load finance overview');
         }
         setSummary(data.summary);
+        setPoolSummary(data.pool_summary || null);
         setProjects(data.projects || []);
         setInvestors(data.investors || []);
+        setInvestorPositions(data.investor_positions || []);
         setRequests(data.requests || []);
         setFundingLedger(data.funding_ledger || []);
       } catch (err) {
@@ -190,6 +230,80 @@ const AdminFinanceDashboard: React.FC = () => {
             </div>
             <div className="text-xs text-secondary">
               Open requests needing funding
+            </div>
+          </div>
+        </div>
+      )}
+
+      {poolSummary && (
+        <div className="mb-8">
+          <div className="bg-neutral-dark rounded-lg border border-neutral-medium overflow-hidden">
+            <div className="p-6 border-b border-neutral-medium flex items-center justify-between">
+              <div>
+                <h2 className="text-xl font-semibold text-primary">Pool Overview</h2>
+                <p className="text-sm text-secondary">Fund-style view of the capital pool. PR deployments remain operational underneath this layer.</p>
+              </div>
+              <div className="text-sm text-secondary">
+                Valued {new Date(poolSummary.valuation_date).toLocaleString('en-IN')}
+              </div>
+            </div>
+            <div className="grid lg:grid-cols-4 md:grid-cols-2 gap-6 p-6">
+              <div>
+                <div className="text-xs text-secondary">Gross Pool Value</div>
+                <div className="text-2xl font-bold text-primary">{formatCurrency(poolSummary.gross_pool_value)}</div>
+                <div className="text-xs text-secondary mt-1">Net pool value: {formatCurrency(poolSummary.net_pool_value)}</div>
+              </div>
+              <div>
+                <div className="text-xs text-secondary">Gross / Net NAV</div>
+                <div className="text-2xl font-bold text-primary">₹{poolSummary.gross_nav_per_unit.toFixed(4)}</div>
+                <div className="text-xs text-secondary mt-1">Net NAV: ₹{poolSummary.net_nav_per_unit.toFixed(4)}</div>
+              </div>
+              <div>
+                <div className="text-xs text-secondary">Projected Gross / Net XIRR</div>
+                <div className="text-2xl font-bold text-accent-amber">
+                  {poolSummary.projected_gross_xirr.toFixed(1)}%
+                </div>
+                <div className="text-xs text-secondary mt-1">Net XIRR: {poolSummary.projected_net_xirr.toFixed(1)}%</div>
+              </div>
+              <div>
+                <div className="text-xs text-secondary">Realized XIRR / Units</div>
+                <div className="text-2xl font-bold text-primary">{poolSummary.realized_xirr.toFixed(1)}%</div>
+                <div className="text-xs text-secondary mt-1">{poolSummary.total_pool_units.toFixed(4)} units outstanding</div>
+              </div>
+              <div>
+                <div className="text-xs text-secondary">Pool Cash</div>
+                <div className="text-lg font-semibold text-success">{formatCurrency(poolSummary.pool_cash)}</div>
+              </div>
+              <div>
+                <div className="text-xs text-secondary">Deployed Principal</div>
+                <div className="text-lg font-semibold text-accent-blue">{formatCurrency(poolSummary.deployed_principal)}</div>
+              </div>
+              <div>
+                <div className="text-xs text-secondary">Accrued Participation Income</div>
+                <div className="text-lg font-semibold text-accent-amber">{formatCurrency(poolSummary.accrued_participation_income)}</div>
+                <div className="text-xs text-secondary mt-1">Realized: {formatCurrency(poolSummary.realized_participation_income)}</div>
+              </div>
+              <div>
+                <div className="text-xs text-secondary">Preferred Return Accrued</div>
+                <div className="text-lg font-semibold text-primary">{formatCurrency(poolSummary.preferred_return_accrued)}</div>
+              </div>
+              <div>
+                <div className="text-xs text-secondary">2% Management Fee Accrued</div>
+                <div className="text-lg font-semibold text-primary">{formatCurrency(poolSummary.management_fee_accrued)}</div>
+              </div>
+              <div>
+                <div className="text-xs text-secondary">Realized Carry</div>
+                <div className="text-lg font-semibold text-primary">{formatCurrency(poolSummary.realized_carry_accrued)}</div>
+              </div>
+              <div>
+                <div className="text-xs text-secondary">Potential Carry</div>
+                <div className="text-lg font-semibold text-primary">{formatCurrency(poolSummary.potential_carry)}</div>
+                <div className="text-xs text-secondary mt-1">For transparency only. Not crystallized.</div>
+              </div>
+              <div>
+                <div className="text-xs text-secondary">Committed Capital</div>
+                <div className="text-lg font-semibold text-primary">{formatCurrency(poolSummary.total_committed_capital)}</div>
+              </div>
             </div>
           </div>
         </div>
@@ -388,11 +502,11 @@ const AdminFinanceDashboard: React.FC = () => {
       <div className="mt-8 bg-neutral-dark rounded-lg border border-neutral-medium overflow-hidden">
         <div className="p-6 border-b border-neutral-medium flex items-center justify-between">
           <div>
-            <h2 className="text-xl font-semibold text-primary">Investor Portfolio Overview</h2>
-            <p className="text-sm text-secondary">Capital inflows, returns, and XIRR by investor</p>
+            <h2 className="text-xl font-semibold text-primary">Investor Unit Register</h2>
+            <p className="text-sm text-secondary">Pool ownership, unit balances, and current gross / net value by investor.</p>
           </div>
           <div className="text-sm text-secondary">
-            {investors.length} investors
+            {investorPositions.length} investors
           </div>
         </div>
         <div className="overflow-x-auto">
@@ -401,16 +515,17 @@ const AdminFinanceDashboard: React.FC = () => {
               <tr>
                 <th className="px-6 py-4">Investor</th>
                 <th className="px-6 py-4">Type</th>
-                <th className="px-6 py-4">Capital Inflow</th>
-                <th className="px-6 py-4">PR Disbursed</th>
-                <th className="px-6 py-4">Portfolio Returns</th>
-                <th className="px-6 py-4">PR Disbursements</th>
-                <th className="px-6 py-4">Investor XIRR</th>
-                <th className="px-6 py-4">Net XIRR</th>
+                <th className="px-6 py-4">Committed</th>
+                <th className="px-6 py-4">Units Held</th>
+                <th className="px-6 py-4">Ownership</th>
+                <th className="px-6 py-4">Entry NAV</th>
+                <th className="px-6 py-4">Gross Value</th>
+                <th className="px-6 py-4">Net Value</th>
+                <th className="px-6 py-4">Net Gain</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-neutral-medium">
-              {investors.map((investor) => (
+              {investorPositions.map((investor) => (
                 <tr key={investor.investor_id} className="hover:bg-neutral-medium/20">
                   <td className="px-6 py-4">
                     <div className="text-primary font-medium">{investor.investor_name || 'Investor'}</div>
@@ -420,47 +535,31 @@ const AdminFinanceDashboard: React.FC = () => {
                     {investor.investor_type || '—'}
                   </td>
                   <td className="px-6 py-4 text-primary">
-                    {formatCurrency(investor.total_inflow)}
+                    {formatCurrency(investor.contributed_capital)}
+                  </td>
+                  <td className="px-6 py-4 text-primary">
+                    {investor.units_held.toFixed(4)}
+                  </td>
+                  <td className="px-6 py-4 text-secondary">
+                    {investor.ownership_percent.toFixed(2)}%
+                  </td>
+                  <td className="px-6 py-4 text-secondary">
+                    ₹{investor.entry_nav_per_unit.toFixed(4)}
+                  </td>
+                  <td className="px-6 py-4 text-primary">
+                    {formatCurrency(investor.gross_value)}
+                  </td>
+                  <td className="px-6 py-4 text-primary">
+                    {formatCurrency(investor.net_value)}
                   </td>
                   <td className="px-6 py-4 text-accent-blue">
-                    {formatCurrency(investor.total_deployed || 0)}
-                  </td>
-                  <td className="px-6 py-4 text-success">
-                    {formatCurrency(investor.total_returns)}
-                  </td>
-                  <td className="px-6 py-4 text-secondary max-w-sm">
-                    {investor.disbursements?.length ? (
-                      <div className="space-y-1">
-                        {investor.disbursements.slice(0, 3).map((row) => (
-                          <div key={`${investor.investor_id}-${row.purchase_request_id}`} className="text-xs">
-                            <span className="text-primary font-medium">
-                              PR-{row.purchase_request_id.slice(0, 8).toUpperCase()}
-                            </span>
-                            <span className="text-secondary"> · {row.project_name || row.project_id || 'Project'}</span>
-                            <span className="text-accent-blue"> · {formatCurrency(row.amount)}</span>
-                          </div>
-                        ))}
-                        {investor.disbursements.length > 3 && (
-                          <div className="text-xs text-secondary">
-                            +{investor.disbursements.length - 3} more
-                          </div>
-                        )}
-                      </div>
-                    ) : (
-                      '—'
-                    )}
-                  </td>
-                  <td className="px-6 py-4 text-accent-amber">
-                    {Number.isFinite(investor.xirr) ? `${investor.xirr.toFixed(1)}%` : '0.0%'}
-                  </td>
-                  <td className="px-6 py-4 text-accent-blue">
-                    {Number.isFinite(investor.net_xirr) ? `${investor.net_xirr.toFixed(1)}%` : '0.0%'}
+                    {formatCurrency(investor.net_gain)}
                   </td>
                 </tr>
               ))}
-              {investors.length === 0 && (
+              {investorPositions.length === 0 && (
                 <tr>
-                  <td className="px-6 py-6 text-center text-secondary" colSpan={8}>
+                  <td className="px-6 py-6 text-center text-secondary" colSpan={9}>
                     No investor data available yet.
                   </td>
                 </tr>

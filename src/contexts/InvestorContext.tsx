@@ -67,6 +67,68 @@ interface PortfolioMetrics {
   netCapitalReturns: number;
   managementFees: number;
   performanceFees: number;
+  potentialPerformanceFees?: number;
+  grossNavPerUnit?: number;
+  netNavPerUnit?: number;
+  unitsHeld?: number;
+  ownershipPercent?: number;
+  deployedPoolShare?: number;
+  poolCashShare?: number;
+  accruedParticipationIncomeShare?: number;
+  preferredReturnAccruedShare?: number;
+  realizedInvestorRoi?: number;
+}
+
+interface PoolPosition {
+  unitsHeld: number;
+  ownershipPercent: number;
+  entryNavPerUnit: number;
+  grossValue: number;
+  netValue: number;
+  grossGain: number;
+  netGain: number;
+  contributedCapital: number;
+  shareOfPoolCash: number;
+  shareOfDeployedPrincipal: number;
+  shareOfAccruedParticipationIncome: number;
+  shareOfPreferredReturnAccrued: number;
+  shareOfManagementFeeAccrued: number;
+  shareOfRealizedCarry: number;
+  shareOfPotentialCarry: number;
+}
+
+interface PoolSummary {
+  valuationDate: string;
+  totalCommittedCapital: number;
+  totalPoolUnits: number;
+  grossNavPerUnit: number;
+  netNavPerUnit: number;
+  poolCash: number;
+  deployedPrincipal: number;
+  accruedParticipationIncome: number;
+  realizedParticipationIncome: number;
+  preferredReturnAccrued: number;
+  managementFeeAccrued: number;
+  realizedCarryAccrued: number;
+  potentialCarry: number;
+  grossPoolValue: number;
+  netPoolValue: number;
+  realizedXirr: number;
+  projectedGrossXirr: number;
+  projectedNetXirr: number;
+}
+
+interface PoolExposure extends GenericRecord {
+  purchaseRequestId: string;
+  projectId?: string | null;
+  projectName?: string | null;
+  contractorId?: string | null;
+  contractorName?: string | null;
+  outstandingPrincipal: number;
+  outstandingParticipationFee: number;
+  grossExposureValue: number;
+  investorGrossExposure: number;
+  investorNetExposure: number;
 }
 
 interface InvestorWithData extends InvestorProfile {
@@ -77,6 +139,9 @@ interface InvestorWithData extends InvestorProfile {
   relatedProjects: GenericRecord[];
   allContractors?: GenericRecord[];
   portfolioMetrics: PortfolioMetrics;
+  poolPosition?: PoolPosition;
+  poolSummary?: PoolSummary;
+  poolExposure?: PoolExposure[];
   availableOpportunities: GenericRecord[];
 }
 

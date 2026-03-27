@@ -1,7 +1,7 @@
 import type { AgreementTemplatePayload } from '@/lib/agreements/types';
 
 export const INVESTOR_PARTICIPATION_TEMPLATE_KEY = 'investor-participation-poc';
-export const INVESTOR_PARTICIPATION_TEMPLATE_VERSION = 'v2';
+export const INVESTOR_PARTICIPATION_TEMPLATE_VERSION = 'v4';
 
 export function renderInvestorParticipationHTML(payload: AgreementTemplatePayload): string {
   return `
@@ -33,8 +33,9 @@ export function renderInvestorParticipationHTML(payload: AgreementTemplatePayloa
 
         <p>
           <strong>AND</strong><br /><br />
-          The Investor, whose details are provided at the time of execution on the Finverno investor portal
-          (Hereinafter referred to as “Investor”)
+          <strong>${payload.investorName}</strong>, whose details are recorded on the Finverno investor portal
+          ${payload.investorAddress ? ` and whose address is ${payload.investorAddress}` : ''}<br />
+          (Hereinafter referred to as the “Investor”)
         </p>
 
         <p>
@@ -43,110 +44,205 @@ export function renderInvestorParticipationHTML(payload: AgreementTemplatePayloa
 
         <hr style="margin: 20px 0; border: 0; border-top: 1px solid #ddd;" />
 
-        <h2 style="font-size: 16px;">1. Purpose</h2>
+        <h2 style="font-size: 16px;">1. Background and Purpose</h2>
         <p>
-          Finverno is conducting a limited Proof of Concept (POC) capital pool to validate a working capital financing
-          model for SME contractors.
+          Finverno is conducting a limited proof-of-concept pooled capital program for short-duration working capital
+          finance provided to SME contractors and related supplier payment cycles.
         </p>
         <p>
-          The purpose of this Agreement is to document the terms under which the Investor provides capital to Finverno
-          for deployment within this POC structure.
-        </p>
-
-        <h2 style="font-size: 16px;">2. Nature of Investment</h2>
-        <p>
-          The capital provided under this Agreement shall be treated as a loan from the Investor to
-          ${payload.companyName}.
-        </p>
-        <p>
-          Finverno shall deploy the capital towards short-duration financing of material purchases linked to approved
-          contractor BOQs and supplier invoices.
-        </p>
-        <p>The Investor acknowledges that Finverno retains full discretion regarding deployment decisions.</p>
-
-        <h2 style="font-size: 16px;">3. Investment Amount</h2>
-        <p>
-          The Investor agrees to contribute the amount specified during execution on the investor portal.
-        </p>
-        <p>
-          For the current POC, the commitment for this agreement is <strong>${payload.commitmentAmountLabel}</strong>.
-        </p>
-        <p>The capital shall be transferred via bank transfer to the designated Finverno account.</p>
-
-        <h2 style="font-size: 16px;">4. Deployment Duration</h2>
-        <p>
-          Capital deployments typically occur in cycles of approximately 30 to 90 days. However, the exact duration
-          may vary depending on the underlying project cycle.
+          This Agreement records the terms on which the Investor makes capital available to Finverno for deployment
+          within such pooled capital strategy and the basis on which distributions, fees, reporting, and execution are
+          to be handled between the Parties.
         </p>
 
-        <h2 style="font-size: 16px;">5. Return Framework</h2>
-        <p><strong>Hurdle Return</strong></p>
+        <h2 style="font-size: 16px;">2. Nature of Participation and Legal Character</h2>
         <p>
-          The Investor shall be entitled to a 12% annualised return, calculated on a pro-rated basis for the duration
-          capital remains deployed.
+          The capital committed under this Agreement shall constitute a private contractual funding arrangement and
+          shall be treated as a loan from the Investor to ${payload.companyName}, subject to the commercial allocation
+          mechanics set out herein.
         </p>
-        <p><strong>Profit Sharing</strong></p>
-        <p>After the hurdle return has been satisfied, additional profits generated from deployment may be distributed as follows:</p>
+        <p>
+          The Investor acknowledges that their economic participation is in the Finverno pooled capital strategy as a
+          whole and not in any identified purchase request, contractor, supplier, invoice, or project.
+        </p>
+        <p>
+          Finverno shall have sole discretion, acting in good faith and in accordance with its internal underwriting
+          and deployment processes, to allocate pool capital across eligible transactions. This Agreement is not an
+          issuance of units of a SEBI-registered Alternative Investment Fund unless expressly stated otherwise in a
+          separate regulated offering document.
+        </p>
+
+        <h2 style="font-size: 16px;">3. Commitment and Funding</h2>
+        <p>
+          The Investor agrees to contribute the amount specified during execution on the investor portal. For the
+          current agreement, the committed amount is <strong>${payload.commitmentAmountLabel}</strong>.
+        </p>
+        <p>
+          Funding shall be remitted by bank transfer to the designated Finverno account. Finverno may treat the
+          commitment as available for deployment only upon actual receipt of cleared funds.
+        </p>
+
+        <h2 style="font-size: 16px;">4. Pool Strategy, Deployment Basis, and Duration</h2>
+        <p>
+          Finverno intends to deploy capital towards short-duration financing of materials and related working capital
+          obligations linked to approved contractor BOQs, supplier invoices, and associated commercial cycles.
+        </p>
+        <p>
+          Deployments are expected to run in cycles of approximately 30 to 90 days, but actual deployment periods may
+          be shorter or longer depending on project execution, invoice acceptance, collection timelines, and other
+          operational factors.
+        </p>
+
+        <h2 style="font-size: 16px;">5. Key Commercial Terms</h2>
+        <div style="padding: 14px 16px; border: 1px solid #ddd; border-radius: 8px; background: #fafafa;">
+          <p style="margin: 0 0 8px;"><strong>Structure:</strong> pooled working-capital participation administered by Finverno</p>
+          <p style="margin: 0 0 8px;"><strong>Preferred return / hurdle:</strong> 12% per annum, accrued on a daily pro-rated basis</p>
+          <p style="margin: 0 0 8px;"><strong>Management fee:</strong> 2% per annum, accrued only on capital actually deployed in active transactions</p>
+          <p style="margin: 0 0 8px;"><strong>Carry / performance fee:</strong> 20% of realized profits above the preferred return hurdle</p>
+          <p style="margin: 0 0 8px;"><strong>NAV treatment:</strong> accrued management fee reduces net NAV as it accrues; carry is recognized only upon realization</p>
+          <p style="margin: 0;"><strong>Investor exposure:</strong> economic exposure is to the pool as a whole, with look-through exposure reporting provided for transparency only</p>
+        </div>
+
+        <h2 style="font-size: 16px;">6. NAV, Unitization, and Valuation Transparency</h2>
+        <p>
+          Finverno may maintain internal notional pool units and Net Asset Value (“NAV”) calculations for purposes of
+          investor transparency, fair entry pricing, and internal accounting consistency.
+        </p>
+        <p>
+          Pool NAV may reflect, among other things, pool cash, outstanding deployed principal, accrued income,
+          realized collections, accrued management fee, and realized carry. Look-through exposure reports may be shown
+          to the Investor for informational purposes only and shall not be construed as conferring direct legal
+          ownership in any underlying transaction.
+        </p>
+
+        <h2 style="font-size: 16px;">7. Fee Waterfall and Distribution Mechanics</h2>
+        <p><strong>7.1 Preferred Return / Hurdle</strong></p>
+        <p>
+          The Investor shall be entitled to a preferred return at the rate of 12% per annum, calculated on a daily
+          pro-rated basis for the period that relevant pool capital remains deployed.
+        </p>
+        <p><strong>7.2 Management Fee</strong></p>
+        <p>
+          Finverno shall accrue a management fee at the rate of 2% per annum on deployed capital only. For avoidance
+          of doubt, no such management fee shall be charged on idle, uncalled, or undeployed pool cash.
+        </p>
+        <p>
+          Such management fee may be reflected as an accrued deduction in net NAV reporting even if not immediately
+          distributed in cash to Finverno.
+        </p>
+        <p><strong>7.3 Carry / Performance Fee</strong></p>
+        <p>
+          Once the preferred return hurdle has been satisfied, realized profits of the pool in excess of such hurdle
+          may be allocated 80% to Investors and 20% to Finverno as carry or performance compensation.
+        </p>
+        <p>
+          For clarity, unrealized gains, accrued but uncollected income, or projected returns may be disclosed in pool
+          reporting; however, carry shall be charged only upon realization in cash.
+        </p>
+        <p><strong>7.4 Indicative Return Range</strong></p>
+        <p>
+          Based on current assumptions, Finverno expects an indicative net annualized investor return range of
+          approximately 14% to 18%. Such figures are illustrative only and do not constitute a guarantee.
+        </p>
+
+        <h2 style="font-size: 16px;">8. Illustrative Examples for Transparency</h2>
+        <p><strong>8.1 Later entry at higher NAV</strong></p>
+        <p>
+          If an Investor joins the pool after value has already accrued, that Investor may be admitted at a higher NAV
+          and may therefore receive fewer notional pool units than an earlier Investor who entered at a lower NAV. This
+          is intended to ensure equitable treatment between earlier and later participants.
+        </p>
+        <p><strong>8.2 Preferred return and carry</strong></p>
+        <p>
+          If realized pool profit is equal to the 12% annualized preferred return, such realized profit is first
+          allocated to Investors. Only profit realized above that hurdle becomes eligible for the 80/20 split described
+          in Section 7.3.
+        </p>
+        <p><strong>8.3 2% management fee on deployed capital only</strong></p>
+        <p>
+          If a portion of pool cash remains temporarily undeployed, that amount does not attract the 2% annual
+          management fee. The fee accrues solely on capital actively deployed in live financing transactions.
+        </p>
+
+        <h2 style="font-size: 16px;">9. Repayment, Withdrawal, and Re-Deployment</h2>
+        <p>
+          Finverno shall, subject to pool liquidity, realization of underlying collections, and the waterfall set out
+          in Section 7, return principal and applicable distributions to the Investor in accordance with the pool
+          economics described herein.
+        </p>
+        <p>
+          Any request for withdrawal, redemption, rollover, or re-deployment shall be processed in accordance with the
+          operational position and liquidity of the pool at the relevant time. Finverno does not guarantee immediate
+          liquidity on demand.
+        </p>
+
+        <h2 style="font-size: 16px;">10. Reporting and Disclosure</h2>
+        <p>
+          Finverno will provide periodic investor reporting, which may include NAV, notional unit allocation, deployed
+          capital, pool cash, realized collections, fee accruals, and return calculations.
+        </p>
+        <p>
+          Operational details regarding counterparties, contractors, suppliers, and projects may be aggregated,
+          summarized, anonymized, or partially withheld where reasonably required for confidentiality, commercial
+          sensitivity, or data minimization purposes.
+        </p>
+
+        <h2 style="font-size: 16px;">11. Platform Revenues and Separate Finverno Economics</h2>
+        <p>
+          Finverno may earn management compensation, carry, and contractor-side platform, enablement, or service fees.
+          Except where expressly included in the investor waterfall, such contractor-side revenues belong solely to
+          Finverno and are separate from the Investor’s distribution rights under this Agreement.
+        </p>
+
+        <h2 style="font-size: 16px;">12. Investor Representations and Acknowledgements</h2>
+        <p>The Investor represents and acknowledges that:</p>
         <ul style="margin-top: 0;">
-          <li>80% to the Investor</li>
-          <li>20% retained by Finverno as performance compensation</li>
+          <li>the Investor is investing from lawful funds beneficially owned or controlled by the Investor</li>
+          <li>the Investor understands that this is a private, illiquid, pooled capital participation arrangement</li>
+          <li>the Investor has reviewed the commercial terms, including the 2% management fee, 12% preferred return, and 20% carry framework</li>
+          <li>the Investor understands that look-through exposure reporting is informational only and does not create direct rights against any contractor, supplier, or project counterparty</li>
         </ul>
-        <p><strong>Expected Returns</strong></p>
-        <p>
-          Based on the current deployment model, the expected net annualised return (XIRR) to investors is
-          approximately 14% to 18%. These returns are indicative and not guaranteed.
-        </p>
 
-        <h2 style="font-size: 16px;">6. Management and Platform Fees</h2>
-        <p>Finverno may earn revenue through management compensation and platform or enablement fees charged to contractors.</p>
-        <p>Such revenues belong to Finverno and are separate from investor capital returns.</p>
-
-        <h2 style="font-size: 16px;">7. Repayment</h2>
-        <p>
-          Upon completion of a deployment cycle, Finverno shall return the Investor’s principal capital and applicable
-          returns calculated in accordance with Section 5.
-        </p>
-        <p>Investors may elect to withdraw capital or redeploy into subsequent cycles.</p>
-
-        <h2 style="font-size: 16px;">8. Transparency and Reporting</h2>
-        <p>Finverno will provide periodic updates to investors including deployment summaries, repayment confirmations, and return calculations.</p>
-        <p>Operational details regarding contractors or suppliers may be summarised for confidentiality purposes.</p>
-
-        <h2 style="font-size: 16px;">9. Risk Disclosure</h2>
-        <p>The Investor acknowledges that:</p>
+        <h2 style="font-size: 16px;">13. Risk Factors</h2>
+        <p>The Investor acknowledges that the pool is subject to, among other things:</p>
         <ul style="margin-top: 0;">
-          <li>this POC involves financing operational business activities</li>
-          <li>contractor payment timelines may vary</li>
-          <li>returns are dependent on successful collection from financed transactions</li>
+          <li>contractor, project, execution, and collection risk</li>
+          <li>timing mismatch between deployment and repayment</li>
+          <li>concentration risk notwithstanding pool diversification</li>
+          <li>operational, legal, documentation, and counterparty risk</li>
+          <li>the possibility of delayed, reduced, or nil returns in stressed scenarios</li>
         </ul>
-        <p>Finverno shall exercise reasonable diligence in deployment but does not guarantee investment returns.</p>
-
-        <h2 style="font-size: 16px;">10. Taxation</h2>
         <p>
-          All returns distributed to investors may be treated as interest income under applicable tax laws. Finverno may
-          deduct Tax Deducted at Source (TDS) where required under Indian law.
+          Finverno shall exercise reasonable diligence in deployment and monitoring; however, no assured, fixed, or
+          guaranteed return is being promised under this Agreement.
         </p>
-        <p>Investors are responsible for their own tax reporting obligations.</p>
 
-        <h2 style="font-size: 16px;">11. Transfer Restrictions</h2>
-        <p>This participation is private and non-transferable without written consent from Finverno.</p>
+        <h2 style="font-size: 16px;">14. Taxes, Transfer Restrictions, and Relationship of Parties</h2>
+        <p>
+          Returns distributed to Investors may be treated as interest income or such other category as may be required
+          under applicable law. Finverno may deduct tax at source where legally required. The Investor remains
+          responsible for their own tax filings and disclosures.
+        </p>
+        <p>
+          This participation is private and non-transferable without Finverno’s prior written consent. Nothing in this
+          Agreement shall be deemed to create a partnership, fiduciary partnership, agency, or co-ownership relation
+          between the Parties in respect of any underlying financed asset.
+        </p>
 
-        <h2 style="font-size: 16px;">12. Governing Law</h2>
+        <h2 style="font-size: 16px;">15. Governing Law and Dispute Resolution</h2>
         <p>This Agreement shall be governed by the laws of India.</p>
         <p>Any disputes shall fall under the jurisdiction of courts located in ${payload.jurisdiction}.</p>
 
-        <h2 style="font-size: 16px;">13. Electronic Execution</h2>
+        <h2 style="font-size: 16px;">16. Electronic Execution and Acceptance</h2>
         <p>
           This Agreement is executed electronically through the Finverno investor portal. Electronic signatures shall
           have the same legal validity as physical signatures under the Information Technology Act, 2000.
         </p>
-
-        <h2 style="font-size: 16px;">14. Acceptance</h2>
         <p>By electronically signing this Agreement, the Investor confirms that they:</p>
         <ul style="margin-top: 0;">
-          <li>have read and understood the terms</li>
-          <li>agree to participate under the stated structure</li>
-          <li>acknowledge the associated risks</li>
+          <li>have read and understood the terms of this Agreement in full</li>
+          <li>accept the pooled capital model and fee mechanics described herein</li>
+          <li>consent to electronic records, communications, and execution</li>
         </ul>
 
         <div style="margin-top: 18px; padding: 14px; border: 1px solid #ddd; border-radius: 8px;">

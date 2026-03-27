@@ -131,14 +131,55 @@ export default function InvestorDashboard(): React.ReactElement {
     capitalReturns: 0,
     netCapitalReturns: 0,
     managementFees: 0,
-    performanceFees: 0
+    performanceFees: 0,
+    potentialPerformanceFees: 0,
+    grossNavPerUnit: 100,
+    netNavPerUnit: 100,
+    unitsHeld: 0,
+    ownershipPercent: 0,
+    deployedPoolShare: 0,
+    poolCashShare: 0,
+    accruedParticipationIncomeShare: 0,
+    preferredReturnAccruedShare: 0,
+    realizedInvestorRoi: 0
   };
-  const deployableBalance = Math.max(
-    portfolioMetrics.capitalInflow - portfolioMetrics.totalInvested + portfolioMetrics.netCapitalReturns,
-    0
-  );
+  const poolSummary = investor?.poolSummary || {
+    grossPoolValue: 0,
+    netPoolValue: 0,
+    grossNavPerUnit: 100,
+    netNavPerUnit: 100,
+    projectedGrossXirr: 0,
+    projectedNetXirr: 0,
+    realizedXirr: 0,
+    totalPoolUnits: 0,
+    poolCash: 0,
+    deployedPrincipal: 0,
+    accruedParticipationIncome: 0,
+    managementFeeAccrued: 0,
+    preferredReturnAccrued: 0,
+    realizedCarryAccrued: 0,
+    potentialCarry: 0,
+    valuationDate: new Date().toISOString()
+  };
+  const poolPosition = investor?.poolPosition || {
+    unitsHeld: 0,
+    ownershipPercent: 0,
+    entryNavPerUnit: 100,
+    grossValue: 0,
+    netValue: 0,
+    grossGain: 0,
+    netGain: 0,
+    contributedCapital: 0,
+    shareOfPoolCash: 0,
+    shareOfDeployedPrincipal: 0,
+    shareOfAccruedParticipationIncome: 0,
+    shareOfPreferredReturnAccrued: 0,
+    shareOfManagementFeeAccrued: 0,
+    shareOfRealizedCarry: 0,
+    shareOfPotentialCarry: 0
+  };
 
-  const recentInvestments = investor?.investments?.slice(0, 5) || [];
+  const poolExposure = investor?.poolExposure || [];
 
   // Calculate sector allocation from investments
   const sectorData: { [key: string]: number } = {};
@@ -260,72 +301,70 @@ export default function InvestorDashboard(): React.ReactElement {
         {/* Key Metrics */}
         <div className="grid gap-4 sm:gap-6 md:grid-cols-2 xl:grid-cols-4 mb-8">
           <div className="bg-neutral-dark p-4 sm:p-6 rounded-lg border border-neutral-medium">
-            <div className="text-accent-amber text-sm font-mono mb-2">CAPITAL INFLOW</div>
-            <div className="text-2xl font-bold text-primary mb-1">{formatCurrency(portfolioMetrics.capitalInflow)}</div>
+            <div className="text-accent-amber text-sm font-mono mb-2">CAPITAL COMMITTED</div>
+            <div className="text-2xl font-bold text-primary mb-1">{formatCurrency(poolPosition.contributedCapital)}</div>
             <div className="text-xs text-secondary">
-              {deployableBalance > 0
-                ? `Available to deploy: ${formatCurrency(deployableBalance)}`
-                : 'Fully deployed'}
+              Pool ownership: {poolPosition.ownershipPercent.toFixed(2)}%
             </div>
           </div>
           <div className="bg-neutral-dark p-4 sm:p-6 rounded-lg border border-neutral-medium">
-            <div className="text-accent-amber text-sm font-mono mb-2">TOTAL INVESTED</div>
-            <div className="text-2xl font-bold text-primary mb-1">{formatCurrency(portfolioMetrics.totalInvested)}</div>
-            <div className="text-xs text-secondary">Across {portfolioMetrics.totalInvestments} investments</div>
+            <div className="text-accent-amber text-sm font-mono mb-2">POOL UNITS HELD</div>
+            <div className="text-2xl font-bold text-primary mb-1">{poolPosition.unitsHeld.toFixed(4)}</div>
+            <div className="text-xs text-secondary">Entry NAV: ₹{poolPosition.entryNavPerUnit.toFixed(4)}</div>
           </div>
           
           <div className="bg-neutral-dark p-4 sm:p-6 rounded-lg border border-neutral-medium">
-            <div className="text-accent-amber text-sm font-mono mb-2">CAPITAL RETURNS</div>
-            <div className="text-2xl font-bold text-primary mb-1">{formatCurrency(portfolioMetrics.capitalReturns)}</div>
-            <div className="text-xs text-secondary">Realized cashflows from contractors</div>
+            <div className="text-accent-amber text-sm font-mono mb-2">CURRENT NET NAV</div>
+            <div className="text-2xl font-bold text-primary mb-1">₹{poolSummary.netNavPerUnit.toFixed(4)}</div>
+            <div className="text-xs text-secondary">Gross NAV: ₹{poolSummary.grossNavPerUnit.toFixed(4)}</div>
           </div>
           
           <div className="bg-neutral-dark p-4 sm:p-6 rounded-lg border border-neutral-medium">
-            <div className="text-accent-amber text-sm font-mono mb-2">OUTSTANDING CAPITAL</div>
-            <div className="text-2xl font-bold text-primary mb-1">{formatCurrency(portfolioMetrics.currentValue)}</div>
-            <div className="text-xs text-success">+{formatCurrency(portfolioMetrics.totalReturns)} capital returned</div>
+            <div className="text-accent-amber text-sm font-mono mb-2">CURRENT NET VALUE</div>
+            <div className="text-2xl font-bold text-primary mb-1">{formatCurrency(poolPosition.netValue)}</div>
+            <div className="text-xs text-success">Gross value: {formatCurrency(poolPosition.grossValue)}</div>
           </div>
           
           <div className="bg-neutral-dark p-4 sm:p-6 rounded-lg border border-neutral-medium">
-            <div className="text-accent-amber text-sm font-mono mb-2">INVESTOR XIRR</div>
+            <div className="text-accent-amber text-sm font-mono mb-2">PROJECTED GROSS XIRR</div>
             <div className="text-2xl font-bold text-accent-amber mb-1">
-              {Number.isFinite(portfolioMetrics.roi) ? portfolioMetrics.roi.toFixed(1) : '0.0'}%
+              {Number.isFinite(poolSummary.projectedGrossXirr) ? poolSummary.projectedGrossXirr.toFixed(1) : '0.0'}%
             </div>
-            <div className="text-xs text-secondary">Capital calls vs distributions</div>
+            <div className="text-xs text-secondary">Based on current pool value and accrued income</div>
           </div>
 
           <div className="bg-neutral-dark p-4 sm:p-6 rounded-lg border border-neutral-medium">
-            <div className="text-accent-amber text-sm font-mono mb-2">PORTFOLIO XIRR</div>
+            <div className="text-accent-amber text-sm font-mono mb-2">PROJECTED NET XIRR</div>
             <div className="text-2xl font-bold text-accent-amber mb-1">
-              {Number.isFinite(portfolioMetrics.portfolioXirr) ? Number(portfolioMetrics.portfolioXirr).toFixed(1) : '0.0'}%
+              {Number.isFinite(poolSummary.projectedNetXirr) ? Number(poolSummary.projectedNetXirr).toFixed(1) : '0.0'}%
             </div>
-            <div className="text-xs text-secondary">Deployment vs return timing</div>
+            <div className="text-xs text-secondary">After accrued 2% management fee only</div>
           </div>
           
           <div className="bg-neutral-dark p-4 sm:p-6 rounded-lg border border-neutral-medium">
-            <div className="text-accent-amber text-sm font-mono mb-2">PLATFORM FEES (2 & 20)</div>
+            <div className="text-accent-amber text-sm font-mono mb-2">YOUR DEPLOYED POOL SHARE</div>
             <div className="text-2xl font-bold text-primary mb-1">
-              {formatCurrency(portfolioMetrics.managementFees + portfolioMetrics.performanceFees)}
+              {formatCurrency(poolPosition.shareOfDeployedPrincipal)}
             </div>
             <div className="text-xs text-secondary">
-              Mgmt: {formatCurrency(portfolioMetrics.managementFees)} • Carry: {formatCurrency(portfolioMetrics.performanceFees)}
+              Cash awaiting deployment: {formatCurrency(poolPosition.shareOfPoolCash)}
             </div>
           </div>
           
           <div className="bg-neutral-dark p-4 sm:p-6 rounded-lg border border-neutral-medium">
-            <div className="text-accent-amber text-sm font-mono mb-2">NET XIRR (AFTER FEES)</div>
+            <div className="text-accent-amber text-sm font-mono mb-2">YOUR 2% / 20 IMPACT</div>
             <div className="text-2xl font-bold text-accent-amber mb-1">
-              {Number.isFinite(portfolioMetrics.netRoi) ? portfolioMetrics.netRoi.toFixed(1) : '0.0'}%
+              {formatCurrency(poolPosition.shareOfManagementFeeAccrued + poolPosition.shareOfRealizedCarry)}
             </div>
             <div className="text-xs text-secondary">
-              Net capital returned: {formatCurrency(portfolioMetrics.netCapitalReturns)}
+              Mgmt accrued: {formatCurrency(poolPosition.shareOfManagementFeeAccrued)} • Realized carry: {formatCurrency(poolPosition.shareOfRealizedCarry)}
             </div>
           </div>
           
           <div className="bg-neutral-dark p-4 sm:p-6 rounded-lg border border-neutral-medium">
-            <div className="text-accent-amber text-sm font-mono mb-2">ACTIVE INVESTMENTS</div>
-            <div className="text-2xl font-bold text-primary mb-1">{portfolioMetrics.activeInvestments}</div>
-            <div className="text-xs text-secondary">{portfolioMetrics.completedInvestments} completed</div>
+            <div className="text-accent-amber text-sm font-mono mb-2">POTENTIAL CARRY</div>
+            <div className="text-2xl font-bold text-primary mb-1">{formatCurrency(poolPosition.shareOfPotentialCarry)}</div>
+            <div className="text-xs text-secondary">Shown for transparency only. Not deducted until realized.</div>
           </div>
         </div>
 
@@ -334,85 +373,58 @@ export default function InvestorDashboard(): React.ReactElement {
         </div>
 
         <div className={`grid gap-8 ${showPortfolioInsights ? 'lg:grid-cols-3' : ''}`}>
-          {/* Recent Investments */}
+          {/* Pool Exposure */}
           <div className={showPortfolioInsights ? 'lg:col-span-2' : ''}>
             <div className="bg-neutral-dark rounded-lg border border-neutral-medium">
               <div className="p-6 border-b border-neutral-medium">
-                <h2 className="text-xl font-bold text-primary">Recent Investments</h2>
-                <p className="text-sm text-secondary">Your latest project financing activities</p>
+                <h2 className="text-xl font-bold text-primary">Current Pool Exposure</h2>
+                <p className="text-sm text-secondary">Informational look-through into the transactions your pool units are currently exposed to</p>
               </div>
               <div className="p-6">
                 <div className="space-y-6">
-                  {recentInvestments.length > 0 ? recentInvestments.map((investment) => {
-                    const normalizedInvestment = investment as InvestmentRecord;
-                    const contractorId = (getInvestmentValue(normalizedInvestment, ['contractorId', 'contractor_id']) as string | undefined) || '';
-                    const projectId = (getInvestmentValue(normalizedInvestment, ['projectId', 'project_id']) as string | undefined) || '';
-                    const contractor = investor?.relatedContractors?.find(c => c.id === contractorId);
-                    const project = investor?.relatedProjects?.find(p => p.id === projectId);
-                    const contractorName = String(contractor?.companyName || contractor?.company_name || (contractorId ? `Contractor ${contractorId}` : 'Unknown Contractor'));
-                    const projectName = String(project?.projectName || project?.project_name || (projectId ? `Project ${projectId}` : 'Unknown Project'));
-                    const investmentAmount = Number(getInvestmentValue(normalizedInvestment, ['investmentAmount', 'investment_amount', 'amount'], 0) ?? 0);
-                    const expectedReturnRaw = getInvestmentValue(normalizedInvestment, ['expectedReturn', 'expected_returns', 'expected_return', 'expected_return_percent'], 0);
-                    const expectedReturn = Number(expectedReturnRaw ?? 0);
-                    const investmentDateRaw = getInvestmentValue(normalizedInvestment, ['investmentDate', 'investment_date'], '');
-                    const investmentDate = typeof investmentDateRaw === 'string' ? investmentDateRaw : investmentDateRaw ? String(investmentDateRaw) : '';
-                    const actualReturnRaw = getInvestmentValue(normalizedInvestment, ['actualReturn', 'actual_returns', 'actual_return']);
-                    const hasActualReturn = actualReturnRaw !== undefined && actualReturnRaw !== null && actualReturnRaw !== '';
-                    const actualReturnValue = hasActualReturn ? Number(actualReturnRaw) : null;
-                    const investmentStatus = (getInvestmentValue(normalizedInvestment, ['status'], 'Active') as string) || 'Active';
-                    
+                  {poolExposure.length > 0 ? poolExposure.map((exposure) => {
                     return (
-                    <div key={investment.id} className="border border-neutral-medium rounded-lg p-4 sm:p-5">
+                    <div key={exposure.purchaseRequestId} className="border border-neutral-medium rounded-lg p-4 sm:p-5">
                       <div className="flex flex-col gap-2 sm:flex-row sm:justify-between sm:items-start mb-3">
                         <div>
                           <h3 className="font-semibold text-primary mb-1">
-                            {projectName}
+                            {exposure.projectName || 'Unmapped Project'}
                           </h3>
                           <p className="text-sm text-secondary">
-                            {contractorName}
+                            {exposure.contractorName || 'Unknown Contractor'}
                           </p>
                         </div>
-                        <div className={`px-2 py-1 rounded text-xs font-medium ${
-                          investmentStatus === 'Active' 
-                            ? 'bg-accent-blue/10 text-accent-blue'
-                            : investmentStatus === 'Completed'
-                            ? 'bg-success/10 text-success'
-                            : 'bg-error/10 text-error'
-                        }`}>
-                          {investmentStatus}
+                        <div className="px-2 py-1 rounded text-xs font-medium bg-accent-blue/10 text-accent-blue">
+                          PR {exposure.purchaseRequestId.slice(0, 8).toUpperCase()}
                         </div>
                       </div>
                       
                       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-3">
                         <div>
-                          <div className="text-xs text-secondary">Investment</div>
-                          <div className="font-semibold text-primary">{formatCurrency(investmentAmount)}</div>
+                          <div className="text-xs text-secondary">Your Gross Exposure</div>
+                          <div className="font-semibold text-primary">{formatCurrency(exposure.investorGrossExposure)}</div>
                         </div>
                         <div>
-                          <div className="text-xs text-secondary">Expected Return</div>
-                          <div className="font-semibold text-accent-amber">{expectedReturn.toFixed(1)}%</div>
+                          <div className="text-xs text-secondary">Outstanding Principal</div>
+                          <div className="font-semibold text-primary">{formatCurrency(exposure.outstandingPrincipal)}</div>
                         </div>
                         <div>
-                          <div className="text-xs text-secondary">Date</div>
-                          <div className="font-semibold text-primary">
-                            {investmentDate ? formatDate(investmentDate) : 'Not set'}
-                          </div>
+                          <div className="text-xs text-secondary">Accrued Participation Income</div>
+                          <div className="font-semibold text-accent-amber">{formatCurrency(exposure.outstandingParticipationFee)}</div>
                         </div>
                       </div>
                       
-                      {actualReturnValue !== null && !Number.isNaN(actualReturnValue) && (
-                        <div className="text-xs text-success">
-                          Actual Return: {Number(actualReturnValue).toFixed(1)}%
-                        </div>
-                      )}
+                      <div className="text-xs text-secondary">
+                        This is a look-through exposure view. Your legal ownership is in the pool units, not directly in this PR.
+                      </div>
                     </div>
                     );
                   }) : (
                     <div className="text-center py-8">
                       <div className="text-4xl mb-4">💰</div>
-                      <h3 className="text-lg font-semibold text-primary mb-2">No Investments Yet</h3>
+                      <h3 className="text-lg font-semibold text-primary mb-2">No Active Pool Exposure</h3>
                       <p className="text-secondary">
-                        No investments found. Make sure your Investments sheet has data and your email matches the investorEmail column.
+                        Your capital is either not yet deployed or the pool has no active purchase request exposure at the moment.
                       </p>
                     </div>
                   )}

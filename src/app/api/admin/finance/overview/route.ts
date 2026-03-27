@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { requireAdmin } from '@/lib/admin-auth';
 import { supabaseAdmin } from '@/lib/supabase';
 import { calculateCapitalAccrualMetrics, groupTransactionsByPurchaseRequest } from '@/lib/capital-accrual';
+import { calculateSoftPoolValuation } from '@/lib/pool-valuation';
 
 type PurchaseRequestRow = {
   id: string;
@@ -60,6 +61,21 @@ type InvestorSummaryRow = {
   xirr: number;
   net_xirr: number;
   disbursements: InvestorDisbursementRow[];
+};
+
+type InvestorPoolPositionRow = {
+  investor_id: string;
+  investor_name: string | null;
+  investor_email: string | null;
+  investor_type: string | null;
+  contributed_capital: number;
+  units_held: number;
+  ownership_percent: number;
+  entry_nav_per_unit: number;
+  gross_value: number;
+  net_value: number;
+  gross_gain: number;
+  net_gain: number;
 };
 
 type CashflowPoint = { date: Date; amount: number };
@@ -164,6 +180,17 @@ export async function GET() {
 
     if (investorTxError) {
       console.error('Failed to load investor transactions:', investorTxError);
+    }
+
+    const { data: poolTransactions, error: poolTransactionsError } = await supabaseAdmin
+      .from('capital_transactions')
+      .select('purchase_request_id, transaction_type, amount, status, created_at')
+      .in('transaction_type', ['deployment', 'return'])
+      .not('purchase_request_id', 'is', null)
+      .eq('status', 'completed');
+
+    if (poolTransactionsError) {
+      console.error('Failed to load pool transactions:', poolTransactionsError);
     }
 
     const investorIdsFromTx = Array.from(
@@ -609,6 +636,40 @@ export async function GET() {
       0
     );
 
+    const poolValuation = calculateSoftPoolValuation({
+      investorInflows: (((investorTransactions as InvestorTransactionRow[] | null) || [])).filter((row) => row.transaction_type === 'inflow'),
+      investorDistributions: (((investorTransactions as InvestorTransactionRow[] | null) || [])).filter((row) => row.transaction_type === 'return'),
+      poolTransactions: (poolTransactions as CapitalTransactionRow[] | null) || [],
+      purchaseRequests: requests,
+      contractors: Array.from(contractorMap.values()),
+      projects: Array.from(
+        new Map(
+          Array.from(projectMap.values()).map((project) => [project.id, project])
+        ).values()
+      )
+    });
+
+    const investorPoolPositions: InvestorPoolPositionRow[] = (investors as InvestorRow[] | null || [])
+      .map((investor) => {
+        const position = poolValuation.positions.find((row) => row.investorId === investor.id);
+        if (!position) return null;
+        return {
+          investor_id: investor.id,
+          investor_name: investor.name ?? null,
+          investor_email: investor.email ?? null,
+          investor_type: investor.investor_type ?? null,
+          contributed_capital: position.contributedCapital,
+          units_held: position.unitsHeld,
+          ownership_percent: position.ownershipPercent,
+          entry_nav_per_unit: position.entryNavPerUnit,
+          gross_value: position.grossValue,
+          net_value: position.netValue,
+          gross_gain: position.grossGain,
+          net_gain: position.netGain
+        };
+      })
+      .filter(Boolean) as InvestorPoolPositionRow[];
+
     return NextResponse.json({
       summary: {
         total_requests: requests.length,
@@ -622,6 +683,27 @@ export async function GET() {
         total_projects: projectTotals.size,
         total_contractors: contractorIds.length
       },
+      pool_summary: {
+        valuation_date: poolValuation.valuationDate,
+        total_committed_capital: poolValuation.totalCommittedCapital,
+        total_pool_units: poolValuation.totalPoolUnits,
+        gross_nav_per_unit: poolValuation.grossNavPerUnit,
+        net_nav_per_unit: poolValuation.netNavPerUnit,
+        pool_cash: poolValuation.poolCash,
+        deployed_principal: poolValuation.deployedPrincipal,
+        accrued_participation_income: poolValuation.accruedParticipationIncome,
+        realized_participation_income: poolValuation.realizedParticipationIncome,
+        preferred_return_accrued: poolValuation.preferredReturnAccrued,
+        management_fee_accrued: poolValuation.managementFeeAccrued,
+        realized_carry_accrued: poolValuation.realizedCarryAccrued,
+        potential_carry: poolValuation.potentialCarry,
+        gross_pool_value: poolValuation.grossPoolValue,
+        net_pool_value: poolValuation.netPoolValue,
+        realized_xirr: poolValuation.realizedXirr,
+        projected_gross_xirr: poolValuation.projectedGrossXirr,
+        projected_net_xirr: poolValuation.projectedNetXirr
+      },
+      investor_positions: investorPoolPositions,
       investors: investorSummariesWithDisbursements,
       projects: Array.from(projectTotals.values())
         .sort((a, b) => b.total_funded - a.total_funded),

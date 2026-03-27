@@ -220,8 +220,8 @@ export async function regenerateAgreementDraft(
   if (!existing) {
     throw new Error('Agreement not found');
   }
-  if (!['draft', 'generated'].includes(existing.status)) {
-    throw new Error('Only draft or generated agreements can be regenerated');
+  if (!['draft', 'generated', 'issued'].includes(existing.status)) {
+    throw new Error('Only unsigned draft, generated, or issued agreements can be regenerated');
   }
 
   const investor = await getInvestorById(existing.investor_id);
@@ -259,6 +259,7 @@ export async function regenerateAgreementDraft(
     .from('investor_agreements')
     .update({
       status: 'generated',
+      issued_at: existing.status === 'issued' ? null : existing.issued_at,
       commitment_amount: commitmentAmount,
       agreement_date: agreementDate,
       investor_pan: investorPan,

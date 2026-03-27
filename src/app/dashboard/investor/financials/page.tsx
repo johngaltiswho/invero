@@ -33,7 +33,28 @@ export default function FinancialManagement(): React.ReactElement {
     capitalReturns: 0,
     netCapitalReturns: 0,
     managementFees: 0,
-    performanceFees: 0
+    performanceFees: 0,
+    potentialPerformanceFees: 0,
+    grossNavPerUnit: 100,
+    netNavPerUnit: 100,
+    unitsHeld: 0,
+    ownershipPercent: 0,
+    deployedPoolShare: 0,
+    poolCashShare: 0,
+    accruedParticipationIncomeShare: 0,
+    preferredReturnAccruedShare: 0
+  };
+  const poolPosition = investor?.poolPosition || {
+    grossValue: 0,
+    netValue: 0,
+    grossGain: 0,
+    netGain: 0,
+    entryNavPerUnit: 100
+  };
+  const poolSummary = investor?.poolSummary || {
+    projectedGrossXirr: 0,
+    projectedNetXirr: 0,
+    realizedXirr: 0
   };
 
   const transactions = useMemo(() => {
@@ -141,39 +162,50 @@ export default function FinancialManagement(): React.ReactElement {
             {/* Financial Summary Cards */}
             <div className="grid lg:grid-cols-4 md:grid-cols-2 gap-6">
               <div className="bg-neutral-dark p-6 rounded-lg border border-neutral-medium">
-                <div className="text-accent-amber text-sm font-mono mb-2">TOTAL INVESTED</div>
+                <div className="text-accent-amber text-sm font-mono mb-2">CAPITAL COMMITTED</div>
                 <div className="text-2xl font-bold text-primary mb-1">{formatCurrency(portfolioMetrics.totalInvested)}</div>
-                <div className="text-xs text-secondary">Principal amount</div>
+                <div className="text-xs text-secondary">{(portfolioMetrics.unitsHeld || 0).toFixed(4)} pool units</div>
               </div>
               
               <div className="bg-neutral-dark p-6 rounded-lg border border-neutral-medium">
-                <div className="text-accent-amber text-sm font-mono mb-2">CURRENT VALUE</div>
-                <div className="text-2xl font-bold text-primary mb-1">{formatCurrency(portfolioMetrics.currentValue)}</div>
+                <div className="text-accent-amber text-sm font-mono mb-2">NET POOL VALUE</div>
+                <div className="text-2xl font-bold text-primary mb-1">{formatCurrency(poolPosition.netValue)}</div>
                 <div className="text-xs text-success">
                   {portfolioMetrics.totalInvested > 0
-                    ? `+${((portfolioMetrics.currentValue - portfolioMetrics.totalInvested) / portfolioMetrics.totalInvested * 100).toFixed(1)}%`
+                    ? `+${((poolPosition.netValue - portfolioMetrics.totalInvested) / portfolioMetrics.totalInvested * 100).toFixed(1)}%`
                     : '—'}
                 </div>
               </div>
               
               <div className="bg-neutral-dark p-6 rounded-lg border border-neutral-medium">
-                <div className="text-accent-amber text-sm font-mono mb-2">TOTAL RETURNS</div>
-                <div className="text-2xl font-bold text-success mb-1">{formatCurrency(portfolioMetrics.totalReturns)}</div>
-                <div className="text-xs text-secondary">Capital returned</div>
+                <div className="text-accent-amber text-sm font-mono mb-2">CURRENT NAV</div>
+                <div className="text-2xl font-bold text-success mb-1">₹{(portfolioMetrics.netNavPerUnit || 0).toFixed(4)}</div>
+                <div className="text-xs text-secondary">Entry NAV: ₹{poolPosition.entryNavPerUnit.toFixed(4)}</div>
               </div>
               
               <div className="bg-neutral-dark p-6 rounded-lg border border-neutral-medium">
-                <div className="text-accent-amber text-sm font-mono mb-2">NET RETURNS</div>
-                <div className="text-2xl font-bold text-primary mb-1">{formatCurrency(portfolioMetrics.netCapitalReturns)}</div>
-                <div className="text-xs text-secondary">After fees</div>
+                <div className="text-accent-amber text-sm font-mono mb-2">PROJECTED NET XIRR</div>
+                <div className="text-2xl font-bold text-primary mb-1">{poolSummary.projectedNetXirr.toFixed(1)}%</div>
+                <div className="text-xs text-secondary">Realized XIRR: {poolSummary.realizedXirr.toFixed(1)}%</div>
               </div>
             </div>
 
             <div className="bg-neutral-dark rounded-lg border border-neutral-medium p-6">
-              <h3 className="text-lg font-bold text-primary">Tax Summary</h3>
-              <p className="text-sm text-secondary">
-                Tax statements will be available once payout reports are finalized.
-              </p>
+              <h3 className="text-lg font-bold text-primary">Pool Fee Waterfall</h3>
+              <div className="grid md:grid-cols-2 gap-6 mt-4">
+                <div>
+                  <div className="text-xs text-secondary mb-1">Accrued 2% Management Fee</div>
+                  <div className="text-lg font-semibold text-primary">{formatCurrency(portfolioMetrics.managementFees)}</div>
+                  <div className="text-xs text-secondary mt-2">Charged only on capital currently deployed in the pool.</div>
+                </div>
+                <div>
+                  <div className="text-xs text-secondary mb-1">Realized Carry / Potential Carry</div>
+                  <div className="text-lg font-semibold text-primary">
+                    {formatCurrency(portfolioMetrics.performanceFees)} / {formatCurrency(portfolioMetrics.potentialPerformanceFees || 0)}
+                  </div>
+                  <div className="text-xs text-secondary mt-2">Carry is deducted only when realized profits exceed the 12% preferred return hurdle.</div>
+                </div>
+              </div>
             </div>
           </div>
         )}

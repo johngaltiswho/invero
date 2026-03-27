@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { currentUser } from '@clerk/nextjs/server';
 import { createClient } from '@supabase/supabase-js';
+import { calculateSoftPoolValuation } from '@/lib/pool-valuation';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -72,6 +73,87 @@ export async function GET() {
     if (contractorsError) {
       console.error('❌ Error fetching contractors:', contractorsError);
     }
+
+    const [poolInflowsRes, poolDistributionsRes, poolTransactionsRes, poolRequestsRes] = await Promise.all([
+      supabase
+        .from('capital_transactions')
+        .select('investor_id, amount, created_at, status, transaction_type')
+        .eq('transaction_type', 'inflow')
+        .eq('status', 'completed'),
+      supabase
+        .from('capital_transactions')
+        .select('investor_id, amount, created_at, status, transaction_type')
+        .eq('transaction_type', 'return')
+        .not('investor_id', 'is', null)
+        .eq('status', 'completed'),
+      supabase
+        .from('capital_transactions')
+        .select('purchase_request_id, amount, created_at, status, transaction_type')
+        .in('transaction_type', ['deployment', 'return'])
+        .not('purchase_request_id', 'is', null)
+        .eq('status', 'completed'),
+      supabase
+        .from('purchase_requests')
+        .select('id, project_id, contractor_id, status')
+    ]);
+
+    if (poolInflowsRes.error) {
+      console.error('❌ Error fetching pool inflows:', poolInflowsRes.error);
+    }
+
+    if (poolDistributionsRes.error) {
+      console.error('❌ Error fetching investor distributions:', poolDistributionsRes.error);
+    }
+
+    if (poolTransactionsRes.error) {
+      console.error('❌ Error fetching pool transactions:', poolTransactionsRes.error);
+    }
+
+    if (poolRequestsRes.error) {
+      console.error('❌ Error fetching purchase requests for pool valuation:', poolRequestsRes.error);
+    }
+
+    const poolValuation = calculateSoftPoolValuation({
+      investorInflows: poolInflowsRes.data || [],
+      investorDistributions: poolDistributionsRes.data || [],
+      poolTransactions: poolTransactionsRes.data || [],
+      purchaseRequests: poolRequestsRes.data || [],
+      contractors: (allContractors || []).map((contractor: any) => ({
+        id: contractor.id,
+        company_name: contractor.company_name || contractor.companyName || null,
+        participation_fee_rate_daily: contractor.participation_fee_rate_daily
+      })),
+      projects: (allProjects || []).map((project: any) => ({
+        id: project.id,
+        project_name: project.project_name || project.projectName || null
+      }))
+    });
+
+    const poolPosition = poolValuation.positions.find((position) => position.investorId === investor.id) || {
+      investorId: investor.id,
+      contributedCapital: 0,
+      unitsHeld: 0,
+      ownershipPercent: 0,
+      entryNavPerUnit: 100,
+      grossValue: 0,
+      netValue: 0,
+      grossGain: 0,
+      netGain: 0
+    };
+    const ownershipRatio = poolPosition.ownershipPercent / 100;
+    const grossToNetRatio = poolValuation.grossPoolValue > 0
+      ? poolValuation.netPoolValue / poolValuation.grossPoolValue
+      : 1;
+    const investorExposure = poolValuation.exposures.map((exposure) => {
+      const investorGrossExposure = exposure.grossExposureValue * ownershipRatio;
+      const investorNetExposure = investorGrossExposure * grossToNetRatio;
+      return {
+        ...exposure,
+        ownershipPercent: poolPosition.ownershipPercent,
+        investorGrossExposure,
+        investorNetExposure
+      };
+    });
 
     // Fetch capital deployments for this investor
     console.log('🔄 Fetching investor capital deployments...');
@@ -180,13 +262,11 @@ export async function GET() {
 
     const totalCapitalInflow = cleanSum(inflowTransactions || []);
     const totalCapitalReturns = cleanSum(returnTransactions || []);
-    const managementFee = totalInvested * 0.02;
-    const grossProfit = totalCapitalReturns - totalInvested;
-    const hurdleAmount = totalInvested * 0.12;
-    const performanceFeeBase = Math.max(grossProfit - hurdleAmount, 0);
-    const performanceFee = performanceFeeBase * 0.2;
-    const netCapitalReturns = Math.max(totalCapitalReturns - managementFee - performanceFee, 0);
-    const outstandingCapital = Math.max(totalInvested - totalCapitalReturns, 0);
+    const managementFee = poolValuation.managementFeeAccrued * ownershipRatio;
+    const realizedCarry = poolValuation.realizedCarryAccrued * ownershipRatio;
+    const potentialCarry = poolValuation.potentialCarry * ownershipRatio;
+    const netCapitalReturns = Math.max(totalCapitalReturns - realizedCarry, 0);
+    const outstandingCapital = poolPosition.netValue;
 
     type CashflowPoint = { date: Date; amount: number };
 
@@ -261,20 +341,7 @@ export async function GET() {
             amount: Math.abs(Number(tx.amount) || 0)
           }))
       );
-    const roi = xirr(investorCashflows);
-
-    const latestCashflowDate = investorCashflows.length
-      ? new Date(Math.max(...investorCashflows.map((cf) => cf.date.getTime())))
-      : new Date();
-    const netCashflows = [...investorCashflows];
-    const totalFees = managementFee + performanceFee;
-    if (totalFees > 0) {
-      netCashflows.push({
-        date: latestCashflowDate,
-        amount: -Math.abs(totalFees)
-      });
-    }
-    const netRoi = xirr(netCashflows);
+    const realizedInvestorRoi = xirr(investorCashflows);
 
     console.log(`✅ Fetched ${allProjects?.length || 0} projects, ${allContractors?.length || 0} contractors, ${investments.length} capital deployments`);
 
@@ -379,25 +446,73 @@ export async function GET() {
       investments,
       transactions: allTransactions || [],
       returns: [],
+      poolPosition: {
+        unitsHeld: poolPosition.unitsHeld,
+        ownershipPercent: poolPosition.ownershipPercent,
+        entryNavPerUnit: poolPosition.entryNavPerUnit,
+        grossValue: poolPosition.grossValue,
+        netValue: poolPosition.netValue,
+        grossGain: poolPosition.grossGain,
+        netGain: poolPosition.netGain,
+        contributedCapital: poolPosition.contributedCapital,
+        shareOfPoolCash: poolValuation.poolCash * ownershipRatio,
+        shareOfDeployedPrincipal: poolValuation.deployedPrincipal * ownershipRatio,
+        shareOfAccruedParticipationIncome: poolValuation.accruedParticipationIncome * ownershipRatio,
+        shareOfPreferredReturnAccrued: poolValuation.preferredReturnAccrued * ownershipRatio,
+        shareOfManagementFeeAccrued: managementFee,
+        shareOfRealizedCarry: realizedCarry,
+        shareOfPotentialCarry: potentialCarry
+      },
+      poolSummary: {
+        valuationDate: poolValuation.valuationDate,
+        totalCommittedCapital: poolValuation.totalCommittedCapital,
+        totalPoolUnits: poolValuation.totalPoolUnits,
+        grossNavPerUnit: poolValuation.grossNavPerUnit,
+        netNavPerUnit: poolValuation.netNavPerUnit,
+        poolCash: poolValuation.poolCash,
+        deployedPrincipal: poolValuation.deployedPrincipal,
+        accruedParticipationIncome: poolValuation.accruedParticipationIncome,
+        realizedParticipationIncome: poolValuation.realizedParticipationIncome,
+        preferredReturnAccrued: poolValuation.preferredReturnAccrued,
+        managementFeeAccrued: poolValuation.managementFeeAccrued,
+        realizedCarryAccrued: poolValuation.realizedCarryAccrued,
+        potentialCarry: poolValuation.potentialCarry,
+        grossPoolValue: poolValuation.grossPoolValue,
+        netPoolValue: poolValuation.netPoolValue,
+        realizedXirr: poolValuation.realizedXirr,
+        projectedGrossXirr: poolValuation.projectedGrossXirr,
+        projectedNetXirr: poolValuation.projectedNetXirr
+      },
+      poolExposure: investorExposure,
       allProjects: enhancedProjects,
       allContractors: allContractors || [],
       relatedContractors: allContractors || [],
       relatedProjects: enhancedProjects,
       portfolioMetrics: {
-        totalInvested,
+        totalInvested: poolPosition.contributedCapital,
         totalReturns: totalCapitalReturns,
         currentValue: outstandingCapital,
-        roi,
-        netRoi,
-        portfolioXirr,
-        activeInvestments,
+        roi: poolValuation.projectedGrossXirr,
+        netRoi: poolValuation.projectedNetXirr,
+        portfolioXirr: poolValuation.realizedXirr,
+        activeInvestments: investorExposure.length,
         completedInvestments,
-        totalInvestments: investments.length,
-        capitalInflow: totalCapitalInflow,
+        totalInvestments: investorExposure.length,
+        capitalInflow: poolPosition.contributedCapital || totalCapitalInflow,
         capitalReturns: totalCapitalReturns,
         netCapitalReturns,
         managementFees: managementFee,
-        performanceFees: performanceFee
+        performanceFees: realizedCarry,
+        potentialPerformanceFees: potentialCarry,
+        grossNavPerUnit: poolValuation.grossNavPerUnit,
+        netNavPerUnit: poolValuation.netNavPerUnit,
+        unitsHeld: poolPosition.unitsHeld,
+        ownershipPercent: poolPosition.ownershipPercent,
+        deployedPoolShare: poolValuation.deployedPrincipal * ownershipRatio,
+        poolCashShare: poolValuation.poolCash * ownershipRatio,
+        accruedParticipationIncomeShare: poolValuation.accruedParticipationIncome * ownershipRatio,
+        preferredReturnAccruedShare: poolValuation.preferredReturnAccrued * ownershipRatio,
+        realizedInvestorRoi
       },
       availableOpportunities: allProjects || []
     };

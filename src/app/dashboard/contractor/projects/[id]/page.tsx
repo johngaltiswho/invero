@@ -1454,7 +1454,7 @@ function IndividualProjectContent(): React.ReactElement {
             <span className={`text-sm px-3 py-1 rounded font-medium ${getStatusColor(projectStatus)}`}>
               {projectStatus.toUpperCase()}
             </span>
-            {project.estimated_value && (
+            {project.estimated_value > 0 && (
               <span className="text-sm text-secondary">
                 Value: {formatCurrency(project.estimated_value)}
               </span>

@@ -97,6 +97,26 @@ interface InvestorPaymentSubmission {
   proof_signed_url?: string | null;
 }
 
+interface PoolSummary {
+  valuation_date: string;
+  total_committed_capital: number;
+  total_pool_units: number;
+  gross_nav_per_unit: number;
+  net_nav_per_unit: number;
+  pool_cash: number;
+  deployed_principal: number;
+  accrued_participation_income: number;
+  preferred_return_accrued: number;
+  management_fee_accrued: number;
+  realized_carry_accrued: number;
+  potential_carry: number;
+  gross_pool_value: number;
+  net_pool_value: number;
+  realized_xirr: number;
+  projected_gross_xirr: number;
+  projected_net_xirr: number;
+}
+
 const CapitalTransactions: React.FC = () => {
   const [transactions, setTransactions] = useState<CapitalTransaction[]>([]);
   const [investors, setInvestors] = useState<Investor[]>([]);
@@ -108,6 +128,7 @@ const CapitalTransactions: React.FC = () => {
   const [submissionReviewNotes, setSubmissionReviewNotes] = useState<Record<string, string>>({});
   const [purchaseRequests, setPurchaseRequests] = useState<FundingPurchaseRequest[]>([]);
   const [purchaseRequestsLoading, setPurchaseRequestsLoading] = useState(false);
+  const [poolSummary, setPoolSummary] = useState<PoolSummary | null>(null);
   const [selectedInvestor, setSelectedInvestor] = useState<string>('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -130,7 +151,8 @@ const CapitalTransactions: React.FC = () => {
     description: '',
     reference_number: ''
   });
-  const showInvestorSelect = formData.transaction_type !== 'return';
+  const showInvestorSelect =
+    formData.transaction_type === 'inflow' || formData.transaction_type === 'withdrawal';
 
   const fetchTransactions = useCallback(async (page: number = 1) => {
     try {
@@ -268,6 +290,18 @@ const CapitalTransactions: React.FC = () => {
       console.error('Failed to fetch purchase requests:', err);
     } finally {
       setPurchaseRequestsLoading(false);
+    }
+  }, []);
+
+  const fetchPoolSummary = useCallback(async () => {
+    try {
+      const response = await fetch('/api/admin/finance/overview');
+      const data = await response.json();
+      if (response.ok) {
+        setPoolSummary(data.pool_summary || null);
+      }
+    } catch (err) {
+      console.error('Failed to fetch pool summary:', err);
     }
   }, []);
 
@@ -449,6 +483,10 @@ const CapitalTransactions: React.FC = () => {
   }, [fetchPurchaseRequests]);
 
   useEffect(() => {
+    fetchPoolSummary();
+  }, [fetchPoolSummary]);
+
+  useEffect(() => {
     if (showAddForm) {
       fetchAccounts();
     }
@@ -555,7 +593,7 @@ const CapitalTransactions: React.FC = () => {
     <div className="max-w-7xl mx-auto p-6">
       <div className="mb-8">
         <h1 className="text-3xl font-bold text-primary mb-2">Capital Transaction Management</h1>
-        <p className="text-secondary">Manage investor capital inflows, deployments, returns, and withdrawals</p>
+        <p className="text-secondary">Manage pool subscriptions, pool deployments to PRs, contractor repayments, and investor payouts</p>
       </div>
 
       {error && (
@@ -573,30 +611,30 @@ const CapitalTransactions: React.FC = () => {
           <div className="space-y-4">
             {/* Summary Cards */}
             <div className="bg-neutral-dark rounded-lg border border-neutral-medium p-6">
-              <h3 className="text-lg font-semibold text-primary mb-4">Capital Summary</h3>
+              <h3 className="text-lg font-semibold text-primary mb-4">Pool Summary</h3>
               <div className="space-y-3">
                 <div>
-                  <div className="text-xs text-secondary">Total Committed</div>
-                  <div className="text-lg font-bold text-primary">
-                    {formatCurrency(accounts.reduce((sum, acc) => sum + acc.total_committed, 0))}
-                  </div>
+                  <div className="text-xs text-secondary">Committed Capital</div>
+                  <div className="text-lg font-bold text-primary">{formatCurrency(poolSummary?.total_committed_capital || 0)}</div>
                 </div>
                 <div>
-                  <div className="text-xs text-secondary">Available Balance</div>
-                  <div className="text-lg font-bold text-success">
-                    {formatCurrency(accounts.reduce((sum, acc) => sum + acc.available_balance, 0))}
-                  </div>
+                  <div className="text-xs text-secondary">Pool Cash</div>
+                  <div className="text-lg font-bold text-success">{formatCurrency(poolSummary?.pool_cash || 0)}</div>
                 </div>
                 <div>
-                  <div className="text-xs text-secondary">Deployed Capital</div>
-                  <div className="text-lg font-bold text-accent-blue">
-                    {formatCurrency(accounts.reduce((sum, acc) => sum + acc.deployed_capital, 0))}
-                  </div>
+                  <div className="text-xs text-secondary">Deployed Principal</div>
+                  <div className="text-lg font-bold text-accent-blue">{formatCurrency(poolSummary?.deployed_principal || 0)}</div>
                 </div>
                 <div>
-                  <div className="text-xs text-secondary">Returns Paid</div>
+                  <div className="text-xs text-secondary">Gross / Net NAV</div>
                   <div className="text-lg font-bold text-accent-amber">
-                    {formatCurrency(accounts.reduce((sum, acc) => sum + acc.returned_capital, 0))}
+                    ₹{(poolSummary?.gross_nav_per_unit || 0).toFixed(4)} / ₹{(poolSummary?.net_nav_per_unit || 0).toFixed(4)}
+                  </div>
+                </div>
+                <div>
+                  <div className="text-xs text-secondary">Projected Gross / Net XIRR</div>
+                  <div className="text-lg font-bold text-primary">
+                    {(poolSummary?.projected_gross_xirr || 0).toFixed(1)}% / {(poolSummary?.projected_net_xirr || 0).toFixed(1)}%
                   </div>
                 </div>
               </div>
@@ -641,11 +679,11 @@ const CapitalTransactions: React.FC = () => {
                     onChange={(e) => setFilterType(e.target.value)}
                     className="w-full px-3 py-2 border border-neutral-medium rounded-md bg-neutral-darker text-primary focus:outline-none focus:ring-2 focus:ring-accent-orange"
                   >
-                    <option value="">All Types</option>
-                    <option value="inflow">Capital Inflow</option>
-                    <option value="deployment">Deployment</option>
-                    <option value="return">Return</option>
-                    <option value="withdrawal">Withdrawal</option>
+                  <option value="">All Types</option>
+                    <option value="inflow">Investor Subscription</option>
+                    <option value="deployment">Pool Deployment</option>
+                    <option value="return">Contractor Repayment</option>
+                    <option value="withdrawal">Investor Payout</option>
                   </select>
                 </div>
 
@@ -881,6 +919,44 @@ const CapitalTransactions: React.FC = () => {
             </div>
             
             <form onSubmit={handleSubmit} className="p-6 space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-primary mb-1">
+                  Transaction Type *
+                </label>
+                <select
+                  required
+                  value={formData.transaction_type}
+                  onChange={(e) => {
+                    const nextType = e.target.value as TransactionFormData['transaction_type'];
+                    setFormData((prev) => ({
+                      ...prev,
+                      transaction_type: nextType,
+                      investor_id: nextType === 'inflow' || nextType === 'withdrawal' ? prev.investor_id : '',
+                      purchase_request_id: nextType === 'deployment' || nextType === 'return' ? prev.purchase_request_id : '',
+                      contractor_id: nextType === 'deployment' || nextType === 'return' ? prev.contractor_id : '',
+                      contractor_name: nextType === 'deployment' || nextType === 'return' ? prev.contractor_name : '',
+                      project_id: nextType === 'deployment' || nextType === 'return' ? prev.project_id : '',
+                      project_name: nextType === 'deployment' || nextType === 'return' ? prev.project_name : '',
+                      amount: '',
+                      description: ''
+                    }));
+                  }}
+                  className="w-full px-3 py-2 border border-neutral-medium rounded-md bg-neutral-darker text-primary focus:outline-none focus:ring-2 focus:ring-accent-orange"
+                >
+                  <option value="inflow">Capital Inflow</option>
+                  <option value="deployment">Pool Deployment</option>
+                  <option value="return">Contractor Repayment</option>
+                  <option value="withdrawal">Investor Payout</option>
+                </select>
+              </div>
+
+              <div className="text-xs text-secondary border border-neutral-medium rounded-md p-3 bg-neutral-darker/40">
+                {formData.transaction_type === 'inflow' && 'Record a new investor subscription into the pool. This mints value into the pool and increases available pool cash.'}
+                {formData.transaction_type === 'deployment' && 'Allocate pool cash to a specific purchase request. This does not assign a single investor to the PR.'}
+                {formData.transaction_type === 'return' && 'Record contractor repayment back into the pool. Repayments apply to accrued participation fee first, then principal.'}
+                {formData.transaction_type === 'withdrawal' && 'Record an investor payout or redemption from the pool.'}
+              </div>
+
               {showInvestorSelect && (
                 <div>
                   <label className="block text-sm font-medium text-primary mb-1">
@@ -932,23 +1008,6 @@ const CapitalTransactions: React.FC = () => {
 
               <div>
                 <label className="block text-sm font-medium text-primary mb-1">
-                  Transaction Type *
-                </label>
-                <select
-                  required
-                  value={formData.transaction_type}
-                  onChange={(e) => setFormData({ ...formData, transaction_type: e.target.value as TransactionFormData['transaction_type'] })}
-                  className="w-full px-3 py-2 border border-neutral-medium rounded-md bg-neutral-darker text-primary focus:outline-none focus:ring-2 focus:ring-accent-orange"
-                >
-                  <option value="inflow">Capital Inflow</option>
-                  <option value="deployment">Capital Deployment</option>
-                  <option value="return">Return Payment</option>
-                  <option value="withdrawal">Withdrawal</option>
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-primary mb-1">
                   Transaction Date *
                 </label>
                 <input
@@ -982,8 +1041,8 @@ const CapitalTransactions: React.FC = () => {
                 <div className="space-y-4">
                   <label className="block text-sm font-medium text-primary">
                     {formData.transaction_type === 'return'
-                      ? 'Purchase Request to Record Return'
-                      : 'Purchase Request to Fund'}
+                      ? 'Purchase Request to Record Contractor Repayment'
+                      : 'Purchase Request to Fund from Pool'}
                   </label>
                   <select
                     value={formData.purchase_request_id}
@@ -1055,6 +1114,19 @@ const CapitalTransactions: React.FC = () => {
                             <div>Repayable Balance: {remainingDue !== null ? formatCurrency(remainingDue) : 'N/A'}</div>
                           </>
                         )}
+                        {formData.transaction_type === 'deployment' && poolSummary && (
+                          <>
+                            <div className="mt-2 pt-2 border-t border-accent-orange/20"></div>
+                            <div className="text-primary font-medium">Pool deployment preview</div>
+                            <div>Pool Cash Before: {formatCurrency(poolSummary.pool_cash)}</div>
+                            <div>Pool Cash After: {formatCurrency(Math.max(poolSummary.pool_cash - Number(formData.amount || 0), 0))}</div>
+                            <div>Deployed Principal After: {formatCurrency(poolSummary.deployed_principal + Number(formData.amount || 0))}</div>
+                            <div>Gross / Net NAV Today: ₹{poolSummary.gross_nav_per_unit.toFixed(4)} / ₹{poolSummary.net_nav_per_unit.toFixed(4)}</div>
+                            <div className="text-[11px] text-secondary mt-1">
+                              This action allocates pool cash to the selected PR. It does not assign a specific investor to this request.
+                            </div>
+                          </>
+                        )}
                         {progressPercentage !== null && (
                           <div className="mt-2">
                             <div className="w-full bg-neutral-medium rounded-full h-2">
@@ -1073,7 +1145,7 @@ const CapitalTransactions: React.FC = () => {
                   })()}
                   {formData.transaction_type === 'return' && (
                     <p className="text-xs text-secondary">
-                      Repayments are capped by the current investor due and are applied against accrued participation fee first, then principal across the funded tranches.
+                      Contractor repayments are capped by the current investor due and are applied against accrued participation fee first, then principal across the funded tranches.
                     </p>
                   )}
                   {formData.transaction_type === 'deployment' && (
