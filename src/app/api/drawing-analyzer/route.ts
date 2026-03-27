@@ -77,7 +77,14 @@ Please provide a clear, structured report that follows this cascading approach.`
     try {
 
       // First, fetch the file to get it as base64 for Gemini
-      const fileResponse = await fetch(fileUrl);
+      // Handle relative URLs by constructing absolute URL
+      const absoluteFileUrl = fileUrl.startsWith('http')
+        ? fileUrl
+        : `${request.url.split('/api/')[0]}${fileUrl}`;
+
+      console.log('Fetching file from:', absoluteFileUrl);
+
+      const fileResponse = await fetch(absoluteFileUrl);
       if (!fileResponse.ok) {
         throw new Error('Failed to fetch the drawing file');
       }
