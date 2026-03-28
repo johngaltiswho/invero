@@ -82,11 +82,26 @@ Please provide a clear, structured report that follows this cascading approach.`
         ? fileUrl
         : `${request.url.split('/api/')[0]}${fileUrl}`;
 
-      console.log('Fetching file from:', absoluteFileUrl);
+      console.log('Original fileUrl:', fileUrl);
+      console.log('Request URL:', request.url);
+      console.log('Constructed absolute URL:', absoluteFileUrl);
 
-      const fileResponse = await fetch(absoluteFileUrl);
+      // Forward cookies for authentication when fetching internal API
+      const headers: HeadersInit = {};
+      const cookieHeader = request.headers.get('cookie');
+      if (cookieHeader) {
+        headers['cookie'] = cookieHeader;
+      }
+
+      const fileResponse = await fetch(absoluteFileUrl, { headers });
       if (!fileResponse.ok) {
-        throw new Error('Failed to fetch the drawing file');
+        console.error('File fetch failed:', {
+          status: fileResponse.status,
+          statusText: fileResponse.statusText,
+          url: absoluteFileUrl,
+          hasCookies: !!cookieHeader
+        });
+        throw new Error(`Failed to fetch the drawing file (${fileResponse.status}): ${fileResponse.statusText}`);
       }
 
       const fileBuffer = await fileResponse.arrayBuffer();
@@ -114,7 +129,7 @@ Please provide a clear, structured report that follows this cascading approach.`
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 120000); // 120 second timeout
       
-      // Use Gemini 2.5 Flash - latest model with best vision capabilities
+      // Use Gemini 2.5 Flash - latest model with best vision capabilities for cascading analysis
       const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${geminiApiKey}`, {
         method: 'POST',
         headers: {
