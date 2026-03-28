@@ -1,0 +1,103 @@
+name: Weekly Test Report
+
+on:
+  schedule:
+    - cron: '0 10 * * 1'  # Monday 10 AM UTC (3 AM PST / 6 AM EST)
+  workflow_dispatch:  # Allow manual trigger
+
+jobs:
+  generate-report:
+    name: Generate Weekly Report
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v2
+        with:
+          version: 9
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Run tests with coverage
+        run: pnpm test:coverage
+        continue-on-error: true
+
+      - name: Generate Test Summary
+        run: |
+          echo "# 📊 Weekly Test Report" > report.md
+          echo "" >> report.md
+          echo "**Week of**: $(date +%Y-%m-%d)" >> report.md
+          echo "" >> report.md
+
+          # Test results
+          echo "## Test Results" >> report.md
+          echo '```' >> report.md
+          pnpm test 2>&1 | tail -n 10 >> report.md || echo "Tests completed" >> report.md
+          echo '```' >> report.md
+          echo "" >> report.md
+
+          # Coverage summary
+          if [ -f "coverage/coverage-summary.json" ]; then
+            echo "## Coverage Summary" >> report.md
+            echo '```json' >> report.md
+            cat coverage/coverage-summary.json | jq '.total' >> report.md
+            echo '```' >> report.md
+          fi
+
+          echo "" >> report.md
+          echo "## Repository Stats" >> report.md
+          echo "- Total commits this week: $(git log --since='7 days ago' --oneline | wc -l)" >> report.md
+          echo "- Contributors: $(git log --since='7 days ago' --format='%an' | sort -u | wc -l)" >> report.md
+
+      - name: Check Production Health
+        run: |
+          echo "" >> report.md
+          echo "## Production Health" >> report.md
+          echo '```json' >> report.md
+          curl -s https://finverno.com/api/health | jq '.' >> report.md || echo "Health check unavailable" >> report.md
+          echo '```' >> report.md
+
+      - name: Count Recent Errors
+        run: |
+          echo "" >> report.md
+          echo "## Recent Activity" >> report.md
+          echo "- Failed workflow runs this week: $(gh run list --limit 100 --json conclusion --jq '[.[] | select(.conclusion=="failure")] | length')" >> report.md || echo "- Unable to fetch workflow stats" >> report.md
+        env:
+          GH_TOKEN: ${{ github.token }}
+
+      - name: Create GitHub Summary
+        if: always()
+        run: |
+          cat report.md >> $GITHUB_STEP_SUMMARY
+
+      - name: Upload Report
+        uses: actions/upload-artifact@v4
+        with:
+          name: weekly-test-report
+          path: report.md
+          retention-days: 90
+
+      # Uncomment when you add Slack webhook
+      # - name: Send to Slack
+      #   uses: 8398a7/action-slack@v3
+      #   with:
+      #     status: custom
+      #     custom_payload: |
+      #       {
+      #         text: "📊 Weekly Test Report Available",
+      #         attachments: [{
+      #           color: 'good',
+      #           text: "View full report: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+      #         }]
+      #       }
+      #     webhook_url: ${{ secrets.SLACK_WEBHOOK_URL }}

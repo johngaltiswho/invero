@@ -1,0 +1,130 @@
+name: Daily Health Check
+
+on:
+  schedule:
+    - cron: '0 9 * * *'  # 9 AM UTC daily (2 AM PST / 5 AM EST)
+  workflow_dispatch:  # Allow manual trigger
+
+jobs:
+  health-check:
+    name: Check Production Health
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check Production Health Endpoint
+        id: health
+        run: |
+          echo "🔍 Checking production health..."
+          response=$(curl -s -w "\n%{http_code}" https://finverno.com/api/health)
+          http_code=$(echo "$response" | tail -n1)
+          body=$(echo "$response" | sed '$d')
+
+          echo "Status Code: $http_code"
+          echo "$body" | jq '.' || echo "$body"
+
+          if [ "$http_code" -ne 200 ]; then
+            echo "⚠️ Health check returned non-200 status: $http_code"
+            echo "status=unhealthy" >> $GITHUB_OUTPUT
+            exit 1
+          fi
+
+          status=$(echo "$body" | jq -r '.status')
+          if [ "$status" != "healthy" ]; then
+            echo "⚠️ System status is: $status"
+            echo "status=degraded" >> $GITHUB_OUTPUT
+            exit 1
+          fi
+
+          echo "✅ Production is healthy"
+          echo "status=healthy" >> $GITHUB_OUTPUT
+
+      - name: Check Critical Pages
+        id: pages
+        run: |
+          echo "🔍 Checking critical pages..."
+
+          # Homepage
+          if ! curl -f -s https://finverno.com > /dev/null; then
+            echo "❌ Homepage failed"
+            exit 1
+          fi
+          echo "✅ Homepage: OK"
+
+          # Contractors page
+          if ! curl -f -s https://finverno.com/contractors > /dev/null; then
+            echo "❌ Contractors page failed"
+            exit 1
+          fi
+          echo "✅ Contractors page: OK"
+
+          # Investors page
+          if ! curl -f -s https://finverno.com/investors > /dev/null; then
+            echo "❌ Investors page failed"
+            exit 1
+          fi
+          echo "✅ Investors page: OK"
+
+          echo "✅ All critical pages loading"
+
+      - name: Measure Response Times
+        run: |
+          echo "⏱️ Measuring response times..."
+
+          homepage_time=$(curl -w "%{time_total}\n" -o /dev/null -s https://finverno.com)
+          api_time=$(curl -w "%{time_total}\n" -o /dev/null -s https://finverno.com/api/health)
+
+          echo "Homepage: ${homepage_time}s"
+          echo "API Health: ${api_time}s"
+
+          # Alert if response time > 5 seconds
+          if (( $(echo "$homepage_time > 5.0" | bc -l) )); then
+            echo "⚠️ Homepage response time is slow: ${homepage_time}s"
+          fi
+
+      - name: Create Summary
+        if: always()
+        run: |
+          echo "# 📊 Daily Health Check Report" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Date**: $(date)" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "## Status" >> $GITHUB_STEP_SUMMARY
+
+          if [ "${{ steps.health.outputs.status }}" = "healthy" ]; then
+            echo "✅ **Production is HEALTHY**" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "⚠️ **Production has ISSUES**" >> $GITHUB_STEP_SUMMARY
+          fi
+
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "## Checks" >> $GITHUB_STEP_SUMMARY
+          echo "- Health Endpoint: ${{ steps.health.outcome }}" >> $GITHUB_STEP_SUMMARY
+          echo "- Critical Pages: ${{ steps.pages.outcome }}" >> $GITHUB_STEP_SUMMARY
+
+  notify-on-failure:
+    name: Notify on Failure
+    runs-on: ubuntu-latest
+    needs: [health-check]
+    if: failure()
+
+    steps:
+      - name: Send Notification
+        run: |
+          echo "🚨 ALERT: Production health check failed!"
+          echo "Time: $(date)"
+          echo "View details: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          echo ""
+          echo "⚠️ This workflow will notify via:"
+          echo "- GitHub email (if configured)"
+          echo "- Slack webhook (if SLACK_WEBHOOK_URL secret is set)"
+          echo "- Or configure your preferred notification method"
+
+      # Uncomment when you add Slack webhook to GitHub Secrets
+      # - name: Slack Notification
+      #   uses: 8398a7/action-slack@v3
+      #   with:
+      #     status: failure
+      #     text: |
+      #       🚨 Production Health Check FAILED
+      #       View details: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+      #     webhook_url: ${{ secrets.SLACK_WEBHOOK_URL }}

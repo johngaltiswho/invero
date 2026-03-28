@@ -161,3 +161,18 @@ jobs:
             echo "❌ Quality checks failed." >> $GITHUB_STEP_SUMMARY
             echo "Please fix the issues before merging." >> $GITHUB_STEP_SUMMARY
           fi
+
+      # Uncomment when you add SLACK_WEBHOOK_URL to GitHub Secrets
+      # - name: Notify on Failure
+      #   if: failure()
+      #   uses: 8398a7/action-slack@v3
+      #   with:
+      #     status: failure
+      #     text: |
+      #       🚨 CI Pipeline Failed
+      #       Repository: ${{ github.repository }}
+      #       Branch: ${{ github.ref }}
+      #       Commit: ${{ github.sha }}
+      #       Author: ${{ github.actor }}
+      #       View: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+      #     webhook_url: ${{ secrets.SLACK_WEBHOOK_URL }}
