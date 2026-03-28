@@ -3,6 +3,12 @@ import { clerkClient } from '@clerk/nextjs/server';
 import { ContractorService } from '@/lib/contractor-service';
 import { DocumentService } from '@/lib/document-service';
 import { requireAdmin } from '@/lib/admin-auth';
+import {
+  getContractorAgreementSummary,
+  getContractorOnboardingSnapshot,
+  getContractorUnderwritingSummary,
+  syncContractorOnboarding,
+} from '@/lib/contractor-onboarding';
 
 function isValidEmail(value: string): boolean {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
@@ -121,13 +127,21 @@ export async function GET(request: NextRequest) {
           const documentStatus = await DocumentService.getDocumentStatus(contractor.id);
           const uploadProgress = documentStatus ? DocumentService.getUploadProgress(documentStatus) : 0;
           const verificationProgress = documentStatus ? DocumentService.getVerificationProgress(documentStatus) : 0;
+          const [agreementSummary, underwriting, onboarding] = await Promise.all([
+            getContractorAgreementSummary(contractor.id),
+            getContractorUnderwritingSummary(contractor.id),
+            getContractorOnboardingSnapshot(contractor.id),
+          ]);
 
           return {
             ...contractor,
             participation_fee_rate_daily: contractor.participation_fee_rate_daily,
             uploadProgress,
             verificationProgress,
-            documentStatus
+            documentStatus,
+            agreementSummary,
+            underwriting,
+            onboarding
           };
         } catch (error) {
           console.error(`Error getting document status for contractor ${contractor.id}:`, error);
@@ -136,7 +150,10 @@ export async function GET(request: NextRequest) {
             participation_fee_rate_daily: contractor.participation_fee_rate_daily,
             uploadProgress: 0,
             verificationProgress: 0,
-            documentStatus: null
+            documentStatus: null,
+            agreementSummary: null,
+            underwriting: null,
+            onboarding: null
           };
         }
       })
@@ -227,8 +244,16 @@ export async function POST(request: NextRequest) {
       phone: phone?.trim() || null,
       status: 'pending',
       verification_status: 'documents_pending',
+      onboarding_stage: 'documents_pending',
+      portal_active: false,
+      procurement_enabled: false,
+      financing_enabled: false,
       application_date: new Date().toISOString()
     });
+
+    if (contractor) {
+      await syncContractorOnboarding(contractor.id);
+    }
 
     // Send Clerk invitation
     const clerkSecretKey = process.env.CLERK_SECRET_KEY;
@@ -308,6 +333,7 @@ export async function PUT(request: NextRequest) {
           'admin', // TODO: Use actual admin user ID from auth
           undefined
         );
+        await syncContractorOnboarding(contractorId);
         break;
 
       case 'reject_document':
@@ -325,15 +351,19 @@ export async function PUT(request: NextRequest) {
           'admin', // TODO: Use actual admin user ID from auth
           rejectionReason
         );
+        await syncContractorOnboarding(contractorId);
         break;
 
       case 'approve_contractor':
-        // Final approval - update contractor status to approved
-        const approveResult = await ContractorService.updateContractor(contractorId, {
-          status: 'approved',
-          approved_date: new Date().toISOString()
-        });
-        result = { success: !!approveResult };
+        await syncContractorOnboarding(contractorId);
+        const approvalSnapshot = await getContractorOnboardingSnapshot(contractorId);
+        if (!approvalSnapshot?.portalActive) {
+          return NextResponse.json({
+            success: false,
+            error: 'Contractor cannot be activated until KYC is approved and the master platform agreement is executed'
+          }, { status: 400 });
+        }
+        result = { success: true };
         break;
 
       case 'reject_contractor':
@@ -341,8 +371,31 @@ export async function PUT(request: NextRequest) {
           status: 'rejected',
           rejection_reason: rejectionReason
         });
+        await syncContractorOnboarding(contractorId);
         result = { success: !!rejectResult };
         break;
+
+      case 'suspend_contractor': {
+        const suspendResult = await ContractorService.updateContractor(contractorId, {
+          status: 'suspended'
+        });
+        await syncContractorOnboarding(contractorId);
+        result = { success: !!suspendResult };
+        break;
+      }
+
+      case 'enable_financing': {
+        await syncContractorOnboarding(contractorId);
+        const financingSnapshot = await getContractorOnboardingSnapshot(contractorId);
+        if (!financingSnapshot?.financingEnabled) {
+          return NextResponse.json({
+            success: false,
+            error: 'Financing can only be enabled after commercial approval and execution of the financing addendum'
+          }, { status: 400 });
+        }
+        result = { success: true };
+        break;
+      }
 
       case 'update_finance_terms': {
         const rate = typeof platform_fee_rate === 'number' ? platform_fee_rate : null;
@@ -375,6 +428,7 @@ export async function PUT(request: NextRequest) {
           platform_fee_cap: cap,
           participation_fee_rate_daily: interest
         });
+        await syncContractorOnboarding(contractorId);
         result = { success: !!updateResult };
         break;
       }
@@ -397,6 +451,7 @@ export async function PUT(request: NextRequest) {
         }
 
         result = await syncContractorEmailWithClerk(contractorId, requestedEmail);
+        await syncContractorOnboarding(contractorId);
         break;
       }
 

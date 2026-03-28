@@ -48,13 +48,13 @@ export function investorAgreementReadyEmail(input: {
   portalUrl: string;
 }): EmailTemplateResult {
   return {
-    subject: `Finverno Investor Agreement - ${input.investorName}`,
-    text: `Dear ${input.investorName},\n\nYour Finverno investor participation agreement is ready for review.\nCommitment amount: Rs ${input.commitmentAmount.toLocaleString('en-IN')}\n\nOpen the Finverno investor portal to review and sign your agreement: ${input.portalUrl}\n\nYou will be asked to sign in before completing the agreement.\n\nRegards,\nFinverno Private Limited`,
+    subject: `Finverno Lender Agreement - ${input.investorName}`,
+    text: `Dear ${input.investorName},\n\nYour Finverno lender participation agreement is ready for review.\nCommitment amount: Rs ${input.commitmentAmount.toLocaleString('en-IN')}\n\nOpen the Finverno lending portal to review and sign your agreement: ${input.portalUrl}\n\nYou will be asked to sign in before completing the agreement.\n\nRegards,\nFinverno Private Limited`,
     html: `
       <p>Dear ${input.investorName},</p>
-      <p>Your Finverno investor participation agreement is ready for review.</p>
+      <p>Your Finverno lender participation agreement is ready for review.</p>
       <p>Commitment amount: <strong>Rs ${input.commitmentAmount.toLocaleString('en-IN')}</strong></p>
-      <p><a href="${input.portalUrl}">Open Finverno Investor Portal</a> to review and sign your agreement.</p>
+      <p><a href="${input.portalUrl}">Open Finverno Lending Portal</a> to review and sign your agreement.</p>
       <p>You will be asked to sign in before completing the agreement.</p>
       <p>Regards,<br />Finverno Private Limited</p>
     `.trim(),
@@ -66,12 +66,12 @@ export function investorAgreementExecutedEmail(input: {
   commitmentAmount: number;
 }): EmailTemplateResult {
   return {
-    subject: 'Investor agreement fully executed · Finverno',
-    text: `Dear ${input.investorName},\n\nYour Finverno investor participation agreement for Rs ${input.commitmentAmount.toLocaleString('en-IN')} has been fully executed.\n\nYour investor profile is now active for the current workflow.\n\nRegards,\nFinverno Private Limited`,
+    subject: 'Lender agreement fully executed · Finverno',
+    text: `Dear ${input.investorName},\n\nYour Finverno lender participation agreement for Rs ${input.commitmentAmount.toLocaleString('en-IN')} has been fully executed.\n\nYour lender profile is now active for the current workflow.\n\nRegards,\nFinverno Private Limited`,
     html: `
       <p>Dear ${input.investorName},</p>
-      <p>Your Finverno investor participation agreement for <strong>Rs ${input.commitmentAmount.toLocaleString('en-IN')}</strong> has been fully executed.</p>
-      <p>Your investor profile is now active for the current workflow.</p>
+      <p>Your Finverno lender participation agreement for <strong>Rs ${input.commitmentAmount.toLocaleString('en-IN')}</strong> has been fully executed.</p>
+      <p>Your lender profile is now active for the current workflow.</p>
       <p>Regards,<br />Finverno Private Limited</p>
     `.trim(),
   };
@@ -133,6 +133,54 @@ export function contractorFundsDeployedEmail(input: {
       <p>Hi ${input.recipientName},</p>
       <p>Funds have been deployed for <strong>${input.projectName}</strong>.</p>
       <p><strong>Amount:</strong> ${formatCurrency(input.amount)}${input.purchaseRequestId ? `<br/><strong>PR ID:</strong> ${input.purchaseRequestId}` : ''}</p>
+    `.trim(),
+  };
+}
+
+export function contractorAgreementReadyEmail(input: {
+  contractorName: string;
+  agreementType: 'master_platform' | 'financing_addendum' | 'procurement_declaration';
+  draftUrl: string;
+}): EmailTemplateResult {
+  const agreementLabel =
+    input.agreementType === 'master_platform'
+      ? 'Master SME Platform Agreement'
+      : input.agreementType === 'financing_addendum'
+        ? 'Financing / Working Capital Addendum'
+        : 'Procurement / Booking Declaration';
+
+  return {
+    subject: `${agreementLabel} ready for review · Finverno`,
+    text: `Dear ${input.contractorName},\n\nYour ${agreementLabel} is ready for review.\n\nOpen the agreement here: ${input.draftUrl}\n\nPlease review and sign the document, then share the signed copy with the Finverno team so we can complete execution.\n\nRegards,\nFinverno Private Limited`,
+    html: `
+      <p>Dear ${input.contractorName},</p>
+      <p>Your <strong>${agreementLabel}</strong> is ready for review.</p>
+      <p><a href="${input.draftUrl}">Open the agreement draft</a></p>
+      <p>Please review and sign the document, then share the signed copy with the Finverno team so we can complete execution.</p>
+      <p>Regards,<br />Finverno Private Limited</p>
+    `.trim(),
+  };
+}
+
+export function contractorAgreementExecutedEmail(input: {
+  contractorName: string;
+  agreementType: 'master_platform' | 'financing_addendum' | 'procurement_declaration';
+}): EmailTemplateResult {
+  const agreementLabel =
+    input.agreementType === 'master_platform'
+      ? 'Master SME Platform Agreement'
+      : input.agreementType === 'financing_addendum'
+        ? 'Financing / Working Capital Addendum'
+        : 'Procurement / Booking Declaration';
+
+  return {
+    subject: `${agreementLabel} executed · Finverno`,
+    text: `Dear ${input.contractorName},\n\nYour ${agreementLabel} has been fully executed.\n\nIf this is your master agreement, portal procurement access is now controlled by your onboarding status in Finverno. If this is your financing addendum, financing access will be enabled once the approved commercial terms are active.\n\nRegards,\nFinverno Private Limited`,
+    html: `
+      <p>Dear ${input.contractorName},</p>
+      <p>Your <strong>${agreementLabel}</strong> has been fully executed.</p>
+      <p>If this is your master agreement, portal procurement access is now controlled by your onboarding status in Finverno. If this is your financing addendum, financing access will be enabled once the approved commercial terms are active.</p>
+      <p>Regards,<br />Finverno Private Limited</p>
     `.trim(),
   };
 }

@@ -104,7 +104,7 @@ export default function ContractorStatusPage(): React.ReactElement {
       case 'under_verification':
         return ['Our team is reviewing your documents', 'You will be notified once verification is complete'];
       case 'verified':
-        return ['You can now access the contractor dashboard', 'Start managing your projects and BOQs'];
+        return ['You can now access the SME dashboard', 'Start managing your projects and BOQs'];
       case 'rejected':
         return ['Review rejected documents below', 'Upload corrected documents', 'Contact support if you need assistance'];
       default:
@@ -147,7 +147,7 @@ export default function ContractorStatusPage(): React.ReactElement {
         <div className="min-h-screen flex items-center justify-center">
           <div className="text-center max-w-md">
             <div className="text-2xl font-bold text-primary mb-4">No Application Found</div>
-            <div className="text-secondary mb-8">You haven't submitted a contractor application yet.</div>
+            <div className="text-secondary mb-8">You haven't submitted an SME application yet.</div>
             <Link href="/contractors/apply">
               <Button variant="primary">Submit Application</Button>
             </Link>
@@ -164,7 +164,7 @@ export default function ContractorStatusPage(): React.ReactElement {
         <div className="max-w-4xl mx-auto">
           <div className="text-center mb-12">
             <h1 className="text-4xl font-bold text-primary mb-4">Application Status</h1>
-            <p className="text-lg text-secondary">Track your contractor application progress</p>
+            <p className="text-lg text-secondary">Track your SME application progress</p>
           </div>
 
           {/* Status Overview */}

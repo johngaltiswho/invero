@@ -15,6 +15,8 @@ const STEPS: { key: RegistrationStep; label: string }[] = [
   { key: 'docs_pending', label: 'Upload Docs' },
   { key: 'docs_uploaded', label: 'Docs Submitted' },
   { key: 'under_review', label: 'Under Review' },
+  { key: 'agreement_pending', label: 'Agreement' },
+  { key: 'commercial_review', label: 'Commercial' },
   { key: 'complete', label: 'Verified' },
 ];
 
@@ -24,6 +26,9 @@ const STEP_ORDER: RegistrationStep[] = [
   'docs_pending',
   'docs_uploaded',
   'under_review',
+  'agreement_pending',
+  'commercial_review',
+  'active',
   'complete',
 ];
 
@@ -44,6 +49,8 @@ export default function RegistrationBanner({ registrationStep, message, canRetry
   const ctaLabel =
     registrationStep === 'not_applied' ? 'Start Application' :
     registrationStep === 'applied' || registrationStep === 'docs_pending' ? 'Upload Documents' :
+    registrationStep === 'agreement_pending' ? 'View Agreement Status' :
+    registrationStep === 'commercial_review' || registrationStep === 'active' ? 'View Status' :
     canRetry ? 'Re-upload Documents' :
     'View Status';
 
@@ -58,7 +65,7 @@ export default function RegistrationBanner({ registrationStep, message, canRetry
       <div className="flex items-start justify-between gap-4 flex-wrap">
         <div className="flex-1 min-w-0">
           <p className={`text-sm font-semibold mb-1 ${isRejected ? 'text-red-400' : 'text-accent-amber'}`}>
-            {isRejected ? 'Action Required' : 'Complete your registration to unlock purchasing'}
+            {isRejected ? 'Action Required' : 'Complete onboarding to unlock procurement and financing'}
           </p>
           {message && (
             <p className="text-xs text-secondary">{message}</p>

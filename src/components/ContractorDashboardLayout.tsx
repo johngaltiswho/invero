@@ -118,7 +118,7 @@ export function ContractorDashboardLayout({ children, activeTab }: ContractorDas
                 <div className="text-2xl">🏗️</div>
                 <div>
                   <div className="text-lg font-bold text-primary">Finverno</div>
-                  <div className="text-xs text-secondary">Contractor Portal</div>
+                  <div className="text-xs text-secondary">SME Portal</div>
                 </div>
               </Link>
             </div>

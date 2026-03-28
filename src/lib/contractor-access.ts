@@ -1,5 +1,6 @@
 import { ContractorService } from './contractor-service';
 import { DocumentService } from './document-service';
+import { getContractorAgreementSummary, getContractorOnboardingSnapshot, getContractorUnderwritingSummary } from './contractor-onboarding';
 import type { Contractor } from '@/types/supabase';
 import type { ContractorAccessStatus, ContractorWithProgress } from '@/types/contractor-access';
 export type { ContractorAccessStatus, ContractorWithProgress };
@@ -38,44 +39,12 @@ export class ContractorAccessService {
         };
       }
 
-      const status = contractor.status;
-      const verificationStatus = contractor.verification_status;
-      const registrationComplete = status === 'approved' && verificationStatus === 'verified';
-
-      let registrationStep: import('@/types/contractor-access').RegistrationStep;
-      let reason: ContractorAccessStatus['reason'];
-      let message: string;
-      let canRetry = false;
-
-      if (registrationComplete) {
-        registrationStep = 'complete';
-        reason = 'verified';
-        message = 'Access granted. Welcome to your contractor dashboard!';
-      } else if (verificationStatus === 'verified' && status !== 'approved') {
-        registrationStep = 'rejected';
-        reason = 'rejected';
-        message = 'Your application has been rejected. Please contact support for assistance.';
-        canRetry = false;
-      } else if (verificationStatus === 'under_verification') {
-        registrationStep = 'under_review';
-        reason = 'under_review';
-        message = 'Your documents are under review. You can browse the portal while you wait.';
-      } else if (verificationStatus === 'documents_uploaded') {
-        registrationStep = 'docs_uploaded';
-        reason = 'under_review';
-        message = 'Documents submitted. Our team will review them shortly.';
-      } else if (verificationStatus === 'rejected') {
-        registrationStep = 'rejected';
-        reason = 'rejected';
-        message = 'Some documents were rejected. Please re-upload to complete registration.';
-        canRetry = true;
-      } else {
-        // documents_pending or any unknown state
-        registrationStep = 'docs_pending';
-        reason = 'pending_documents';
-        message = 'Upload your KYC documents to unlock purchasing features.';
-        canRetry = true;
-      }
+      const onboarding = await getContractorOnboardingSnapshot(contractor.id);
+      const registrationComplete = onboarding?.procurementEnabled ?? false;
+      const registrationStep = onboarding?.registrationStep ?? 'docs_pending';
+      const reason = onboarding?.reason ?? 'pending_documents';
+      const message = onboarding?.message ?? 'Upload your KYC documents to unlock purchasing features.';
+      const canRetry = onboarding?.canRetry ?? true;
 
       return {
         hasAccess: true,
@@ -84,7 +53,10 @@ export class ContractorAccessService {
         contractor,
         reason,
         message,
-        canRetry
+        canRetry,
+        portalActive: onboarding?.portalActive ?? false,
+        procurementEnabled: onboarding?.procurementEnabled ?? false,
+        financingEnabled: onboarding?.financingEnabled ?? false
       };
     } catch (error) {
       console.error('Error checking contractor dashboard access:', error);
@@ -105,10 +77,15 @@ export class ContractorAccessService {
    */
   static async getContractorWithProgress(contractorId: string): Promise<ContractorWithProgress | null> {
     try {
-      const contractor = await ContractorService.getContractorByClerkId(contractorId);
+      const contractor = await ContractorService.getContractorById(contractorId);
       if (!contractor) return null;
 
-      const documentsStatus = await DocumentService.getDocumentStatus(contractor.id);
+      const [documentsStatus, agreementSummary, underwriting, onboarding] = await Promise.all([
+        DocumentService.getDocumentStatus(contractor.id),
+        getContractorAgreementSummary(contractor.id),
+        getContractorUnderwritingSummary(contractor.id),
+        getContractorOnboardingSnapshot(contractor.id),
+      ]);
       const uploadProgress = documentsStatus ? DocumentService.getUploadProgress(documentsStatus) : 0;
       const verificationProgress = documentsStatus ? DocumentService.getVerificationProgress(documentsStatus) : 0;
 
@@ -116,7 +93,14 @@ export class ContractorAccessService {
         ...contractor,
         uploadProgress,
         verificationProgress,
-        documentsStatus
+        documentsStatus,
+        portalActive: onboarding?.portalActive ?? false,
+        procurementEnabled: onboarding?.procurementEnabled ?? false,
+        financingEnabled: onboarding?.financingEnabled ?? false,
+        masterAgreementStatus: agreementSummary.masterAgreement.status,
+        financingAgreementStatus: agreementSummary.financingAgreement.status,
+        underwritingStatus: underwriting.status,
+        missingChecklist: onboarding?.missingChecklist ?? []
       };
     } catch (error) {
       console.error('Error getting contractor with progress:', error);
@@ -132,7 +116,10 @@ export class ContractorAccessService {
   static canAccessFeature(contractor: Contractor | null, feature: string): boolean {
     const purchaseGatedFeatures = ['purchase_request', 'rfq_generation', 'po_creation'];
     if (purchaseGatedFeatures.includes(feature)) {
-      return contractor?.status === 'approved' && contractor?.verification_status === 'verified';
+      return Boolean(contractor?.procurement_enabled);
+    }
+    if (feature === 'finance') {
+      return Boolean(contractor?.financing_enabled);
     }
     // All other features (projects, boq_upload, schedule_upload, analytics, documents, finance) are open
     return true;
@@ -145,11 +132,21 @@ export class ContractorAccessService {
     const status = contractor.status;
     const verificationStatus = contractor.verification_status;
 
-    if (status === 'approved' && verificationStatus === 'verified') {
+    if (contractor.procurement_enabled) {
       return {
         title: 'Account Verified',
-        description: 'Your contractor account is fully verified and active.',
+        description: contractor.financing_enabled
+          ? 'Your contractor account is active for procurement and financing workflows.'
+          : 'Your contractor account is active for procurement workflows.',
         type: 'success'
+      };
+    }
+
+    if (verificationStatus === 'verified' && !contractor.portal_active) {
+      return {
+        title: 'Agreement Pending',
+        description: 'KYC is approved. Execute the master platform agreement to activate procurement access.',
+        type: 'warning'
       };
     }
 
@@ -199,8 +196,18 @@ export class ContractorAccessService {
     const status = contractor.status;
     const verificationStatus = contractor.verification_status;
 
-    if (status === 'approved' && verificationStatus === 'verified') {
-      return ['Your account is ready to use!', 'Start uploading project BOQs and schedules'];
+    if (contractor.procurement_enabled) {
+      return contractor.financing_enabled
+        ? ['Your account is ready to use.', 'Procurement and financing workflows are active.']
+        : ['Your portal access is active.', 'Financing will unlock after commercial approval and addendum execution.'];
+    }
+
+    if (verificationStatus === 'verified' && !contractor.portal_active) {
+      return [
+        'Review the master platform agreement issued by Finverno',
+        'Share the signed copy so the agreement can be executed',
+        'Portal procurement access will unlock after execution'
+      ];
     }
 
     if (verificationStatus === 'under_verification' || verificationStatus === 'documents_uploaded') {

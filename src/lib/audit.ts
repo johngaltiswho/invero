@@ -38,7 +38,10 @@ export type EntityType =
   | 'delivery'
   | 'purchase_order'
   | 'investor_agreement'
-  | 'agreement_delivery';
+  | 'agreement_delivery'
+  | 'contractor_agreement'
+  | 'contractor_agreement_delivery'
+  | 'contractor_underwriting_profile';
 
 export interface AuditLogEntry {
   userId: string;

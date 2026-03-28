@@ -182,7 +182,7 @@ export default function ContactUs() {
                   <option value="">Select a subject</option>
                   <option value="general">General Inquiry</option>
                   <option value="investor">Investor Questions</option>
-                  <option value="contractor">Contractor Questions</option>
+                  <option value="contractor">SME Questions</option>
                   <option value="technical">Technical Support</option>
                   <option value="partnership">Partnership Opportunities</option>
                   <option value="press">Press & Media</option>

@@ -282,7 +282,7 @@ export default function ContractorApplyPage(): React.ReactElement {
           </h1>
           <p className="text-lg text-secondary mb-8 leading-relaxed">
             Complete our comprehensive application to access direct-to-site material supply for your verified MNC contracts. 
-            Our proprietary vetting process ensures fast approval for qualified contractors.
+            Our proprietary vetting process ensures fast approval for qualified SMEs.
           </p>
         </div>
       </section>
@@ -389,7 +389,7 @@ export default function ContractorApplyPage(): React.ReactElement {
         <div className="container mx-auto px-4 text-center">
           <Link href="/contractors" className="inline-block">
             <Button variant="outline" size="md">
-              ← Back to Contractors Page
+              ← Back to SMEs Page
             </Button>
           </Link>
         </div>

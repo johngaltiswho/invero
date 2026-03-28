@@ -23,8 +23,18 @@ export default function ContractorStatusPage(): React.ReactElement {
   const loadContractorStatus = async () => {
     try {
       if (!user) return;
-      
-      const contractorData = await ContractorAccessService.getContractorWithProgress(user.id);
+
+      const access = await ContractorAccessService.checkDashboardAccess(
+        user.id,
+        user.emailAddresses[0]?.emailAddress
+      );
+
+      if (!access.contractor) {
+        router.push('/contractors/apply');
+        return;
+      }
+
+      const contractorData = await ContractorAccessService.getContractorWithProgress(access.contractor.id);
       
       if (!contractorData) {
         // No contractor found, redirect to application
@@ -96,7 +106,7 @@ export default function ContractorStatusPage(): React.ReactElement {
     return (
       <div className="min-h-screen bg-neutral-darker">
         <LoadingSpinner 
-          title="Loading Contractor Status"
+          title="Loading SME Status"
           description="Retrieving your application status and document verification progress"
           icon="📋"
           fullScreen={true}
@@ -112,8 +122,8 @@ export default function ContractorStatusPage(): React.ReactElement {
           <div className="text-4xl mb-4">📝</div>
           <h2 className="text-xl font-bold text-primary mb-2">No Application Found</h2>
           <p className="text-secondary mb-6">
-            You haven't submitted a contractor application yet. 
-            Please complete the application to access your contractor dashboard.
+            You haven't submitted an SME application yet. 
+            Please complete the application to access your SME dashboard.
           </p>
           <Button onClick={() => router.push('/contractors/apply')} variant="primary">
             Start Application
@@ -213,7 +223,7 @@ export default function ContractorStatusPage(): React.ReactElement {
           
           {/* Header */}
           <div className="text-center mb-8">
-            <h1 className="text-3xl font-bold text-primary mb-2">Contractor Application Status</h1>
+            <h1 className="text-3xl font-bold text-primary mb-2">SME Application Status</h1>
             <p className="text-secondary">Track your verification progress and complete any pending requirements</p>
           </div>
 
@@ -238,6 +248,31 @@ export default function ContractorStatusPage(): React.ReactElement {
               <h3 className="font-semibold text-primary mb-2">{statusInfo.title}</h3>
               <p className="text-secondary text-sm">{statusInfo.description}</p>
             </div>
+
+            <div className="grid md:grid-cols-4 gap-4 mb-4 text-sm">
+              <div className="rounded-lg border border-neutral-medium p-4">
+                <div className="text-secondary mb-1">Portal Access</div>
+                <div className="text-primary font-medium">{contractor.portalActive ? 'Active' : 'Pending'}</div>
+              </div>
+              <div className="rounded-lg border border-neutral-medium p-4">
+                <div className="text-secondary mb-1">Procurement</div>
+                <div className="text-primary font-medium">{contractor.procurementEnabled ? 'Enabled' : 'Pending'}</div>
+              </div>
+              <div className="rounded-lg border border-neutral-medium p-4">
+                <div className="text-secondary mb-1">Financing</div>
+                <div className="text-primary font-medium">{contractor.financingEnabled ? 'Enabled' : 'Pending'}</div>
+              </div>
+              <div className="rounded-lg border border-neutral-medium p-4">
+                <div className="text-secondary mb-1">Master Agreement</div>
+                <div className="text-primary font-medium">{contractor.masterAgreementStatus?.replace(/_/g, ' ') || 'Not started'}</div>
+              </div>
+            </div>
+
+            {!!contractor.missingChecklist?.length && (
+              <p className="text-sm text-accent-orange mb-4">
+                Missing required documents: {contractor.missingChecklist.join(', ')}
+              </p>
+            )}
 
             {/* Progress Bars */}
             <div className="grid md:grid-cols-2 gap-4 mb-4">

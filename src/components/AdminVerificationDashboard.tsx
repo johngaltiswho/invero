@@ -5,10 +5,32 @@ import { Button } from '@/components';
 import { type DocumentType } from '@/lib/document-service';
 import type { Contractor } from '@/types/supabase';
 import SimplePDFViewer from './SimplePDFViewer';
+import ContractorAgreementPanel from '@/components/admin/ContractorAgreementPanel';
+import ContractorUnderwritingPanel from '@/components/admin/ContractorUnderwritingPanel';
 
 interface ContractorWithDocuments extends Contractor {
   uploadProgress: number;
   verificationProgress: number;
+  agreementSummary?: {
+    masterAgreement: { id: string | null; status: string | null };
+    financingAgreement: { id: string | null; status: string | null };
+  } | null;
+  underwriting?: {
+    status: string | null;
+    financing_limit: number | null;
+    repayment_basis: string | null;
+    payment_window_days: number | null;
+    late_default_terms: string | null;
+    notes: string | null;
+  } | null;
+  onboarding?: {
+    onboardingStage: string;
+    portalActive: boolean;
+    procurementEnabled: boolean;
+    financingEnabled: boolean;
+    message: string;
+    missingChecklist: string[];
+  } | null;
 }
 
 interface MaterialRequest {
@@ -200,6 +222,7 @@ export default function AdminVerificationDashboard(): React.ReactElement {
     interestRateDaily: '0.10'
   });
   const [termsSaving, setTermsSaving] = useState(false);
+  const [editingTerms, setEditingTerms] = useState(false);
   const [fuelSettingsForm, setFuelSettingsForm] = useState({
     monthlyFuelBudget: '50000',
     perRequestMaxAmount: '10000',
@@ -209,6 +232,7 @@ export default function AdminVerificationDashboard(): React.ReactElement {
     autoApproveEnabled: true
   });
   const [fuelSettingsSaving, setFuelSettingsSaving] = useState(false);
+  const [editingFuelSettings, setEditingFuelSettings] = useState(false);
   const [selectedMaterialRequest, setSelectedMaterialRequest] = useState<MaterialRequest | null>(null);
   const [masterMaterials, setMasterMaterials] = useState<MasterMaterial[]>([]);
   const [masterMaterialsLoading, setMasterMaterialsLoading] = useState(false);
@@ -236,6 +260,7 @@ export default function AdminVerificationDashboard(): React.ReactElement {
   const [showAddPump, setShowAddPump] = useState(false);
   const [emailForm, setEmailForm] = useState({ value: '' });
   const [emailSaving, setEmailSaving] = useState(false);
+  const [editingEmail, setEditingEmail] = useState(false);
   const [addPumpForm, setAddPumpForm] = useState({
     pump_name: '',
     address: '',
@@ -254,6 +279,10 @@ export default function AdminVerificationDashboard(): React.ReactElement {
     } catch {
       return 'N/A';
     }
+  };
+
+  const refreshContractors = async () => {
+    await loadContractors();
   };
 
   useEffect(() => {
@@ -310,6 +339,9 @@ export default function AdminVerificationDashboard(): React.ReactElement {
 
   useEffect(() => {
     setEmailForm({ value: selectedContractor?.email ?? '' });
+    setEditingEmail(false);
+    setEditingTerms(false);
+    setEditingFuelSettings(false);
   }, [selectedContractor?.id, selectedContractor?.email]);
 
   const loadContractors = async () => {
@@ -379,6 +411,7 @@ export default function AdminVerificationDashboard(): React.ReactElement {
             : contractor
         )
       );
+      setEditingTerms(false);
     } catch (error) {
       console.error('Failed to update finance terms:', error);
       alert(error instanceof Error ? error.message : 'Failed to update finance terms');
@@ -434,10 +467,11 @@ export default function AdminVerificationDashboard(): React.ReactElement {
       );
 
       setEmailForm({ value: updatedEmail });
-      alert('Contractor email updated successfully.');
+      setEditingEmail(false);
+      alert('SME email updated successfully.');
     } catch (error) {
       console.error('Failed to update contractor email:', error);
-      alert(error instanceof Error ? error.message : 'Failed to update contractor email');
+      alert(error instanceof Error ? error.message : 'Failed to update SME email');
     } finally {
       setEmailSaving(false);
     }
@@ -518,6 +552,7 @@ export default function AdminVerificationDashboard(): React.ReactElement {
       }
 
       alert('Fuel settings updated successfully');
+      setEditingFuelSettings(false);
     } catch (error) {
       console.error('Failed to update fuel settings:', error);
       alert(error instanceof Error ? error.message : 'Failed to update fuel settings');
@@ -1206,7 +1241,7 @@ export default function AdminVerificationDashboard(): React.ReactElement {
       if (!response.ok || !result.success) {
         throw new Error(result.error || 'Failed to add contractor');
       }
-      alert(`Contractor added. Invitation sent to ${addContractorForm.email}`);
+      alert(`SME added. Invitation sent to ${addContractorForm.email}`);
       setShowAddContractor(false);
       setAddContractorForm({ email: '', contact_person: '', company_name: '', phone: '' });
       await loadContractors();
@@ -1270,7 +1305,7 @@ export default function AdminVerificationDashboard(): React.ReactElement {
     return (
       <div className="flex items-center justify-center p-8">
         <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-accent-orange"></div>
-        <span className="ml-3 text-secondary">Loading contractors...</span>
+        <span className="ml-3 text-secondary">Loading SMEs...</span>
       </div>
     );
   }
@@ -1292,7 +1327,7 @@ export default function AdminVerificationDashboard(): React.ReactElement {
                   : 'text-secondary hover:text-primary'
               }`}
             >
-              Contractor Verification
+              SME Verification
             </button>
             <button
               onClick={() => setActiveTab('materials')}
@@ -1372,13 +1407,13 @@ export default function AdminVerificationDashboard(): React.ReactElement {
       {/* Conditional Content Based on Active Tab */}
       {activeTab === 'contractors' ? (
         <div className="grid lg:grid-cols-3 gap-8">
-          {/* Contractors List */}
+          {/* SMEs List */}
           <div className="lg:col-span-1">
             <div className="bg-neutral-dark rounded-lg border border-neutral-medium">
             <div className="p-4 border-b border-neutral-medium flex items-start justify-between">
               <div>
-                <h2 className="text-lg font-semibold text-primary">Contractors</h2>
-                <p className="text-sm text-secondary">Manage contractor registrations</p>
+                <h2 className="text-lg font-semibold text-primary">SMEs</h2>
+                <p className="text-sm text-secondary">Manage SME registrations</p>
               </div>
               <button
                 onClick={() => setShowAddContractor(true)}
@@ -1392,7 +1427,7 @@ export default function AdminVerificationDashboard(): React.ReactElement {
                 <div className="p-6 text-center">
                   <div className="text-4xl mb-4">📋</div>
                   <h3 className="text-lg font-semibold text-primary mb-2">No Pending Applications</h3>
-                  <p className="text-secondary text-sm">All contractor applications have been processed.</p>
+                  <p className="text-secondary text-sm">All SME applications have been processed.</p>
                 </div>
               ) : (
                 contractors.map((contractor) => (
@@ -1454,23 +1489,82 @@ export default function AdminVerificationDashboard(): React.ReactElement {
 
               <div className="p-6">
                 <div className="bg-neutral-darker/60 border border-neutral-medium rounded-lg p-4 mb-6">
+                  <div className="flex items-start justify-between gap-4">
+                    <div>
+                      <h3 className="text-lg font-semibold text-primary">Activation & Product Access</h3>
+                      <p className="text-xs text-secondary">Portal activation now depends on KYC, executed agreements, and commercial approval.</p>
+                    </div>
+                    <div className="text-right text-xs">
+                      <div className={`px-3 py-1 rounded border ${selectedContractor.onboarding?.portalActive ? 'border-success text-success' : 'border-neutral-medium text-secondary'}`}>
+                        Portal {selectedContractor.onboarding?.portalActive ? 'ACTIVE' : 'PENDING'}
+                      </div>
+                    </div>
+                  </div>
+                  <div className="grid md:grid-cols-4 gap-4 mt-4 text-sm">
+                    <div className="rounded-lg border border-neutral-medium p-4">
+                      <div className="text-secondary mb-1">Onboarding Stage</div>
+                      <div className="text-primary font-medium">{selectedContractor.onboarding?.onboardingStage?.replace(/_/g, ' ') || 'documents pending'}</div>
+                    </div>
+                    <div className="rounded-lg border border-neutral-medium p-4">
+                      <div className="text-secondary mb-1">Master Agreement</div>
+                      <div className="text-primary font-medium">{selectedContractor.agreementSummary?.masterAgreement.status?.replace(/_/g, ' ') || 'not started'}</div>
+                    </div>
+                    <div className="rounded-lg border border-neutral-medium p-4">
+                      <div className="text-secondary mb-1">Financing Addendum</div>
+                      <div className="text-primary font-medium">{selectedContractor.agreementSummary?.financingAgreement.status?.replace(/_/g, ' ') || 'not started'}</div>
+                    </div>
+                    <div className="rounded-lg border border-neutral-medium p-4">
+                      <div className="text-secondary mb-1">Commercial Review</div>
+                      <div className="text-primary font-medium">{selectedContractor.underwriting?.status?.replace(/_/g, ' ') || 'not started'}</div>
+                    </div>
+                  </div>
+                  <p className="text-sm text-secondary mt-4">{selectedContractor.onboarding?.message || 'Complete KYC, execute the master agreement, and approve commercial terms to activate access.'}</p>
+                  {!!selectedContractor.onboarding?.missingChecklist?.length && (
+                    <p className="text-xs text-accent-orange mt-2">
+                      Missing required documents: {selectedContractor.onboarding.missingChecklist.join(', ')}
+                    </p>
+                  )}
+                </div>
+
+                <div className="bg-neutral-darker/60 border border-neutral-medium rounded-lg p-4 mb-6">
                   <div className="flex items-center justify-between mb-4">
                     <div>
                       <h3 className="text-lg font-semibold text-primary">Registered Email</h3>
-                      <p className="text-xs text-secondary">Updates the contractor login/contact email in Finverno and Clerk.</p>
+                      <p className="text-xs text-secondary">Updates the SME login/contact email in Finverno and Clerk.</p>
                     </div>
-                    <Button variant="primary" size="sm" onClick={handleSaveContractorEmail} disabled={emailSaving}>
-                      {emailSaving ? 'Updating...' : 'Update Email'}
-                    </Button>
+                    <div className="flex items-center gap-2">
+                      {editingEmail && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => {
+                            setEmailForm({ value: selectedContractor?.email ?? '' });
+                            setEditingEmail(false);
+                          }}
+                          disabled={emailSaving}
+                        >
+                          Cancel
+                        </Button>
+                      )}
+                      <Button
+                        variant="primary"
+                        size="sm"
+                        onClick={editingEmail ? handleSaveContractorEmail : () => setEditingEmail(true)}
+                        disabled={emailSaving}
+                      >
+                        {emailSaving ? 'Updating...' : editingEmail ? 'Save Email' : 'Edit Email'}
+                      </Button>
+                    </div>
                   </div>
                   <label className="block text-sm">
-                    <span className="text-secondary">Contractor Email</span>
+                    <span className="text-secondary">SME Email</span>
                     <input
                       type="email"
                       value={emailForm.value}
                       onChange={(event) => setEmailForm({ value: event.target.value })}
+                      disabled={!editingEmail}
                       className="mt-2 w-full px-3 py-2 rounded-lg border border-neutral-medium bg-neutral-dark text-primary focus:outline-none focus:ring-2 focus:ring-accent-orange"
-                      placeholder="Enter contractor email"
+                      placeholder="Enter SME email"
                     />
                   </label>
                 </div>
@@ -1479,11 +1573,41 @@ export default function AdminVerificationDashboard(): React.ReactElement {
                   <div className="flex items-center justify-between mb-4">
                     <div>
                       <h3 className="text-lg font-semibold text-primary">Finance Terms</h3>
-                      <p className="text-xs text-secondary">Set platform fee and daily project participation fee for this contractor</p>
+                      <p className="text-xs text-secondary">Set platform fee and daily project participation fee for this SME</p>
                     </div>
-                    <Button variant="primary" size="sm" onClick={handleSaveTerms} disabled={termsSaving}>
-                      {termsSaving ? 'Saving...' : 'Save Terms'}
-                    </Button>
+                    <div className="flex items-center gap-2">
+                      {editingTerms && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => {
+                            if (!selectedContractor) return;
+                            const platformRate = selectedContractor.platform_fee_rate ?? 0.0025;
+                            const dailyRate =
+                              selectedContractor.participation_fee_rate_daily ??
+                              0.001;
+                            const platformCap = selectedContractor.platform_fee_cap ?? 25000;
+                            setTermsForm({
+                              platformFeeRate: (platformRate * 100).toFixed(2),
+                              platformFeeCap: String(Math.round(platformCap)),
+                              interestRateDaily: (dailyRate * 100).toFixed(2)
+                            });
+                            setEditingTerms(false);
+                          }}
+                          disabled={termsSaving}
+                        >
+                          Cancel
+                        </Button>
+                      )}
+                      <Button
+                        variant="primary"
+                        size="sm"
+                        onClick={editingTerms ? handleSaveTerms : () => setEditingTerms(true)}
+                        disabled={termsSaving}
+                      >
+                        {termsSaving ? 'Saving...' : editingTerms ? 'Save Terms' : 'Edit Terms'}
+                      </Button>
+                    </div>
                   </div>
                   <div className="grid md:grid-cols-3 gap-4 text-sm">
                     <label className="block">
@@ -1495,6 +1619,7 @@ export default function AdminVerificationDashboard(): React.ReactElement {
                         onChange={(event) =>
                           setTermsForm((prev) => ({ ...prev, platformFeeRate: event.target.value }))
                         }
+                        disabled={!editingTerms}
                         className="mt-2 w-full px-3 py-2 rounded-lg border border-neutral-medium bg-neutral-dark text-primary focus:outline-none focus:ring-2 focus:ring-accent-orange"
                       />
                     </label>
@@ -1507,6 +1632,7 @@ export default function AdminVerificationDashboard(): React.ReactElement {
                         onChange={(event) =>
                           setTermsForm((prev) => ({ ...prev, platformFeeCap: event.target.value }))
                         }
+                        disabled={!editingTerms}
                         className="mt-2 w-full px-3 py-2 rounded-lg border border-neutral-medium bg-neutral-dark text-primary focus:outline-none focus:ring-2 focus:ring-accent-orange"
                       />
                     </label>
@@ -1519,6 +1645,7 @@ export default function AdminVerificationDashboard(): React.ReactElement {
                         onChange={(event) =>
                           setTermsForm((prev) => ({ ...prev, interestRateDaily: event.target.value }))
                         }
+                        disabled={!editingTerms}
                         className="mt-2 w-full px-3 py-2 rounded-lg border border-neutral-medium bg-neutral-dark text-primary focus:outline-none focus:ring-2 focus:ring-accent-orange"
                       />
                     </label>
@@ -1530,11 +1657,32 @@ export default function AdminVerificationDashboard(): React.ReactElement {
                   <div className="flex items-center justify-between mb-4">
                     <div>
                       <h3 className="text-lg font-semibold text-primary">Fuel Settings</h3>
-                      <p className="text-xs text-secondary">Configure fuel budget, limits, and auto-approval settings for this contractor</p>
+                      <p className="text-xs text-secondary">Configure fuel budget, limits, and auto-approval settings for this SME</p>
                     </div>
-                    <Button variant="primary" size="sm" onClick={handleSaveFuelSettings} disabled={fuelSettingsSaving}>
-                      {fuelSettingsSaving ? 'Saving...' : 'Save Settings'}
-                    </Button>
+                    <div className="flex items-center gap-2">
+                      {editingFuelSettings && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => {
+                            if (!selectedContractor) return;
+                            loadFuelSettings(selectedContractor.id);
+                            setEditingFuelSettings(false);
+                          }}
+                          disabled={fuelSettingsSaving}
+                        >
+                          Cancel
+                        </Button>
+                      )}
+                      <Button
+                        variant="primary"
+                        size="sm"
+                        onClick={editingFuelSettings ? handleSaveFuelSettings : () => setEditingFuelSettings(true)}
+                        disabled={fuelSettingsSaving}
+                      >
+                        {fuelSettingsSaving ? 'Saving...' : editingFuelSettings ? 'Save Settings' : 'Edit Settings'}
+                      </Button>
+                    </div>
                   </div>
                   <div className="grid md:grid-cols-3 gap-4 text-sm">
                     <label className="block">
@@ -1548,6 +1696,7 @@ export default function AdminVerificationDashboard(): React.ReactElement {
                         onChange={(event) =>
                           setFuelSettingsForm((prev) => ({ ...prev, monthlyFuelBudget: event.target.value }))
                         }
+                        disabled={!editingFuelSettings}
                         className="mt-2 w-full px-3 py-2 rounded-lg border border-neutral-medium bg-neutral-dark text-primary focus:outline-none focus:ring-2 focus:ring-accent-orange"
                       />
                     </label>
@@ -1562,6 +1711,7 @@ export default function AdminVerificationDashboard(): React.ReactElement {
                         onChange={(event) =>
                           setFuelSettingsForm((prev) => ({ ...prev, perRequestMaxAmount: event.target.value }))
                         }
+                        disabled={!editingFuelSettings}
                         className="mt-2 w-full px-3 py-2 rounded-lg border border-neutral-medium bg-neutral-dark text-primary focus:outline-none focus:ring-2 focus:ring-accent-orange"
                       />
                     </label>
@@ -1576,6 +1726,7 @@ export default function AdminVerificationDashboard(): React.ReactElement {
                         onChange={(event) =>
                           setFuelSettingsForm((prev) => ({ ...prev, perRequestMaxLiters: event.target.value }))
                         }
+                        disabled={!editingFuelSettings}
                         className="mt-2 w-full px-3 py-2 rounded-lg border border-neutral-medium bg-neutral-dark text-primary focus:outline-none focus:ring-2 focus:ring-accent-orange"
                       />
                     </label>
@@ -1590,6 +1741,7 @@ export default function AdminVerificationDashboard(): React.ReactElement {
                         onChange={(event) =>
                           setFuelSettingsForm((prev) => ({ ...prev, maxFillsPerVehiclePerDay: event.target.value }))
                         }
+                        disabled={!editingFuelSettings}
                         className="mt-2 w-full px-3 py-2 rounded-lg border border-neutral-medium bg-neutral-dark text-primary focus:outline-none focus:ring-2 focus:ring-accent-orange"
                       />
                     </label>
@@ -1604,6 +1756,7 @@ export default function AdminVerificationDashboard(): React.ReactElement {
                         onChange={(event) =>
                           setFuelSettingsForm((prev) => ({ ...prev, minHoursBetweenFills: event.target.value }))
                         }
+                        disabled={!editingFuelSettings}
                         className="mt-2 w-full px-3 py-2 rounded-lg border border-neutral-medium bg-neutral-dark text-primary focus:outline-none focus:ring-2 focus:ring-accent-orange"
                       />
                     </label>
@@ -1617,6 +1770,7 @@ export default function AdminVerificationDashboard(): React.ReactElement {
                           onChange={(event) =>
                             setFuelSettingsForm((prev) => ({ ...prev, autoApproveEnabled: event.target.checked }))
                           }
+                          disabled={!editingFuelSettings}
                           className="w-4 h-4 rounded border-neutral-medium"
                         />
                         <label htmlFor="auto-approve" className="text-sm text-primary cursor-pointer">
@@ -1626,6 +1780,38 @@ export default function AdminVerificationDashboard(): React.ReactElement {
                     </label>
                   </div>
                 </div>
+
+                <ContractorUnderwritingPanel
+                  contractorId={selectedContractor.id}
+                  onUpdated={refreshContractors}
+                />
+
+                <ContractorAgreementPanel
+                  contractorId={selectedContractor.id}
+                  contractorEmail={selectedContractor.email}
+                  agreementType="master_platform"
+                  title="Master SME Platform Agreement"
+                  description="Required for every SME before portal procurement access can be activated."
+                  onUpdated={refreshContractors}
+                />
+
+                <ContractorAgreementPanel
+                  contractorId={selectedContractor.id}
+                  contractorEmail={selectedContractor.email}
+                  agreementType="financing_addendum"
+                  title="Financing / Working Capital Addendum"
+                  description="Required only when financing access is intended to be enabled for this SME."
+                  onUpdated={refreshContractors}
+                />
+
+                <ContractorAgreementPanel
+                  contractorId={selectedContractor.id}
+                  contractorEmail={selectedContractor.email}
+                  agreementType="procurement_declaration"
+                  title="Procurement / Booking Declaration"
+                  description="Optional declaration for booking-rate, dispatch, freight, NSIC/back-to-back adjustments, and material-lifting acknowledgements."
+                  onUpdated={refreshContractors}
+                />
 
                 <h3 className="text-lg font-semibold text-primary mb-4">KYC Documents</h3>
                 <div className="grid md:grid-cols-2 gap-4">
@@ -1703,45 +1889,12 @@ export default function AdminVerificationDashboard(): React.ReactElement {
                   ))}
                 </div>
 
-                {/* Final Approval Section */}
-                {selectedContractor.verification_status === 'verified' && selectedContractor.status !== 'approved' && (
-                  <div className="mt-8 p-6 bg-accent-amber/5 border border-accent-amber/20 rounded-lg">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <h4 className="text-lg font-semibold text-primary mb-2">Ready for Final Approval</h4>
-                        <p className="text-secondary text-sm">All documents have been verified. Approve this contractor to grant platform access.</p>
-                      </div>
-                      <div className="flex space-x-3">
-                        <Button
-                          variant="primary"
-                          onClick={() => handleFinalApproval(selectedContractor.id, true)}
-                          disabled={verifyingDoc === `${selectedContractor.id}-final`}
-                        >
-                          {verifyingDoc === `${selectedContractor.id}-final` ? 'Approving...' : 'Approve Contractor'}
-                        </Button>
-                        <Button
-                          variant="outline"
-                          onClick={() => {
-                            const reason = prompt('Rejection reason for contractor:');
-                            if (reason) {
-                              handleFinalApproval(selectedContractor.id, false, reason);
-                            }
-                          }}
-                          disabled={verifyingDoc === `${selectedContractor.id}-final`}
-                        >
-                          Reject Contractor
-                        </Button>
-                      </div>
-                    </div>
-                  </div>
-                )}
-
                 {selectedContractor.status === 'approved' && (
                   <div className="mt-8 p-6 bg-success/5 border border-success/20 rounded-lg">
                     <div className="flex items-center">
                       <span className="text-2xl mr-3">✅</span>
                       <div>
-                        <h4 className="text-lg font-semibold text-success mb-1">Contractor Approved</h4>
+                        <h4 className="text-lg font-semibold text-success mb-1">SME Approved</h4>
                         <p className="text-secondary text-sm">
                           Approved on {selectedContractor.approved_date ? new Date(selectedContractor.approved_date).toLocaleDateString() : 'N/A'}
                         </p>
@@ -1755,7 +1908,7 @@ export default function AdminVerificationDashboard(): React.ReactElement {
                     <div className="flex items-center">
                       <span className="text-2xl mr-3">❌</span>
                       <div>
-                        <h4 className="text-lg font-semibold text-error mb-1">Contractor Rejected</h4>
+                        <h4 className="text-lg font-semibold text-error mb-1">SME Rejected</h4>
                         {selectedContractor.rejection_reason && (
                           <p className="text-secondary text-sm">
                             <strong>Reason:</strong> {selectedContractor.rejection_reason}
@@ -1770,8 +1923,8 @@ export default function AdminVerificationDashboard(): React.ReactElement {
           ) : (
             <div className="bg-neutral-dark rounded-lg border border-neutral-medium p-8 text-center">
               <div className="text-4xl mb-4">👈</div>
-              <h3 className="text-lg font-semibold text-primary mb-2">Select a Contractor</h3>
-              <p className="text-secondary">Choose a contractor from the list to review their documents</p>
+              <h3 className="text-lg font-semibold text-primary mb-2">Select an SME</h3>
+              <p className="text-secondary">Choose an SME from the list to review their documents</p>
             </div>
           )}
           </div>
@@ -1785,7 +1938,7 @@ export default function AdminVerificationDashboard(): React.ReactElement {
             <div className="bg-neutral-dark rounded-lg border border-neutral-medium">
               <div className="p-4 border-b border-neutral-medium">
                 <h2 className="text-lg font-semibold text-primary">Material Requests</h2>
-                <p className="text-sm text-secondary">Contractor material additions pending review</p>
+                <p className="text-sm text-secondary">SME material additions pending review</p>
               </div>
               <div className="divide-y divide-neutral-medium max-h-96 overflow-y-auto">
                 {materialRequests.length === 0 ? (
@@ -2042,7 +2195,7 @@ export default function AdminVerificationDashboard(): React.ReactElement {
             <div className="bg-neutral-dark rounded-lg border border-neutral-medium">
               <div className="p-4 border-b border-neutral-medium">
                 <h2 className="text-lg font-semibold text-primary">Quantity Takeoffs</h2>
-                <p className="text-sm text-secondary">Contractor takeoffs pending verification</p>
+                <p className="text-sm text-secondary">SME takeoffs pending verification</p>
                 
                 {/* Summary Stats */}
                 <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
@@ -2422,7 +2575,7 @@ export default function AdminVerificationDashboard(): React.ReactElement {
                 <tr>
                   <th className="text-left p-3 text-primary font-semibold">Request</th>
                   <th className="text-left p-3 text-primary font-semibold">Project</th>
-                  <th className="text-left p-3 text-primary font-semibold">Contractor</th>
+                  <th className="text-left p-3 text-primary font-semibold">SME</th>
                   <th className="text-left p-3 text-primary font-semibold">Items</th>
                   <th className="text-left p-3 text-primary font-semibold">Amount</th>
                   <th className="text-left p-3 text-primary font-semibold">Vendor</th>
@@ -2454,7 +2607,7 @@ export default function AdminVerificationDashboard(): React.ReactElement {
                       <tr key={request.id} className="border-b border-neutral-medium hover:bg-neutral-medium/20">
                         <td className="p-3 text-primary font-medium">#{request.id.slice(0, 8).toUpperCase()}</td>
                         <td className="p-3 text-secondary">{request.project?.name || request.project_id || 'Project'}</td>
-                        <td className="p-3 text-secondary">{request.contractors?.company_name || 'Unknown Contractor'}</td>
+                        <td className="p-3 text-secondary">{request.contractors?.company_name || 'Unknown SME'}</td>
                         <td className="p-3 text-secondary">{request.total_items}</td>
                         <td className="p-3 text-primary">
                           ₹{(request.estimated_total || 0).toLocaleString(undefined, { maximumFractionDigits: 2 })}
@@ -2586,7 +2739,7 @@ export default function AdminVerificationDashboard(): React.ReactElement {
                   Purchase Request #{selectedPurchaseRequest.id.slice(0, 8).toUpperCase()}
                 </h2>
                 <p className="text-sm text-secondary">
-                  {selectedPurchaseRequest.project?.name || selectedPurchaseRequest.project_id || 'Project'} • {selectedPurchaseRequest.contractors?.company_name || 'Unknown Contractor'}
+                  {selectedPurchaseRequest.project?.name || selectedPurchaseRequest.project_id || 'Project'} • {selectedPurchaseRequest.contractors?.company_name || 'Unknown SME'}
                 </p>
               </div>
               <button
@@ -2646,7 +2799,7 @@ export default function AdminVerificationDashboard(): React.ReactElement {
                     {vendorsLoading ? (
                       <p className="text-xs text-secondary">Loading vendors...</p>
                     ) : vendors.length === 0 ? (
-                      <p className="text-xs text-secondary italic">No vendors registered for this contractor yet.</p>
+                      <p className="text-xs text-secondary italic">No vendors registered for this SME yet.</p>
                     ) : (
                       <select
                         value={selectedVendorId ?? ''}
@@ -2811,7 +2964,7 @@ export default function AdminVerificationDashboard(): React.ReactElement {
 
               {selectedPurchaseRequest.delivery_status === 'disputed' && (
                 <div className="p-4 bg-red-50 border border-red-200 rounded-lg text-sm">
-                  <p className="font-medium text-red-900">Dispute Raised by Contractor</p>
+                  <p className="font-medium text-red-900">Dispute Raised by SME</p>
                   {selectedPurchaseRequest.dispute_reason && (
                     <p className="text-red-800 mt-1">Reason: {selectedPurchaseRequest.dispute_reason}</p>
                   )}
@@ -2981,13 +3134,13 @@ export default function AdminVerificationDashboard(): React.ReactElement {
         </div>
       )}
 
-      {/* Add Contractor Modal */}
+      {/* Add SME Modal */}
       {showAddContractor && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
           <div className="bg-neutral-dark rounded-lg border border-neutral-medium max-w-md w-full">
             <div className="p-6 border-b border-neutral-medium">
-              <h2 className="text-xl font-semibold text-primary">Add New Contractor</h2>
-              <p className="text-sm text-secondary mt-1">Pre-register a contractor and send them a Clerk invitation</p>
+              <h2 className="text-xl font-semibold text-primary">Add New SME</h2>
+              <p className="text-sm text-secondary mt-1">Pre-register an SME and send them a Clerk invitation</p>
             </div>
             <form onSubmit={handleAddContractor} className="p-6 space-y-4">
               <div>
@@ -2998,7 +3151,7 @@ export default function AdminVerificationDashboard(): React.ReactElement {
                   value={addContractorForm.email}
                   onChange={(e) => setAddContractorForm({ ...addContractorForm, email: e.target.value })}
                   className="w-full px-3 py-2 border border-neutral-medium rounded-md bg-neutral-darker text-primary placeholder-secondary focus:outline-none focus:ring-2 focus:ring-accent-orange"
-                  placeholder="contractor@company.com"
+                  placeholder="sme@company.com"
                 />
               </div>
               <div>
@@ -3035,7 +3188,7 @@ export default function AdminVerificationDashboard(): React.ReactElement {
               </div>
               <div className="flex space-x-3 pt-2">
                 <Button type="submit" variant="primary" disabled={addContractorLoading}>
-                  {addContractorLoading ? 'Adding...' : 'Add Contractor'}
+                  {addContractorLoading ? 'Adding...' : 'Add SME'}
                 </Button>
                 <Button
                   type="button"

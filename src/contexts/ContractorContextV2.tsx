@@ -14,6 +14,9 @@ interface ContractorAccessInfo {
   message: string;
   canRetry: boolean;
   redirectTo?: string;
+  portalActive?: boolean;
+  procurementEnabled?: boolean;
+  financingEnabled?: boolean;
 }
 
 interface ContractorContextType {
@@ -79,7 +82,10 @@ export function ContractorProvider({ children }: ContractorProviderProps) {
           reason: access.reason,
           message: access.message,
           canRetry: access.canRetry,
-          redirectTo: access.redirectTo
+          redirectTo: access.redirectTo,
+          portalActive: access.portalActive,
+          procurementEnabled: access.procurementEnabled,
+          financingEnabled: access.financingEnabled
         });
         
         console.log('🔐 ContractorContext: Access status:', access.reason, access.hasAccess ? 'GRANTED' : 'DENIED');
@@ -140,7 +146,10 @@ export function ContractorProvider({ children }: ContractorProviderProps) {
           reason: access.reason,
           message: access.message,
           canRetry: access.canRetry,
-          redirectTo: access.redirectTo
+          redirectTo: access.redirectTo,
+          portalActive: access.portalActive,
+          procurementEnabled: access.procurementEnabled,
+          financingEnabled: access.financingEnabled
         };
         setAccessInfo(info);
         return info;
@@ -163,7 +172,10 @@ export function ContractorProvider({ children }: ContractorProviderProps) {
 
   const canAccessFeature = (feature: string): boolean => {
     if (PURCHASE_GATED_FEATURES.includes(feature)) {
-      return accessInfo?.registrationComplete ?? false;
+      return accessInfo?.procurementEnabled ?? accessInfo?.registrationComplete ?? false;
+    }
+    if (feature === 'finance') {
+      return accessInfo?.financingEnabled ?? false;
     }
     return true;
   };

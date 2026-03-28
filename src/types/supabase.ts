@@ -95,6 +95,27 @@ export interface Database {
           // Status & Verification
           status: 'pending' | 'under_review' | 'approved' | 'rejected' | 'suspended'
           verification_status: 'documents_pending' | 'documents_uploaded' | 'under_verification' | 'verified' | 'rejected'
+          onboarding_stage:
+            | 'application_submitted'
+            | 'documents_pending'
+            | 'documents_uploaded'
+            | 'kyc_under_review'
+            | 'kyc_approved'
+            | 'commercial_review'
+            | 'commercial_approved'
+            | 'master_agreement_pending'
+            | 'master_agreement_issued'
+            | 'master_agreement_executed'
+            | 'active'
+            | 'financing_pending'
+            | 'financing_issued'
+            | 'financing_executed'
+            | 'suspended'
+            | 'rejected'
+            | null
+          portal_active: boolean
+          procurement_enabled: boolean
+          financing_enabled: boolean
           application_date: string
           approved_date: string | null
           verified_by: string | null
@@ -146,6 +167,27 @@ export interface Database {
           next_available_date?: string | null
           status?: 'pending' | 'approved' | 'rejected' | 'suspended'
           verification_status?: 'documents_pending' | 'documents_uploaded' | 'under_verification' | 'verified' | 'rejected'
+          onboarding_stage?:
+            | 'application_submitted'
+            | 'documents_pending'
+            | 'documents_uploaded'
+            | 'kyc_under_review'
+            | 'kyc_approved'
+            | 'commercial_review'
+            | 'commercial_approved'
+            | 'master_agreement_pending'
+            | 'master_agreement_issued'
+            | 'master_agreement_executed'
+            | 'active'
+            | 'financing_pending'
+            | 'financing_issued'
+            | 'financing_executed'
+            | 'suspended'
+            | 'rejected'
+            | null
+          portal_active?: boolean
+          procurement_enabled?: boolean
+          financing_enabled?: boolean
           application_date?: string
           approved_date?: string | null
           verified_by?: string | null
@@ -193,6 +235,27 @@ export interface Database {
           next_available_date?: string | null
           status?: 'pending' | 'approved' | 'rejected' | 'suspended'
           verification_status?: 'documents_pending' | 'documents_uploaded' | 'under_verification' | 'verified' | 'rejected'
+          onboarding_stage?:
+            | 'application_submitted'
+            | 'documents_pending'
+            | 'documents_uploaded'
+            | 'kyc_under_review'
+            | 'kyc_approved'
+            | 'commercial_review'
+            | 'commercial_approved'
+            | 'master_agreement_pending'
+            | 'master_agreement_issued'
+            | 'master_agreement_executed'
+            | 'active'
+            | 'financing_pending'
+            | 'financing_issued'
+            | 'financing_executed'
+            | 'suspended'
+            | 'rejected'
+            | null
+          portal_active?: boolean
+          procurement_enabled?: boolean
+          financing_enabled?: boolean
           application_date?: string
           approved_date?: string | null
           verified_by?: string | null

@@ -20,7 +20,7 @@ export async function GET(request: NextRequest) {
     // Get contractor with progress details if a record exists
     let contractorWithProgress = null;
     if (accessStatus.contractor) {
-      contractorWithProgress = await ContractorAccessService.getContractorWithProgress(user.id);
+      contractorWithProgress = await ContractorAccessService.getContractorWithProgress(accessStatus.contractor.id);
     }
 
     return NextResponse.json({
@@ -33,6 +33,9 @@ export async function GET(request: NextRequest) {
         message: accessStatus.message,
         canRetry: accessStatus.canRetry,
         redirectTo: accessStatus.redirectTo,
+        portalActive: accessStatus.portalActive ?? false,
+        procurementEnabled: accessStatus.procurementEnabled ?? false,
+        financingEnabled: accessStatus.financingEnabled ?? false,
         contractor: contractorWithProgress || accessStatus.contractor
       }
     });

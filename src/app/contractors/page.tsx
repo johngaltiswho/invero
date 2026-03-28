@@ -265,7 +265,7 @@ export default function ContractorsPage() {
         <div className="bg-gradient-to-br from-neutral-light to-neutral-medium rounded-lg p-12 text-center border border-neutral-medium mb-20">
           <h2 className="text-3xl font-bold text-primary mb-6">Partner with Finverno</h2>
           <p className="text-xl text-secondary mb-8 max-w-2xl mx-auto">
-            Access project supply solutions designed for infrastructure and industrial contractors with verified corporate work orders.
+            Access project supply solutions designed for infrastructure and industrial SMEs with verified corporate work orders.
           </p>
           <div className="flex flex-col sm:flex-row gap-4 justify-center">
             <Link href="/contractors/apply">
@@ -293,14 +293,14 @@ export default function ContractorsPage() {
         <div className="bg-accent-orange/5 border border-accent-orange/20 rounded-lg p-8 text-center">
           <h2 className="text-2xl font-bold text-primary mb-4">Existing Partner?</h2>
           <p className="text-secondary mb-6 max-w-2xl mx-auto">
-            Access your contractor dashboard to track application status, manage active projects, and monitor funding disbursements.
+            Access your SME dashboard to track application status, manage active projects, and monitor funding disbursements.
           </p>
           <Button variant="primary" className="bg-accent-orange hover:bg-orange-600 text-white px-8 py-3">
             <a href="/dashboard/contractor" className="flex items-center space-x-2">
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
               </svg>
-              <span>Access Contractor Dashboard</span>
+              <span>Access SME Dashboard</span>
             </a>
           </Button>
         </div>

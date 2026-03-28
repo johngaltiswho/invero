@@ -37,21 +37,21 @@ export default function InvestorsPage() {
                   <h4 className="font-semibold text-primary mb-2">Enhanced Infrastructure Execution</h4>
                   <p className="text-secondary">
                     India's ₹25 lakh crore MSME working capital gap creates project execution delays. 
-                    Our supply enablement platform ensures reliable delivery for creditworthy contractors with confirmed MNC orders.
+                    Our supply enablement platform ensures reliable delivery for creditworthy SMEs with confirmed MNC orders.
                   </p>
                 </div>
                 <div className="border-l-4 border-accent-orange pl-6">
                   <h4 className="font-semibold text-primary mb-2">Infrastructure Growth Catalyst</h4>
                   <p className="text-secondary">
                     India's infrastructure sector is projected to grow at 8% CAGR, reaching $280.6B by 2030. 
-                    We're enabling reliable execution for the contractors delivering this massive expansion.
+                    We're enabling reliable execution for the SMEs delivering this massive expansion.
                   </p>
                 </div>
                 <div className="border-l-4 border-accent-orange pl-6">
                   <h4 className="font-semibold text-primary mb-2">De-risked Revenue Streams</h4>
                   <p className="text-secondary">
                     Unlike traditional SME lending, our investments are secured by payment obligations 
-                    from blue-chip MNCs, not contractor balance sheets.
+                    from blue-chip MNCs, not SME balance sheets.
                   </p>
                 </div>
               </div>
@@ -99,7 +99,7 @@ export default function InvestorsPage() {
               </div>
               <h3 className="text-lg font-semibold text-primary mb-3">Due Diligence</h3>
               <p className="text-secondary text-sm">
-                Proprietary vetting algorithm combined with human expertise evaluates contractor capability and MNC payment reliability.
+                Proprietary vetting algorithm combined with human expertise evaluates SME capability and MNC payment reliability.
               </p>
             </div>
 
@@ -111,7 +111,7 @@ export default function InvestorsPage() {
               </div>
               <h3 className="text-lg font-semibold text-primary mb-3">Capital Deployment</h3>
               <p className="text-secondary text-sm">
-                AIF capital flows through SPVs into revenue-linked NCDs, providing contractors working capital against confirmed orders.
+                AIF capital flows through SPVs into revenue-linked NCDs, providing SMEs working capital against confirmed orders.
               </p>
             </div>
 
@@ -135,7 +135,7 @@ export default function InvestorsPage() {
               </div>
               <h3 className="text-lg font-semibold text-primary mb-3">Return Generation</h3>
               <p className="text-secondary text-sm">
-                Automated revenue share collection as MNCs pay contractors, generating predictable returns throughout project lifecycle.
+                Automated revenue share collection as MNCs pay SMEs, generating predictable returns throughout project lifecycle.
               </p>
             </div>
           </div>
@@ -230,7 +230,7 @@ export default function InvestorsPage() {
                 </div>
                 <h3 className="text-lg font-semibold text-primary mb-3">Credit Risk Mitigation</h3>
                 <p className="text-secondary text-sm">
-                  Focus on MNC counterparties with strong credit ratings. Payment obligations secured at contract level, not dependent on contractor solvency.
+                  Focus on MNC counterparties with strong credit ratings. Payment obligations secured at contract level, not dependent on SME solvency.
                 </p>
               </div>
 
@@ -242,7 +242,7 @@ export default function InvestorsPage() {
                 </div>
                 <h3 className="text-lg font-semibold text-primary mb-3">Portfolio Diversification</h3>
                 <p className="text-secondary text-sm">
-                  Spread investments across multiple contractors, industries, and project types. No single exposure exceeds risk concentration limits.
+                  Spread investments across multiple SMEs, industries, and project types. No single exposure exceeds risk concentration limits.
                 </p>
               </div>
 

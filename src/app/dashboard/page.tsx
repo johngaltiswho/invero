@@ -19,7 +19,7 @@ export default function DashboardRouter(): React.ReactElement {
 
     const userData = user.publicMetadata;
     
-    // If user has contractor role, go to contractor dashboard
+    // If user has SME role, go to SME dashboard
     if (userData.role === 'contractor') {
       router.push('/dashboard/contractor');
       return;
@@ -31,8 +31,8 @@ export default function DashboardRouter(): React.ReactElement {
       return;
     }
     
-    // If no role is set, start contractor onboarding
-    // (since most users will be contractors)
+    // If no role is set, start SME onboarding
+    // (since most users will be SMEs)
     router.push('/onboarding/contractor');
   }, [user, isLoaded, router]);
 
@@ -74,13 +74,13 @@ export default function DashboardRouter(): React.ReactElement {
               onClick={() => router.push('/onboarding/contractor')}
               className="w-full bg-accent-orange hover:bg-orange-600 text-white font-medium py-3 px-4 rounded-lg transition-colors"
             >
-              Continue as Contractor
+              Continue as SME
             </button>
             <button
               onClick={() => router.push('/dashboard/contractor')}
               className="w-full bg-neutral-medium hover:bg-neutral-light text-primary font-medium py-3 px-4 rounded-lg transition-colors"
             >
-              Go to Contractor Dashboard
+              Go to SME Dashboard
             </button>
           </div>
           
