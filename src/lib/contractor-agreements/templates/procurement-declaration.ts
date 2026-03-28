@@ -16,7 +16,17 @@ export function renderContractorProcurementDeclarationHTML(payload: ContractorAg
 
         <p>This Procurement / Booking Declaration (“Declaration”) is given on ${payload.agreementDateLabel} by <strong>${payload.contractorName}</strong> in favour of <strong>${payload.companyName}</strong> in connection with bookings, procurement assistance, and related supply arrangements facilitated through or alongside the Finverno platform.</p>
 
-        <p><strong>SME</strong><br />${payload.contractorName}<br />${payload.contractorAddress || 'Address as recorded on the Finverno platform'}<br />Email: ${payload.contractorEmail}</p>
+        <p><strong>SME</strong><br />
+          ${payload.contractorName}<br />
+          ${payload.contractorAddress || 'Address as recorded on the Finverno platform'}<br />
+          ${payload.companyTypeLabel ? `${payload.companyTypeLabel}<br />` : ''}
+          ${payload.registrationNumber ? `${payload.registrationLabel || 'Registration Number'}: ${payload.registrationNumber}<br />` : ''}
+          ${payload.panNumber ? `PAN: ${payload.panNumber}<br />` : ''}
+          ${payload.gstin ? `GSTIN: ${payload.gstin}<br />` : ''}
+          ${payload.incorporationDateLabel ? `Incorporated on: ${payload.incorporationDateLabel}<br />` : ''}
+          ${payload.contactPerson ? `Authorized signatory: ${payload.contactPerson}${payload.contactDesignation ? `, ${payload.contactDesignation}` : ''}<br />` : ''}
+          Email: ${payload.contractorEmail}${payload.phone ? `<br />Phone: ${payload.phone}` : ''}
+        </p>
 
         <h2 style="font-size: 16px;">1. Rate, Freight, and Statutory Charges</h2>
         <p>The SME confirms that the booking rate includes the basic rate, GST, railway freight, and applicable statutory charges, to the extent communicated at the time of booking. The SME further agrees to bear and pay any increase, revision, adjustment, or additional levy arising thereafter, including changes communicated by the intermediary, producer, manufacturer, supplier, or applicable authority.</p>
@@ -47,6 +57,7 @@ export function renderContractorProcurementDeclarationHTML(payload: ContractorAg
 
         <h2 style="font-size: 16px;">10. General</h2>
         <p>This Declaration shall be read together with the SME’s platform terms, financing documents (if any), procurement records, and booking communications. Portal records, emails, booking confirmations, and digital copies may be relied upon as evidence. This Declaration shall be governed by the laws of India and subject to the courts at ${payload.jurisdiction}.</p>
+        <p>This Declaration may be signed electronically through the Finverno contractor portal. Electronic signatures and execution records shall have the same legal validity and enforceability as physical signatures, to the extent permitted under applicable law, including the Information Technology Act, 2000.</p>
 
         ${payload.note ? `<h2 style="font-size: 16px;">Schedule / Notes</h2><p>${payload.note}</p>` : ''}
 
@@ -60,7 +71,13 @@ export function renderContractorProcurementDeclarationHTML(payload: ContractorAg
         <div style="margin-top: 42px;">
           <p><strong>For the SME</strong></p>
           <p style="margin-top: 48px;">__________________________</p>
-          <p>${payload.contactPerson || payload.contractorName}</p>
+          ${
+            payload.contractorSignedName
+              ? `<p><strong>Electronically signed by:</strong> ${payload.contractorSignedName}</p>
+                 <p><strong>Signed on:</strong> ${payload.contractorSignedAtLabel || 'Recorded on platform'}</p>`
+              : ''
+          }
+          <p>${payload.contractorSignedName || payload.contactPerson || payload.contractorName}</p>
           <p>${payload.contractorName}</p>
         </div>
       </body>

@@ -330,7 +330,7 @@ describe('Agreement Service', () => {
 
         await expect(
           regenerateAgreementDraft('agreement-123', mockActor)
-        ).rejects.toThrow('Only draft or generated agreements can be regenerated');
+        ).rejects.toThrow('Only unsigned draft, generated, or issued agreements can be regenerated');
       });
     });
 

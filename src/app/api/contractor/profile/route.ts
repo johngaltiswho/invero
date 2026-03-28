@@ -1,9 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth, currentUser } from '@clerk/nextjs/server';
 import { supabaseAdmin } from '@/lib/supabase';
+import type { Contractor } from '@/types/supabase';
 
 type ContractorProfilePayload = {
   company_name?: string;
+  registration_number?: string;
+  pan_number?: string;
+  incorporation_date?: string;
+  company_type?: 'private-limited' | 'partnership' | 'proprietorship' | 'llp' | null;
   contact_person?: string;
   designation?: string;
   phone?: string;
@@ -94,6 +99,10 @@ export async function GET() {
         id: contractor.id,
         email: contractor.email,
         company_name: contractor.company_name ?? '',
+        registration_number: contractor.registration_number ?? '',
+        pan_number: contractor.pan_number ?? '',
+        incorporation_date: contractor.incorporation_date ?? '',
+        company_type: contractor.company_type ?? '',
         contact_person: contractor.contact_person ?? '',
         designation: contractor.designation ?? '',
         phone: contractor.phone ?? '',
@@ -122,6 +131,10 @@ export async function PATCH(request: NextRequest) {
 
     const sanitizedValues = {
       company_name: sanitizeOptionalString(body.company_name),
+      registration_number: sanitizeOptionalString(body.registration_number),
+      pan_number: sanitizeOptionalString(body.pan_number),
+      incorporation_date: sanitizeOptionalString(body.incorporation_date),
+      company_type: body.company_type ?? null,
       contact_person: sanitizeOptionalString(body.contact_person),
       designation: sanitizeOptionalString(body.designation),
       phone: sanitizeOptionalString(body.phone),
@@ -144,6 +157,10 @@ export async function PATCH(request: NextRequest) {
 
     const updatePayload: ContractorProfilePayload = {
       company_name: sanitizedValues.company_name,
+      registration_number: sanitizedValues.registration_number,
+      pan_number: sanitizedValues.pan_number,
+      incorporation_date: sanitizedValues.incorporation_date,
+      company_type: sanitizedValues.company_type,
       contact_person: sanitizedValues.contact_person,
       designation: sanitizedValues.designation,
       phone: sanitizedValues.phone,
@@ -156,9 +173,9 @@ export async function PATCH(request: NextRequest) {
 
     // Some environments may not yet have newer optional columns (e.g. alternate_phone).
     // Retry by removing unknown columns reported by PostgREST schema cache.
-    let mutablePayload: Record<string, unknown> = { ...updatePayload };
-    let updated: any = null;
-    let updateError: any = null;
+    const mutablePayload: Record<string, unknown> = { ...updatePayload };
+    let updated: Contractor | null = null;
+    let updateError: { code?: string; message?: string } | null = null;
 
     for (let attempts = 0; attempts < 6; attempts += 1) {
       const response = await supabaseAdmin
@@ -168,8 +185,10 @@ export async function PATCH(request: NextRequest) {
         .select('*')
         .single();
 
-      updated = response.data;
-      updateError = response.error;
+      updated = (response.data as Contractor | null) ?? null;
+      updateError = response.error
+        ? { code: response.error.code, message: response.error.message }
+        : null;
 
       if (!updateError) break;
 
@@ -195,6 +214,10 @@ export async function PATCH(request: NextRequest) {
         id: updated.id,
         email: updated.email,
         company_name: updated.company_name ?? '',
+        registration_number: updated.registration_number ?? '',
+        pan_number: updated.pan_number ?? '',
+        incorporation_date: updated.incorporation_date ?? '',
+        company_type: updated.company_type ?? '',
         contact_person: updated.contact_person ?? '',
         designation: updated.designation ?? '',
         phone: updated.phone ?? '',

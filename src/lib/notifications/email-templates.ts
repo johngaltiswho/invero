@@ -141,6 +141,7 @@ export function contractorAgreementReadyEmail(input: {
   contractorName: string;
   agreementType: 'master_platform' | 'financing_addendum' | 'procurement_declaration';
   draftUrl: string;
+  portalUrl: string;
 }): EmailTemplateResult {
   const agreementLabel =
     input.agreementType === 'master_platform'
@@ -151,12 +152,13 @@ export function contractorAgreementReadyEmail(input: {
 
   return {
     subject: `${agreementLabel} ready for review · Finverno`,
-    text: `Dear ${input.contractorName},\n\nYour ${agreementLabel} is ready for review.\n\nOpen the agreement here: ${input.draftUrl}\n\nPlease review and sign the document, then share the signed copy with the Finverno team so we can complete execution.\n\nRegards,\nFinverno Private Limited`,
+    text: `Dear ${input.contractorName},\n\nYour ${agreementLabel} is ready for review.\n\nOpen the Finverno contractor portal to review and sign the agreement: ${input.portalUrl}\n\nDraft copy: ${input.draftUrl}\n\nYou will be asked to sign in before completing the agreement.\n\nRegards,\nFinverno Private Limited`,
     html: `
       <p>Dear ${input.contractorName},</p>
       <p>Your <strong>${agreementLabel}</strong> is ready for review.</p>
-      <p><a href="${input.draftUrl}">Open the agreement draft</a></p>
-      <p>Please review and sign the document, then share the signed copy with the Finverno team so we can complete execution.</p>
+      <p><a href="${input.portalUrl}">Open the Finverno contractor portal</a> to review and sign the agreement.</p>
+      <p>If you need the current draft copy separately, you can also <a href="${input.draftUrl}">view the draft PDF</a>.</p>
+      <p>You will be asked to sign in before completing the agreement.</p>
       <p>Regards,<br />Finverno Private Limited</p>
     `.trim(),
   };

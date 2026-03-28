@@ -1,11 +1,23 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useCallback, useState, useEffect } from 'react';
 import { useUser } from '@clerk/nextjs';
 import { useRouter } from 'next/navigation';
 import { Button, LoadingSpinner } from '@/components';
 import { ContractorAccessService, type ContractorWithProgress } from '@/lib/contractor-access';
 import { DocumentService, type DocumentType } from '@/lib/document-service';
+import ContractorAgreementStatusCard, {
+  type ContractorAgreementCardData,
+  type ContractorAgreementCardFiles,
+} from '@/components/contractor/ContractorAgreementStatusCard';
+
+type DocumentInfo = {
+  uploaded?: boolean;
+  verified?: boolean;
+  file_name?: string;
+  file_url?: string;
+  rejection_reason?: string;
+};
 
 export default function ContractorStatusPage(): React.ReactElement {
   const { user, isLoaded } = useUser();
@@ -13,14 +25,12 @@ export default function ContractorStatusPage(): React.ReactElement {
   const [contractor, setContractor] = useState<ContractorWithProgress | null>(null);
   const [loading, setLoading] = useState(true);
   const [uploadingDoc, setUploadingDoc] = useState<string | null>(null);
+  const [agreementData, setAgreementData] = useState<{
+    agreement: ContractorAgreementCardData | null;
+    files: ContractorAgreementCardFiles;
+  } | null>(null);
 
-  useEffect(() => {
-    if (isLoaded && user) {
-      loadContractorStatus();
-    }
-  }, [isLoaded, user]);
-
-  const loadContractorStatus = async () => {
+  const loadContractorStatus = useCallback(async () => {
     try {
       if (!user) return;
 
@@ -35,6 +45,8 @@ export default function ContractorStatusPage(): React.ReactElement {
       }
 
       const contractorData = await ContractorAccessService.getContractorWithProgress(access.contractor.id);
+      const agreementResponse = await fetch('/api/contractor/agreement');
+      const agreementResult = await agreementResponse.json().catch(() => null);
       
       if (!contractorData) {
         // No contractor found, redirect to application
@@ -43,12 +55,27 @@ export default function ContractorStatusPage(): React.ReactElement {
       }
 
       setContractor(contractorData);
+      setAgreementData(
+        agreementResponse.ok && agreementResult?.success
+          ? {
+              agreement: agreementResult.agreement,
+              files: agreementResult.files || {},
+            }
+          : { agreement: null, files: {} }
+      );
     } catch (error) {
       console.error('Error loading contractor status:', error);
+      setAgreementData({ agreement: null, files: {} });
     } finally {
       setLoading(false);
     }
-  };
+  }, [router, user]);
+
+  useEffect(() => {
+    if (isLoaded && user) {
+      loadContractorStatus();
+    }
+  }, [isLoaded, user, loadContractorStatus]);
 
   const handleDocumentReupload = async (docType: DocumentType, file: File) => {
     if (!contractor) return;
@@ -122,7 +149,7 @@ export default function ContractorStatusPage(): React.ReactElement {
           <div className="text-4xl mb-4">📝</div>
           <h2 className="text-xl font-bold text-primary mb-2">No Application Found</h2>
           <p className="text-secondary mb-6">
-            You haven't submitted an SME application yet. 
+            You haven&apos;t submitted an SME application yet.
             Please complete the application to access your SME dashboard.
           </p>
           <Button onClick={() => router.push('/contractors/apply')} variant="primary">
@@ -136,7 +163,7 @@ export default function ContractorStatusPage(): React.ReactElement {
   const statusInfo = ContractorAccessService.getStatusMessage(contractor);
   const nextSteps = ContractorAccessService.getNextSteps(contractor);
 
-  const DocumentUploadCard = ({ docType, docInfo }: { docType: DocumentType; docInfo: any }) => (
+  const DocumentUploadCard = ({ docType, docInfo }: { docType: DocumentType; docInfo: DocumentInfo }) => (
     <div className="border border-neutral-medium rounded-lg p-4">
       <div className="flex items-center justify-between mb-3">
         <div className="flex items-center">
@@ -333,6 +360,14 @@ export default function ContractorStatusPage(): React.ReactElement {
                 </div>
               ))}
             </div>
+          </div>
+
+          <div className="mb-8">
+            <ContractorAgreementStatusCard
+              agreement={agreementData?.agreement || null}
+              files={agreementData?.files || {}}
+              onSigned={loadContractorStatus}
+            />
           </div>
 
           {/* Actions */}

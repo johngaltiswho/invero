@@ -16,7 +16,17 @@ export function renderContractorMasterHTML(payload: ContractorAgreementTemplateP
 
         <p>This Master SME Platform Agreement (“Agreement”) is entered into on ${payload.agreementDateLabel} between <strong>${payload.companyName}</strong> and <strong>${payload.contractorName}</strong>.</p>
         <p><strong>Finverno</strong><br />${payload.companyAddress}</p>
-        <p><strong>SME</strong><br />${payload.contractorName}<br />${payload.contractorAddress || 'Address as recorded on the Finverno platform'}<br />Email: ${payload.contractorEmail}</p>
+        <p><strong>SME</strong><br />
+          ${payload.contractorName}<br />
+          ${payload.contractorAddress || 'Address as recorded on the Finverno platform'}<br />
+          ${payload.companyTypeLabel ? `${payload.companyTypeLabel}<br />` : ''}
+          ${payload.registrationNumber ? `${payload.registrationLabel || 'Registration Number'}: ${payload.registrationNumber}<br />` : ''}
+          ${payload.panNumber ? `PAN: ${payload.panNumber}<br />` : ''}
+          ${payload.gstin ? `GSTIN: ${payload.gstin}<br />` : ''}
+          ${payload.incorporationDateLabel ? `Incorporated on: ${payload.incorporationDateLabel}<br />` : ''}
+          ${payload.contactPerson ? `Authorized signatory: ${payload.contactPerson}${payload.contactDesignation ? `, ${payload.contactDesignation}` : ''}<br />` : ''}
+          Email: ${payload.contractorEmail}${payload.phone ? `<br />Phone: ${payload.phone}` : ''}
+        </p>
 
         <h2 style="font-size: 16px;">1. Purpose and Scope</h2>
         <p>This Agreement governs the SME’s use of the Finverno platform for project administration, procurement coordination, document exchange, operational workflow management, and related support services made available by Finverno.</p>
@@ -51,10 +61,13 @@ export function renderContractorMasterHTML(payload: ContractorAgreementTemplateP
         <h2 style="font-size: 16px;">11. Electronic Records, Notices, and Evidence</h2>
         <p>The Parties agree that portal records, emails, workflow logs, timestamps, uploads, OTP or click-through approvals, digital acknowledgements, and electronic execution records may be relied on as valid business records and evidence of activity on the platform. Notices sent by email or through the platform to the addresses or accounts maintained by the SME shall be treated as valid notices, subject to applicable law.</p>
 
-        <h2 style="font-size: 16px;">12. Confidentiality, Survival, and General Provisions</h2>
+        <h2 style="font-size: 16px;">12. Electronic Execution</h2>
+        <p>This Agreement may be signed electronically through the Finverno contractor portal. Electronic signatures and execution records shall have the same legal validity and enforceability as physical signatures, to the extent permitted under applicable law, including the Information Technology Act, 2000.</p>
+
+        <h2 style="font-size: 16px;">13. Confidentiality, Survival, and General Provisions</h2>
         <p>Each Party shall keep non-public commercial and operational information confidential, except where disclosure is required by law, to professional advisers, or to service providers on a confidential basis. The SME shall not assign this Agreement without Finverno’s prior written consent. If any provision is held unenforceable, the remaining provisions shall remain in full force. Any waiver must be express and in writing. This Agreement, together with any incorporated policies and separately executed addenda, constitutes the entire understanding between the Parties with respect to the subject matter hereof.</p>
 
-        <h2 style="font-size: 16px;">13. Governing Law and Jurisdiction</h2>
+        <h2 style="font-size: 16px;">14. Governing Law and Jurisdiction</h2>
         <p>This Agreement shall be governed by the laws of India, and disputes shall be subject to the courts at ${payload.jurisdiction}.</p>
 
         ${payload.note ? `<h2 style="font-size: 16px;">Schedule / Notes</h2><p>${payload.note}</p>` : ''}
@@ -69,7 +82,13 @@ export function renderContractorMasterHTML(payload: ContractorAgreementTemplateP
         <div style="margin-top: 42px;">
           <p><strong>For the SME</strong></p>
           <p style="margin-top: 48px;">__________________________</p>
-          <p>${payload.contactPerson || payload.contractorName}</p>
+          ${
+            payload.contractorSignedName
+              ? `<p><strong>Electronically signed by:</strong> ${payload.contractorSignedName}</p>
+                 <p><strong>Signed on:</strong> ${payload.contractorSignedAtLabel || 'Recorded on platform'}</p>`
+              : ''
+          }
+          <p>${payload.contractorSignedName || payload.contactPerson || payload.contractorName}</p>
           <p>${payload.contractorName}</p>
         </div>
       </body>

@@ -205,7 +205,7 @@ export class ContractorAccessService {
     if (verificationStatus === 'verified' && !contractor.portal_active) {
       return [
         'Review the master platform agreement issued by Finverno',
-        'Share the signed copy so the agreement can be executed',
+        'Sign the agreement inside the Finverno contractor portal',
         'Portal procurement access will unlock after execution'
       ];
     }

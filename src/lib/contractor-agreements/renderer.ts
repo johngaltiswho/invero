@@ -29,9 +29,13 @@ type BuildPayloadInput = {
     state?: string | null;
     pincode?: string | null;
     contact_person?: string | null;
+    designation?: string | null;
+    phone?: string | null;
     registration_number?: string | null;
     pan_number?: string | null;
     gstin?: string | null;
+    incorporation_date?: string | null;
+    company_type?: 'private-limited' | 'partnership' | 'proprietorship' | 'llp' | null;
     platform_fee_rate?: number | null;
     platform_fee_cap?: number | null;
     participation_fee_rate_daily?: number | null;
@@ -44,6 +48,8 @@ type BuildPayloadInput = {
   paymentWindowDays?: number | null;
   lateDefaultTerms?: string | null;
   notes?: string | null;
+  contractorSignedName?: string | null;
+  contractorSignedAt?: string | null;
 };
 
 const FINVERNO_COMPANY_NAME = 'Finverno Private Limited';
@@ -72,6 +78,31 @@ function formatRepaymentBasis(value?: 'client_payment_to_escrow' | null) {
   return 'On client payment to escrow / controlled collection account';
 }
 
+function formatIncorporationDate(value?: string | null) {
+  if (!value) return null;
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return date.toLocaleDateString('en-IN', {
+    day: '2-digit',
+    month: 'long',
+    year: 'numeric',
+  });
+}
+
+function formatCompanyType(value?: BuildPayloadInput['contractor']['company_type']) {
+  if (!value) return null;
+  return value
+    .split('-')
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(' ');
+}
+
+function getRegistrationLabel(companyType?: BuildPayloadInput['contractor']['company_type']) {
+  if (companyType === 'private-limited') return 'CIN';
+  if (companyType === 'llp') return 'LLPIN';
+  return 'Registration Number';
+}
+
 export function buildContractorAgreementPayload(input: BuildPayloadInput): ContractorAgreementTemplatePayload {
   const agreementDate = new Date(input.agreementDate);
   const agreementDateLabel = Number.isNaN(agreementDate.getTime())
@@ -81,17 +112,35 @@ export function buildContractorAgreementPayload(input: BuildPayloadInput): Contr
         month: 'long',
         year: 'numeric',
       });
+  const contractorSignedAt = input.contractorSignedAt ? new Date(input.contractorSignedAt) : null;
+  const contractorSignedAtLabel =
+    contractorSignedAt && !Number.isNaN(contractorSignedAt.getTime())
+      ? contractorSignedAt.toLocaleString('en-IN', {
+          day: '2-digit',
+          month: 'long',
+          year: 'numeric',
+          hour: '2-digit',
+          minute: '2-digit',
+        })
+      : input.contractorSignedAt || null;
 
   return {
     agreementType: input.agreementType,
     agreementDateLabel,
     contractorName: input.contractor.company_name,
     contractorEmail: input.contractor.email,
+    contractorSignedName: input.contractorSignedName || null,
+    contractorSignedAtLabel,
     contractorAddress: buildContractorAddress(input.contractor),
     contactPerson: input.contractor.contact_person || null,
+    contactDesignation: input.contractor.designation || null,
     registrationNumber: input.contractor.registration_number || null,
+    registrationLabel: getRegistrationLabel(input.contractor.company_type),
     panNumber: input.contractor.pan_number || null,
     gstin: input.contractor.gstin || null,
+    incorporationDateLabel: formatIncorporationDate(input.contractor.incorporation_date),
+    companyTypeLabel: formatCompanyType(input.contractor.company_type),
+    phone: input.contractor.phone || null,
     companyName: FINVERNO_COMPANY_NAME,
     companyAddress: FINVERNO_COMPANY_ADDRESS,
     companyCIN: FINVERNO_COMPANY_CIN,

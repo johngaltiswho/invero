@@ -9,6 +9,10 @@ import { useContractorV2 } from '@/contexts/ContractorContextV2';
 type ContractorProfile = {
   email: string;
   company_name: string;
+  registration_number: string;
+  pan_number: string;
+  incorporation_date: string;
+  company_type: string;
   contact_person: string;
   designation: string;
   phone: string;
@@ -22,6 +26,10 @@ type ContractorProfile = {
 const emptyProfile: ContractorProfile = {
   email: '',
   company_name: '',
+  registration_number: '',
+  pan_number: '',
+  incorporation_date: '',
+  company_type: '',
   contact_person: '',
   designation: '',
   phone: '',
@@ -55,6 +63,10 @@ export default function ContractorProfilePage() {
         setProfile({
           email: result.data.email || '',
           company_name: result.data.company_name || '',
+          registration_number: result.data.registration_number || '',
+          pan_number: result.data.pan_number || '',
+          incorporation_date: result.data.incorporation_date || '',
+          company_type: result.data.company_type || '',
           contact_person: result.data.contact_person || '',
           designation: result.data.designation || '',
           phone: result.data.phone || '',
@@ -90,6 +102,10 @@ export default function ContractorProfilePage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           company_name: profile.company_name,
+          registration_number: profile.registration_number,
+          pan_number: profile.pan_number,
+          incorporation_date: profile.incorporation_date,
+          company_type: profile.company_type || null,
           contact_person: profile.contact_person,
           designation: profile.designation,
           phone: profile.phone,
@@ -109,6 +125,10 @@ export default function ContractorProfilePage() {
       setProfile({
         email: result.data.email || '',
         company_name: result.data.company_name || '',
+        registration_number: result.data.registration_number || '',
+        pan_number: result.data.pan_number || '',
+        incorporation_date: result.data.incorporation_date || '',
+        company_type: result.data.company_type || '',
         contact_person: result.data.contact_person || '',
         designation: result.data.designation || '',
         phone: result.data.phone || '',
@@ -159,6 +179,39 @@ export default function ContractorProfilePage() {
                   onChange={(e) => updateField('gstin', e.target.value)}
                   placeholder="Enter GSTIN"
                 />
+                <Input
+                  label={profile.company_type === 'private-limited' ? 'CIN' : profile.company_type === 'llp' ? 'LLPIN' : 'Registration Number'}
+                  value={profile.registration_number}
+                  onChange={(e) => updateField('registration_number', e.target.value)}
+                  placeholder="Enter legal registration number"
+                />
+                <Input
+                  label="PAN Number"
+                  value={profile.pan_number}
+                  onChange={(e) => updateField('pan_number', e.target.value)}
+                  placeholder="Enter PAN number"
+                />
+                <Input
+                  label="Incorporation Date"
+                  type="date"
+                  value={profile.incorporation_date}
+                  onChange={(e) => updateField('incorporation_date', e.target.value)}
+                  placeholder="Enter incorporation date"
+                />
+                <div>
+                  <label className="mb-2 block text-sm font-medium text-primary">Company Type</label>
+                  <select
+                    value={profile.company_type}
+                    onChange={(e) => updateField('company_type', e.target.value)}
+                    className="w-full rounded-lg border border-neutral-medium bg-neutral-dark px-4 py-3 text-primary"
+                  >
+                    <option value="">Select company type</option>
+                    <option value="private-limited">Private Limited</option>
+                    <option value="partnership">Partnership</option>
+                    <option value="proprietorship">Proprietorship</option>
+                    <option value="llp">LLP</option>
+                  </select>
+                </div>
                 <div className="md:col-span-2">
                   <Input
                     label="Business Address"

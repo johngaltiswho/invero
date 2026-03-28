@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Button } from '@/components';
 
 type AgreementType = 'master_platform' | 'financing_addendum' | 'procurement_declaration';
@@ -68,7 +68,7 @@ export default function ContractorAgreementPanel({
   const [isEditing, setIsEditing] = useState(true);
   const uploadRef = useRef<HTMLInputElement | null>(null);
 
-  const loadAgreement = async () => {
+  const loadAgreement = useCallback(async () => {
     try {
       setLoading(true);
       const listRes = await fetch(`/api/admin/contractor-agreements?contractor_id=${contractorId}&agreement_type=${agreementType}`);
@@ -117,11 +117,11 @@ export default function ContractorAgreementPanel({
     } finally {
       setLoading(false);
     }
-  };
+  }, [agreementType, contractorId]);
 
   useEffect(() => {
     loadAgreement();
-  }, [contractorId, agreementType]);
+  }, [loadAgreement]);
 
   const requestJson = async (url: string, options?: RequestInit) => {
     const response = await fetch(url, options);
@@ -369,7 +369,7 @@ export default function ContractorAgreementPanel({
               onChange={(event) => handleUploadSigned(event.target.files?.[0] || null)}
             />
             <Button variant="secondary" size="sm" onClick={() => uploadRef.current?.click()} disabled={processing !== null}>
-              {processing === 'upload' ? 'Uploading...' : 'Upload SME Signed Copy'}
+              {processing === 'upload' ? 'Uploading...' : 'Upload SME Signed Copy (Fallback)'}
             </Button>
           </>
         )}
@@ -379,6 +379,12 @@ export default function ContractorAgreementPanel({
           </Button>
         )}
       </div>
+
+      {agreement?.status === 'issued' && (
+        <div className="mb-4 rounded-lg border border-accent-blue/30 bg-accent-blue/10 p-4 text-sm text-secondary">
+          Once issued, the contractor can sign this agreement directly in the portal. Use the upload action only if you need to record an offline signed PDF as a fallback.
+        </div>
+      )}
 
       <div className="grid md:grid-cols-3 gap-4 mb-4 text-sm">
         <div className="rounded-lg border border-neutral-medium p-4">

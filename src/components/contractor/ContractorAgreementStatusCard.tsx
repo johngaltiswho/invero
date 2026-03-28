@@ -3,37 +3,40 @@
 import React from 'react';
 import { Button } from '@/components';
 
-type AgreementData = {
+export type ContractorAgreementCardData = {
   id: string;
   status: string;
-  commitment_amount: number;
+  agreement_type: 'master_platform' | 'financing_addendum' | 'procurement_declaration';
   agreement_date: string;
   company_signatory_name?: string | null;
   company_signatory_title?: string | null;
-  investor_signed_name?: string | null;
-  investor_signed_at?: string | null;
+  contractor_signed_name?: string | null;
+  contractor_signed_at?: string | null;
   issued_at?: string | null;
-  signed_copy_received_at?: string | null;
   executed_at?: string | null;
 };
 
-type AgreementFiles = {
+export type ContractorAgreementCardFiles = {
   draft_url?: string | null;
   signed_url?: string | null;
   executed_url?: string | null;
 };
 
 interface Props {
-  agreement: AgreementData | null;
-  files: AgreementFiles;
+  agreement: ContractorAgreementCardData | null;
+  files: ContractorAgreementCardFiles;
   onSigned?: () => Promise<void> | void;
 }
 
-export default function InvestorAgreementStatusCard({ agreement, files, onSigned }: Props): React.ReactElement {
+const AGREEMENT_LABELS: Record<ContractorAgreementCardData['agreement_type'], string> = {
+  master_platform: 'Master SME Platform Agreement',
+  financing_addendum: 'Financing / Working Capital Addendum',
+  procurement_declaration: 'Procurement / Booking Declaration',
+};
+
+export default function ContractorAgreementStatusCard({ agreement, files, onSigned }: Props): React.ReactElement {
   const [typedName, setTypedName] = React.useState('');
-  const [ownFunds, setOwnFunds] = React.useState(false);
-  const [privateInvestment, setPrivateInvestment] = React.useState(false);
-  const [riskDisclosure, setRiskDisclosure] = React.useState(false);
+  const [confirmed, setConfirmed] = React.useState(false);
   const [signing, setSigning] = React.useState(false);
   const [message, setMessage] = React.useState<string | null>(null);
   const [error, setError] = React.useState<string | null>(null);
@@ -42,13 +45,13 @@ export default function InvestorAgreementStatusCard({ agreement, files, onSigned
     return (
       <div className="bg-neutral-dark rounded-lg border border-neutral-medium p-6">
         <h2 className="text-xl font-semibold text-primary mb-2">Agreement Status</h2>
-        <p className="text-secondary">Your investor participation agreement has not been issued yet.</p>
+        <p className="text-secondary">Your contractor agreement has not been issued yet.</p>
       </div>
     );
   }
 
-  const amount = `Rs ${(Number(agreement.commitment_amount) || 0).toLocaleString('en-IN')}`;
   const canSign = agreement.status === 'issued' && !!files.draft_url;
+  const agreementLabel = AGREEMENT_LABELS[agreement.agreement_type] || 'Agreement';
 
   const handleSign = async () => {
     try {
@@ -56,15 +59,13 @@ export default function InvestorAgreementStatusCard({ agreement, files, onSigned
       setError(null);
       setMessage(null);
 
-      const response = await fetch('/api/investor/agreement/sign', {
+      const response = await fetch('/api/contractor/agreement/sign', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           agreement_id: agreement.id,
           typed_name: typedName,
-          own_funds: ownFunds,
-          private_investment: privateInvestment,
-          risk_disclosure: riskDisclosure,
+          confirm_agreement: confirmed,
         }),
       });
       const result = await response.json();
@@ -73,6 +74,8 @@ export default function InvestorAgreementStatusCard({ agreement, files, onSigned
       }
 
       setMessage('Agreement signed successfully.');
+      setConfirmed(false);
+      setTypedName('');
       if (onSigned) {
         await onSigned();
       }
@@ -88,17 +91,17 @@ export default function InvestorAgreementStatusCard({ agreement, files, onSigned
       <div className="flex items-start justify-between gap-4 mb-6">
         <div>
           <h2 className="text-xl font-semibold text-primary mb-2">Agreement Status</h2>
-          <p className="text-secondary">Track your Finverno participation agreement lifecycle.</p>
+          <p className="text-secondary">Review and sign your {agreementLabel.toLowerCase()} inside the portal.</p>
         </div>
         <span className="px-3 py-1 rounded border text-xs text-accent-amber bg-accent-amber/10 border-accent-amber/20 uppercase">
           {agreement.status.replace(/_/g, ' ')}
         </span>
       </div>
 
-      <div className="grid md:grid-cols-5 gap-4 mb-6 text-sm">
+      <div className="grid md:grid-cols-4 gap-4 mb-6 text-sm">
         <div className="rounded-lg bg-neutral-medium/30 p-4">
-          <div className="text-secondary mb-1">Commitment</div>
-          <div className="text-primary font-semibold">{amount}</div>
+          <div className="text-secondary mb-1">Agreement</div>
+          <div className="text-primary font-semibold">{agreementLabel}</div>
         </div>
         <div className="rounded-lg bg-neutral-medium/30 p-4">
           <div className="text-secondary mb-1">Agreement Date</div>
@@ -107,10 +110,6 @@ export default function InvestorAgreementStatusCard({ agreement, files, onSigned
         <div className="rounded-lg bg-neutral-medium/30 p-4">
           <div className="text-secondary mb-1">Issued</div>
           <div className="text-primary">{agreement.issued_at ? new Date(agreement.issued_at).toLocaleDateString('en-IN') : '—'}</div>
-        </div>
-        <div className="rounded-lg bg-neutral-medium/30 p-4">
-          <div className="text-secondary mb-1">Investor Signed</div>
-          <div className="text-primary">{agreement.investor_signed_at ? new Date(agreement.investor_signed_at).toLocaleDateString('en-IN') : '—'}</div>
         </div>
         <div className="rounded-lg bg-neutral-medium/30 p-4">
           <div className="text-secondary mb-1">Executed</div>
@@ -126,6 +125,12 @@ export default function InvestorAgreementStatusCard({ agreement, files, onSigned
             {agreement.company_signatory_title ? `, ${agreement.company_signatory_title}` : ''}
             {agreement.executed_at ? ` on ${new Date(agreement.executed_at).toLocaleString('en-IN')}` : ''}.
           </div>
+        </div>
+      )}
+
+      {agreement.status === 'generated' && (
+        <div className="mb-6 rounded-lg border border-accent-blue/30 bg-accent-blue/10 p-4 text-sm text-secondary">
+          Finverno has prepared this agreement draft. Signing will open here once the agreement is formally issued to your company.
         </div>
       )}
 
@@ -157,7 +162,7 @@ export default function InvestorAgreementStatusCard({ agreement, files, onSigned
         <div className="mt-6 rounded-lg border border-neutral-medium p-5">
           <h3 className="mb-2 text-lg font-semibold text-primary">Sign In Portal</h3>
           <p className="mb-4 text-sm text-secondary">
-            Type your full legal name and confirm the declarations below to submit your signature. Finverno will countersign after your acceptance.
+            Type your full legal name and confirm below to submit your signature. Finverno will countersign after your acceptance.
           </p>
 
           <div className="mb-4">
@@ -171,37 +176,34 @@ export default function InvestorAgreementStatusCard({ agreement, files, onSigned
             />
           </div>
 
-          <div className="mb-5 space-y-3 text-sm text-secondary">
-            <label className="flex items-start gap-3">
-              <input type="checkbox" checked={ownFunds} onChange={(event) => setOwnFunds(event.target.checked)} className="mt-1" />
-              <span>I confirm I am investing from my own funds.</span>
-            </label>
-            <label className="flex items-start gap-3">
-              <input type="checkbox" checked={privateInvestment} onChange={(event) => setPrivateInvestment(event.target.checked)} className="mt-1" />
-              <span>I understand this is a private investment opportunity.</span>
-            </label>
-            <label className="flex items-start gap-3">
-              <input type="checkbox" checked={riskDisclosure} onChange={(event) => setRiskDisclosure(event.target.checked)} className="mt-1" />
-              <span>I have read the risk disclosure.</span>
-            </label>
-          </div>
+          <label className="mb-5 flex items-start gap-3 text-sm text-secondary">
+            <input
+              type="checkbox"
+              checked={confirmed}
+              onChange={(event) => setConfirmed(event.target.checked)}
+              className="mt-1"
+            />
+            <span>
+              I have reviewed this agreement, I am authorized to sign on behalf of the SME, and I agree to submit this electronic signature through the Finverno portal.
+            </span>
+          </label>
 
-          <Button onClick={handleSign} disabled={signing}>
+          <Button onClick={handleSign} disabled={signing || !typedName.trim() || !confirmed}>
             {signing ? 'Signing...' : 'I Agree And Sign'}
           </Button>
         </div>
       )}
 
-      {(agreement.status === 'investor_signed' || agreement.status === 'executed') && (
+      {(agreement.status === 'contractor_signed' || agreement.status === 'executed') && (
         <div className="mt-6 rounded-lg border border-neutral-medium p-5 text-sm">
           <div className="font-medium text-primary">
-            {agreement.status === 'executed' ? 'Agreement fully executed' : 'Investor signature recorded'}
+            {agreement.status === 'executed' ? 'Agreement fully executed' : 'Contractor signature recorded'}
           </div>
           <div className="mt-2 text-secondary">
-            Signed by {agreement.investor_signed_name || 'Investor'}
-            {agreement.investor_signed_at ? ` on ${new Date(agreement.investor_signed_at).toLocaleString('en-IN')}` : ''}.
+            Signed by {agreement.contractor_signed_name || 'Contractor'}
+            {agreement.contractor_signed_at ? ` on ${new Date(agreement.contractor_signed_at).toLocaleString('en-IN')}` : ''}.
           </div>
-          {agreement.status === 'investor_signed' && (
+          {agreement.status === 'contractor_signed' && (
             <div className="mt-2 text-secondary">
               Finverno will countersign next. The agreement will move to executed once the company signature is completed.
             </div>

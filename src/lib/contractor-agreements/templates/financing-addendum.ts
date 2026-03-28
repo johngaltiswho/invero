@@ -16,6 +16,18 @@ export function renderContractorFinancingHTML(payload: ContractorAgreementTempla
 
         <p>This Financing / Working Capital Addendum (“Addendum”) is entered into on ${payload.agreementDateLabel} between <strong>${payload.companyName}</strong> and <strong>${payload.contractorName}</strong> and supplements the Master SME Platform Agreement.</p>
 
+        <p><strong>SME</strong><br />
+          ${payload.contractorName}<br />
+          ${payload.contractorAddress || 'Address as recorded on the Finverno platform'}<br />
+          ${payload.companyTypeLabel ? `${payload.companyTypeLabel}<br />` : ''}
+          ${payload.registrationNumber ? `${payload.registrationLabel || 'Registration Number'}: ${payload.registrationNumber}<br />` : ''}
+          ${payload.panNumber ? `PAN: ${payload.panNumber}<br />` : ''}
+          ${payload.gstin ? `GSTIN: ${payload.gstin}<br />` : ''}
+          ${payload.incorporationDateLabel ? `Incorporated on: ${payload.incorporationDateLabel}<br />` : ''}
+          ${payload.contactPerson ? `Authorized signatory: ${payload.contactPerson}${payload.contactDesignation ? `, ${payload.contactDesignation}` : ''}<br />` : ''}
+          Email: ${payload.contractorEmail}${payload.phone ? `<br />Phone: ${payload.phone}` : ''}
+        </p>
+
         <h2 style="font-size: 16px;">1. Financing Assistance Structure</h2>
         <p>Finverno may, at its discretion and subject to approved limits, facilitate short-duration working capital support for procurement and related project-linked obligations raised through the Finverno platform.</p>
 
@@ -49,6 +61,7 @@ export function renderContractorFinancingHTML(payload: ContractorAgreementTempla
 
         <h2 style="font-size: 16px;">9. Governing Law and Electronic Records</h2>
         <p>This Addendum shall be governed by the laws of India and subject to the courts at ${payload.jurisdiction}. The Parties agree that portal records, transaction logs, approvals, and digitally stored documents may be relied on as evidence of transactions and obligations.</p>
+        <p>This Addendum may be signed electronically through the Finverno contractor portal. Electronic signatures and execution records shall have the same legal validity and enforceability as physical signatures, to the extent permitted under applicable law, including the Information Technology Act, 2000.</p>
 
         ${payload.note ? `<h2 style="font-size: 16px;">Schedule / Notes</h2><p>${payload.note}</p>` : ''}
 
@@ -62,7 +75,13 @@ export function renderContractorFinancingHTML(payload: ContractorAgreementTempla
         <div style="margin-top: 42px;">
           <p><strong>For the SME</strong></p>
           <p style="margin-top: 48px;">__________________________</p>
-          <p>${payload.contactPerson || payload.contractorName}</p>
+          ${
+            payload.contractorSignedName
+              ? `<p><strong>Electronically signed by:</strong> ${payload.contractorSignedName}</p>
+                 <p><strong>Signed on:</strong> ${payload.contractorSignedAtLabel || 'Recorded on platform'}</p>`
+              : ''
+          }
+          <p>${payload.contractorSignedName || payload.contactPerson || payload.contractorName}</p>
           <p>${payload.contractorName}</p>
         </div>
       </body>

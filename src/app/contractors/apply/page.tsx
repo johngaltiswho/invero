@@ -8,6 +8,7 @@ interface FormData {
   // Company Information
   companyName: string;
   registrationNumber: string;
+  panNumber: string;
   gstin: string;
   incorporationDate: string;
   companyType: string;
@@ -44,7 +45,7 @@ export default function ContractorApplyPage(): React.ReactElement {
     applicationId?: string;
   }>({ type: null, message: '' });
   const [formData, setFormData] = useState<FormData>({
-    companyName: '', registrationNumber: '', gstin: '', incorporationDate: '', companyType: '', businessAddress: '',
+    companyName: '', registrationNumber: '', panNumber: '', gstin: '', incorporationDate: '', companyType: '', businessAddress: '',
     contactPerson: '', designation: '', email: '', phone: '', alternatePhone: '',
     documents: {
       panCard: null, gstCertificate: null, companyRegistration: null, cancelledCheque: null
@@ -77,6 +78,7 @@ export default function ContractorApplyPage(): React.ReactElement {
       // Add text fields
       submitFormData.append('companyName', formData.companyName);
       submitFormData.append('registrationNumber', formData.registrationNumber);
+      submitFormData.append('panNumber', formData.panNumber);
       submitFormData.append('incorporationDate', formData.incorporationDate);
       submitFormData.append('companyType', formData.companyType);
       submitFormData.append('businessAddress', formData.businessAddress);
@@ -88,7 +90,6 @@ export default function ContractorApplyPage(): React.ReactElement {
       submitFormData.append('email', formData.email);
       submitFormData.append('phone', formData.phone);
       submitFormData.append('gstNumber', formData.gstin);
-      submitFormData.append('panNumber', ''); // Would need to be added to form
       
       // Add file uploads (map to correct field names)
       Object.entries(formData.documents).forEach(([docType, file]) => {
@@ -118,7 +119,7 @@ export default function ContractorApplyPage(): React.ReactElement {
           message: result.error || 'Failed to submit application. Please try again.',
         });
       }
-    } catch (error) {
+    } catch {
       setSubmitStatus({
         type: 'error',
         message: 'Network error. Please check your connection and try again.',
@@ -167,10 +168,19 @@ export default function ContractorApplyPage(): React.ReactElement {
           <div className="space-y-6">
             <div className="grid md:grid-cols-2 gap-6">
               <Input label="Company Name *" name="companyName" value={formData.companyName} onChange={handleInputChange} required />
-              <Input label="Registration Number *" name="registrationNumber" value={formData.registrationNumber} onChange={handleInputChange} required />
+              <Input
+                label={formData.companyType === 'private-limited' ? 'CIN *' : formData.companyType === 'llp' ? 'LLPIN *' : 'Registration Number *'}
+                name="registrationNumber"
+                value={formData.registrationNumber}
+                onChange={handleInputChange}
+                required
+              />
             </div>
             <div className="grid md:grid-cols-2 gap-6">
               <Input label="GSTIN *" name="gstin" value={formData.gstin} onChange={handleInputChange} required />
+              <Input label="PAN Number *" name="panNumber" value={formData.panNumber} onChange={handleInputChange} required />
+            </div>
+            <div className="grid md:grid-cols-2 gap-6">
               <Input label="Incorporation Date *" name="incorporationDate" type="date" value={formData.incorporationDate} onChange={handleInputChange} required />
             </div>
             <div className="grid md:grid-cols-2 gap-6">
@@ -221,7 +231,9 @@ export default function ContractorApplyPage(): React.ReactElement {
               <h3 className="text-xl font-bold text-primary mb-4">Application Summary</h3>
               <div className="grid md:grid-cols-2 gap-4 text-sm">
                 <div><span className="text-secondary">Company:</span> <span className="text-primary">{formData.companyName}</span></div>
+                <div><span className="text-secondary">{formData.companyType === 'private-limited' ? 'CIN' : formData.companyType === 'llp' ? 'LLPIN' : 'Registration Number'}:</span> <span className="text-primary">{formData.registrationNumber}</span></div>
                 <div><span className="text-secondary">GST Number:</span> <span className="text-primary">{formData.gstin}</span></div>
+                <div><span className="text-secondary">PAN Number:</span> <span className="text-primary">{formData.panNumber}</span></div>
                 <div><span className="text-secondary">Contact Person:</span> <span className="text-primary">{formData.contactPerson}</span></div>
                 <div><span className="text-secondary">Email:</span> <span className="text-primary">{formData.email}</span></div>
               </div>

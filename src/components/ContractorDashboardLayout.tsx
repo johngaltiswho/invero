@@ -67,6 +67,12 @@ export function ContractorDashboardLayout({ children, activeTab }: ContractorDas
       name: 'Documents',
       href: '/dashboard/contractor/documents',
       description: 'BOQs, POs, Invoices & Forms'
+    },
+    {
+      id: 'agreement',
+      name: 'Agreement',
+      href: '/dashboard/contractor/agreement',
+      description: 'Review & sign contracts'
     }
   ];
 

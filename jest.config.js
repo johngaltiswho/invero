@@ -16,6 +16,10 @@ const customJestConfig = {
     '**/__tests__/**/*.test.[jt]s?(x)',
     '**/?(*.)+(spec|test).[jt]s?(x)'
   ],
+  testPathIgnorePatterns: [
+    '/node_modules/',
+    '/e2e/', // Exclude Playwright E2E tests from Jest
+  ],
   collectCoverageFrom: [
     'src/**/*.{js,jsx,ts,tsx}',
     '!src/**/*.d.ts',

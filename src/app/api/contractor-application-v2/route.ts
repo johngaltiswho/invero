@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
 import { ContractorService } from '@/lib/contractor-service';
-import { DocumentService, type DocumentType } from '@/lib/document-service';
+import { DocumentService, type DocumentType, type DocumentUploadResult } from '@/lib/document-service';
 import type { ContractorInsert } from '@/types/supabase';
 
 interface ContractorApplicationData {
@@ -87,7 +87,7 @@ export async function POST(request: NextRequest) {
     // Validate required fields
     const requiredFields = [
       'companyName', 'email', 'contactPerson', 'phone', 
-      'companyType', 'businessAddress', 'gstin'
+      'companyType', 'businessAddress', 'gstin', 'panNumber', 'registrationNumber', 'incorporationDate'
     ];
     
     const missingFields = requiredFields.filter(field => 
@@ -159,7 +159,7 @@ export async function POST(request: NextRequest) {
 
     // Process document uploads
     const documentTypes: DocumentType[] = ['pan_card', 'gst_certificate', 'company_registration', 'cancelled_cheque'];
-    const documentUploadResults: Record<string, any> = {};
+    const documentUploadResults: Partial<Record<DocumentType, DocumentUploadResult>> = {};
     
     for (const docType of documentTypes) {
       const file = formData.get(getFormFieldName(docType)) as File;
@@ -188,12 +188,12 @@ export async function POST(request: NextRequest) {
 
     // Check upload results
     const uploadedDocs = Object.entries(documentUploadResults)
-      .filter(([_, result]) => result.success)
-      .map(([docType, _]) => docType);
+      .filter(([, result]) => result?.success)
+      .map(([docType]) => docType);
     
     const failedDocs = Object.entries(documentUploadResults)
-      .filter(([_, result]) => !result.success)
-      .map(([docType, result]) => ({ docType, error: result.error }));
+      .filter(([, result]) => !result?.success)
+      .map(([docType, result]) => ({ docType, error: result?.error }));
 
     console.log(`📊 Upload summary: ${uploadedDocs.length}/4 documents uploaded successfully`);
 

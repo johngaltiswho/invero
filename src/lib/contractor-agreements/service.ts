@@ -10,6 +10,7 @@ import type {
 import { supabaseAdmin } from '@/lib/supabase';
 import { ContractorService } from '@/lib/contractor-service';
 import { getContractorUnderwritingSummary, syncContractorOnboarding } from '@/lib/contractor-onboarding';
+import { currentUser } from '@clerk/nextjs/server';
 
 const AGREEMENT_BUCKET = 'contractor-documents';
 
@@ -69,7 +70,7 @@ function getAppUrl() {
 }
 
 export async function listContractorAgreements(contractorId?: string, agreementType?: ContractorAgreementType): Promise<ContractorAgreement[]> {
-  let query = (supabaseAdmin as any)
+  let query = supabaseAdmin
     .from('contractor_agreements')
     .select('*')
     .order('created_at', { ascending: false });
@@ -83,7 +84,7 @@ export async function listContractorAgreements(contractorId?: string, agreementT
 }
 
 export async function getContractorAgreement(agreementId: string): Promise<ContractorAgreement | null> {
-  const { data, error } = await (supabaseAdmin as any)
+  const { data, error } = await supabaseAdmin
     .from('contractor_agreements')
     .select('*')
     .eq('id', agreementId)
@@ -93,7 +94,7 @@ export async function getContractorAgreement(agreementId: string): Promise<Contr
 }
 
 export async function listContractorAgreementDeliveryLogs(agreementId: string): Promise<ContractorAgreementDeliveryLog[]> {
-  const { data, error } = await (supabaseAdmin as any)
+  const { data, error } = await supabaseAdmin
     .from('contractor_agreement_delivery_logs')
     .select('*')
     .eq('contractor_agreement_id', agreementId)
@@ -114,7 +115,7 @@ export async function createContractorAgreement(input: {
   const contractor = await ContractorService.getContractorById(input.contractorId);
   if (!contractor) throw new Error('Contractor not found');
 
-  const { data, error } = await (supabaseAdmin as any)
+  const { data, error } = await supabaseAdmin
     .from('contractor_agreements')
     .insert({
       contractor_id: input.contractorId,
@@ -141,6 +142,8 @@ async function buildAgreementArtifacts(existing: ContractorAgreement, updates: {
   company_signatory_name?: string;
   company_signatory_title?: string;
   notes?: string | null;
+  contractor_signed_name?: string | null;
+  contractor_signed_at?: string | null;
 }) {
   const contractor = await ContractorService.getContractorById(existing.contractor_id);
   if (!contractor) throw new Error('Contractor not found');
@@ -161,6 +164,8 @@ async function buildAgreementArtifacts(existing: ContractorAgreement, updates: {
     paymentWindowDays: underwriting.payment_window_days,
     lateDefaultTerms: underwriting.late_default_terms,
     notes,
+    contractorSignedName: updates.contractor_signed_name ?? existing.contractor_signed_name ?? null,
+    contractorSignedAt: updates.contractor_signed_at ?? existing.contractor_signed_at ?? null,
   });
   const rendered = renderContractorAgreementHTML(payload);
   const filePath = await uploadAgreementPdf({
@@ -187,7 +192,7 @@ export async function regenerateContractorAgreementDraft(
   const { rendered, payload, filePath, agreementDate, companySignatoryName, companySignatoryTitle, notes } =
     await buildAgreementArtifacts(existing, updates || {});
 
-  const { data, error } = await (supabaseAdmin as any)
+  const { data, error } = await supabaseAdmin
     .from('contractor_agreements')
     .update({
       status: 'generated',
@@ -218,7 +223,7 @@ export async function issueContractorAgreement(agreementId: string, actor: Admin
   if (!existing) throw new Error('Agreement not found');
   if (!['generated', 'issued'].includes(existing.status)) throw new Error('Agreement must be generated before issue');
 
-  const { data, error } = await (supabaseAdmin as any)
+  const { data, error } = await supabaseAdmin
     .from('contractor_agreements')
     .update({
       status: 'issued',
@@ -251,10 +256,12 @@ export async function sendContractorAgreementEmail(agreementId: string, actor: A
 
   const draftUrl = await createContractorAgreementSignedUrl(agreement.draft_pdf_path);
   const appUrl = getAppUrl();
+  const portalUrl = `${appUrl.replace(/\/$/, '')}/dashboard/contractor/agreement`;
   const emailPayload = contractorAgreementReadyEmail({
     contractorName: contractor.company_name,
     agreementType: agreement.agreement_type,
     draftUrl: draftUrl || `${appUrl.replace(/\/$/, '')}/admin/verification`,
+    portalUrl,
   });
 
   await sendEmail({
@@ -264,7 +271,7 @@ export async function sendContractorAgreementEmail(agreementId: string, actor: A
     html: emailPayload.html,
   });
 
-  const { data, error } = await (supabaseAdmin as any)
+  const { data, error } = await supabaseAdmin
     .from('contractor_agreement_delivery_logs')
     .insert({
       contractor_agreement_id: agreementId,
@@ -273,7 +280,7 @@ export async function sendContractorAgreementEmail(agreementId: string, actor: A
       delivery_status: 'sent',
       subject: emailPayload.subject,
       sent_at: new Date().toISOString(),
-      metadata: { agreement_type: agreement.agreement_type, draft_url: draftUrl },
+      metadata: { agreement_type: agreement.agreement_type, draft_url: draftUrl, portal_url: portalUrl },
       created_by: actor.id,
     })
     .select('*')
@@ -320,7 +327,7 @@ export async function uploadContractorAgreementFile(input: {
     updatePayload.executed_pdf_path = path;
   }
 
-  const { data, error } = await (supabaseAdmin as any)
+  const { data, error } = await supabaseAdmin
     .from('contractor_agreements')
     .update(updatePayload)
     .eq('id', input.agreementId)
@@ -328,6 +335,143 @@ export async function uploadContractorAgreementFile(input: {
     .single();
   if (error) throw new Error(error.message || 'Failed to update agreement');
   await syncContractorOnboarding(agreement.contractor_id);
+  return data as ContractorAgreement;
+}
+
+async function getLatestContractorAgreementForEmail(email: string): Promise<ContractorAgreement | null> {
+  const contractor = await ContractorService.getContractorByEmail(email.toLowerCase());
+  if (!contractor) return null;
+
+  const { data, error } = await supabaseAdmin
+    .from('contractor_agreements')
+    .select('*')
+    .eq('contractor_id', contractor.id)
+    .in('agreement_type', ['master_platform', 'financing_addendum', 'procurement_declaration'])
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (error) {
+    throw new Error(error.message || 'Failed to load contractor agreement');
+  }
+
+  return (data || null) as ContractorAgreement | null;
+}
+
+export async function getContractorAgreementForCurrentUser(): Promise<{
+  contractor: Awaited<ReturnType<typeof ContractorService.getContractorById>> | null;
+  agreement: ContractorAgreement | null;
+}> {
+  const user = await currentUser();
+  if (!user) {
+    throw new Error('Not authenticated');
+  }
+
+  const email = user.emailAddresses[0]?.emailAddress?.toLowerCase();
+  if (!email) {
+    throw new Error('Missing email');
+  }
+
+  const agreement = await getLatestContractorAgreementForEmail(email);
+  if (!agreement) {
+    const contractor = await ContractorService.getContractorByEmail(email);
+    return { contractor, agreement: null };
+  }
+
+  const contractor = await ContractorService.getContractorById(agreement.contractor_id);
+  return { contractor, agreement };
+}
+
+export async function signContractorAgreement(input: {
+  agreementId: string;
+  typedName: string;
+  confirmAgreement: boolean;
+  ipAddress?: string | null;
+  userAgent?: string | null;
+}): Promise<ContractorAgreement> {
+  const user = await currentUser();
+  if (!user) {
+    throw new Error('Not authenticated');
+  }
+
+  const typedName = input.typedName.trim();
+  if (!typedName) {
+    throw new Error('Typed signature name is required');
+  }
+  if (!input.confirmAgreement) {
+    throw new Error('Agreement confirmation is required');
+  }
+
+  const email = user.emailAddresses[0]?.emailAddress?.toLowerCase();
+  if (!email) {
+    throw new Error('Missing contractor email');
+  }
+
+  const agreement = await getContractorAgreement(input.agreementId);
+  if (!agreement) {
+    throw new Error('Agreement not found');
+  }
+  if (agreement.status !== 'issued') {
+    throw new Error('Agreement is not available for signing');
+  }
+
+  const contractor = await ContractorService.getContractorById(agreement.contractor_id);
+  if (!contractor) {
+    throw new Error('Contractor not found');
+  }
+  if (contractor.email.toLowerCase() !== email) {
+    throw new Error('Agreement does not belong to the current contractor');
+  }
+
+  const signedAt = new Date().toISOString();
+  const underwriting = await getContractorUnderwritingSummary(agreement.contractor_id);
+  const payload = buildContractorAgreementPayload({
+    agreementType: agreement.agreement_type,
+    contractor,
+    agreementDate: agreement.agreement_date,
+    companySignatoryName: agreement.company_signatory_name || '',
+    companySignatoryTitle: agreement.company_signatory_title || '',
+    financingLimit: underwriting.financing_limit,
+    repaymentBasis: underwriting.repayment_basis,
+    paymentWindowDays: underwriting.payment_window_days,
+    lateDefaultTerms: underwriting.late_default_terms,
+    notes: agreement.notes || null,
+    contractorSignedName: typedName,
+    contractorSignedAt: signedAt,
+  });
+  const rendered = renderContractorAgreementHTML(payload);
+  const signedPdfPath = await uploadAgreementPdf({
+    contractor,
+    payload,
+    prefix: `${agreement.agreement_type}-signed`,
+    templateVersion: rendered.templateVersion,
+  });
+
+  const { data, error } = await supabaseAdmin
+    .from('contractor_agreements')
+    .update({
+      status: 'contractor_signed',
+      signed_pdf_path: signedPdfPath,
+      contractor_signed_name: typedName,
+      contractor_signed_email: email,
+      contractor_signed_at: signedAt,
+      contractor_signed_ip: input.ipAddress || null,
+      contractor_signed_user_agent: input.userAgent || null,
+      payload_snapshot: payload,
+      rendered_html: rendered.html,
+      updated_by: user.id,
+      updated_at: signedAt,
+    })
+    .eq('id', input.agreementId)
+    .select('*')
+    .single();
+
+  if (error) {
+    throw new Error(error.message || 'Failed to sign agreement');
+  }
+
+  await syncContractorOnboarding(agreement.contractor_id);
+
   return data as ContractorAgreement;
 }
 
@@ -339,7 +483,7 @@ export async function markContractorAgreementExecuted(agreementId: string, actor
   if (!executedPdfPath) throw new Error('Signed agreement file is required before countersigning');
 
   const executedAt = new Date().toISOString();
-  const { data, error } = await (supabaseAdmin as any)
+  const { data, error } = await supabaseAdmin
     .from('contractor_agreements')
     .update({
       status: 'executed',
@@ -381,7 +525,7 @@ export async function voidContractorAgreement(agreementId: string, actor: AdminA
   if (!agreement) throw new Error('Agreement not found');
   if (agreement.status === 'executed') throw new Error('Executed agreements cannot be voided');
 
-  const { data, error } = await (supabaseAdmin as any)
+  const { data, error } = await supabaseAdmin
     .from('contractor_agreements')
     .update({
       status: 'voided',

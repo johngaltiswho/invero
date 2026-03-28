@@ -63,6 +63,24 @@ export function generateContractorAgreementPDF(
     `${payload.companyName} and ${payload.contractorName} entered into this agreement on ${payload.agreementDateLabel}.`,
     { size: 10, spacing: 4 }
   );
+  addTextBlock(
+    [
+      `SME: ${payload.contractorName}`,
+      payload.contractorAddress || 'Address as recorded on the Finverno platform',
+      payload.companyTypeLabel || null,
+      payload.registrationNumber ? `${payload.registrationLabel || 'Registration Number'}: ${payload.registrationNumber}` : null,
+      payload.panNumber ? `PAN: ${payload.panNumber}` : null,
+      payload.gstin ? `GSTIN: ${payload.gstin}` : null,
+      payload.incorporationDateLabel ? `Incorporated on: ${payload.incorporationDateLabel}` : null,
+      payload.contactPerson
+        ? `Authorized signatory: ${payload.contactPerson}${payload.contactDesignation ? `, ${payload.contactDesignation}` : ''}`
+        : null,
+      `Email: ${payload.contractorEmail}${payload.phone ? ` | Phone: ${payload.phone}` : ''}`,
+    ]
+      .filter(Boolean)
+      .join('\n'),
+    { size: 10, spacing: 5 }
+  );
 
   if (payload.agreementType === 'financing_addendum') {
     addSection('1. Financing Assistance Structure', 'Finverno may facilitate working capital support for approved procurement and project-linked obligations, subject to approved limits and internal underwriting.');
@@ -117,6 +135,7 @@ export function generateContractorAgreementPDF(
 
   addSection('General Terms', [
     'The Parties agree that portal records, electronic notices, workflow logs, digital acknowledgements, and execution records may be relied upon as valid business records.',
+    'This agreement may be signed electronically through the Finverno contractor portal. Electronic signatures shall have the same legal validity as physical signatures under the Information Technology Act, 2000.',
     `This agreement is governed by Indian law and subject to the courts at ${payload.jurisdiction}.`,
   ]);
 
@@ -132,7 +151,12 @@ export function generateContractorAgreementPDF(
   addTextBlock(`For ${payload.companyName}`, { bold: true, spacing: 2 });
   addTextBlock(`${payload.companySignatoryName}\n${payload.companySignatoryTitle}`, { size: 10, spacing: 6 });
   addTextBlock(`For ${payload.contractorName}`, { bold: true, spacing: 2 });
-  addTextBlock(`${payload.contactPerson || payload.contractorName}\nEmail: ${payload.contractorEmail}`, { size: 10, spacing: 4 });
+  addTextBlock(
+    `${payload.contractorSignedName || payload.contactPerson || payload.contractorName}\nEmail: ${payload.contractorEmail}${
+      payload.contractorSignedAtLabel ? `\nElectronically signed on ${payload.contractorSignedAtLabel}` : ''
+    }`,
+    { size: 10, spacing: 4 }
+  );
 
   return Buffer.from(doc.output('arraybuffer'));
 }
