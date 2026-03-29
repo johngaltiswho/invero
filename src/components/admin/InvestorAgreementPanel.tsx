@@ -18,6 +18,10 @@ type Investor = {
 type Agreement = {
   id: string;
   status: string;
+  lender_sleeve_id?: string | null;
+  agreement_model_type?: 'fixed_debt' | 'pool_participation' | null;
+  superseded_at?: string | null;
+  superseded_reason?: string | null;
   commitment_amount: number;
   agreement_date: string;
   investor_pan?: string | null;
@@ -31,6 +35,8 @@ type Agreement = {
   draft_pdf_path?: string | null;
   signed_pdf_path?: string | null;
   executed_pdf_path?: string | null;
+  created_at?: string;
+  updated_at?: string;
 };
 
 type AgreementFiles = {
@@ -68,6 +74,10 @@ const getDefaultFormForInvestor = (investor: Investor): AgreementDraftFormValues
 });
 
 export default function InvestorAgreementPanel({ investor }: Props): React.ReactElement {
+  const [agreementList, setAgreementList] = useState<Agreement[]>([]);
+  const [historyList, setHistoryList] = useState<Agreement[]>([]);
+  const [selectedAgreementId, setSelectedAgreementId] = useState<string | null>(null);
+  const [historyOpen, setHistoryOpen] = useState(false);
   const [agreement, setAgreement] = useState<Agreement | null>(null);
   const [files, setFiles] = useState<AgreementFiles>({});
   const [deliveryLogs, setDeliveryLogs] = useState<DeliveryLog[]>([]);
@@ -89,14 +99,30 @@ export default function InvestorAgreementPanel({ investor }: Props): React.React
         throw new Error(listData.error || 'Failed to load agreements');
       }
 
-      const latest = (listData.agreements || [])[0] || null;
+      const allAgreements = listData.agreements || [];
+      const currentAgreements = allAgreements.filter(
+        (item: Agreement) => !item.superseded_at && !['voided', 'expired'].includes(item.status)
+      );
+      const historicalAgreements = allAgreements.filter(
+        (item: Agreement) => item.superseded_at || ['voided', 'expired'].includes(item.status)
+      );
+
+      setAgreementList(currentAgreements);
+      setHistoryList(historicalAgreements);
+
+      const latest =
+        currentAgreements.find((item: Agreement) => item.id === selectedAgreementId) ||
+        currentAgreements[0] ||
+        null;
       if (!latest) {
         setAgreement(null);
+        setSelectedAgreementId(null);
         setFiles({});
         setDeliveryLogs([]);
         setForm(getDefaultFormForInvestor(investor));
         return;
       }
+      setSelectedAgreementId(latest.id);
 
       const detailRes = await fetch(`/api/admin/investor-agreements/${latest.id}`);
       const detailData = await detailRes.json();
@@ -117,6 +143,8 @@ export default function InvestorAgreementPanel({ investor }: Props): React.React
         notes: detailData.agreement.notes || '',
       });
     } catch (err) {
+      setAgreementList([]);
+      setHistoryList([]);
       setAgreement(null);
       setFiles({});
       setDeliveryLogs([]);
@@ -129,7 +157,7 @@ export default function InvestorAgreementPanel({ investor }: Props): React.React
 
   useEffect(() => {
     loadAgreement();
-  }, [investor.id]);
+  }, [investor.id, selectedAgreementId]);
 
   useEffect(() => {
     if (!agreement) {
@@ -180,6 +208,8 @@ export default function InvestorAgreementPanel({ investor }: Props): React.React
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           investor_id: investor.id,
+          lender_sleeve_id: agreement?.lender_sleeve_id || null,
+          agreement_model_type: agreement?.agreement_model_type || 'pool_participation',
           commitment_amount: Number(form.commitment_amount) || Number(agreement?.commitment_amount) || 100000,
           agreement_date: new Date().toISOString().slice(0, 10),
           investor_pan: form.investor_pan || agreement?.investor_pan || investor.pan_number || null,
@@ -275,6 +305,19 @@ export default function InvestorAgreementPanel({ investor }: Props): React.React
   };
 
   const canEditDraft = !agreement || ['draft', 'generated', 'issued'].includes(agreement.status);
+  const canVoidAgreement = !!agreement && ['draft', 'generated', 'issued'].includes(agreement.status);
+  const canReplaceBeforeFunding = !!agreement && agreement.status === 'executed';
+  const canGenerateDraft = !!agreement && ['draft', 'generated', 'issued'].includes(agreement.status);
+  const canNotifyInvestor = !!agreement && ['generated', 'issued'].includes(agreement.status);
+  const canCountersign = !!agreement && agreement.status === 'investor_signed';
+  const primaryAction =
+    canReplaceBeforeFunding ? 'replace' :
+    canCountersign ? 'execute' :
+    canNotifyInvestor ? 'notify' :
+    canGenerateDraft ? 'generate' :
+    null;
+  const getAgreementLabel = (item: Agreement) =>
+    item.agreement_model_type === 'fixed_debt' ? 'Fixed Debt Sleeve' : 'Pool Participation Sleeve';
   const statusLabelMap: Record<string, string> = {
     draft: 'Draft Created',
     generated: 'Draft PDF Ready',
@@ -285,6 +328,58 @@ export default function InvestorAgreementPanel({ investor }: Props): React.React
     voided: 'Voided',
     expired: 'Expired',
   };
+
+  const stateNotice =
+    agreement?.status === 'draft'
+      ? 'Draft stage: edit terms, generate the PDF, then issue it to the investor. No investor action is possible until the draft is issued.'
+      : agreement?.status === 'generated'
+        ? 'Draft PDF is ready. Review it, then issue and notify the investor when you want this agreement to become the current live document.'
+        : agreement?.status === 'issued'
+          ? 'This agreement has been sent but not yet signed. You can still edit terms, regenerate the draft, or void this draft before the investor signs.'
+          : agreement?.status === 'investor_signed'
+            ? 'Investor signature is complete. The next valid step is countersign and execute. Do not replace or void this agreement now.'
+            : agreement?.status === 'executed'
+              ? 'This is the current executed agreement for the sleeve. If terms must change before funding, use Replace Before Funding and the old agreement will move to history automatically.'
+              : null;
+
+  const renderHistory = () =>
+    historyList.length > 0 ? (
+      <div className="rounded-lg border border-neutral-medium p-4">
+        <button
+          type="button"
+          onClick={() => setHistoryOpen((prev) => !prev)}
+          className="flex w-full items-center justify-between gap-3 text-left"
+        >
+          <div>
+            <div className="text-sm font-medium text-primary">Agreement History</div>
+            <div className="text-xs text-secondary">
+              Older agreements are archived automatically for audit.
+            </div>
+          </div>
+          <div className="text-xs text-secondary">
+            {historyList.length} historical · {historyOpen ? 'Hide' : 'Show'}
+          </div>
+        </button>
+        {historyOpen && (
+          <div className="mt-4 space-y-3">
+            {historyList.map((item) => (
+              <div key={item.id} className="rounded-lg border border-neutral-medium bg-neutral-medium/10 p-3 text-sm">
+                <div className="font-medium text-primary">
+                  {getAgreementLabel(item)} · {(Number(item.commitment_amount) || 0).toLocaleString('en-IN', { style: 'currency', currency: 'INR', minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+                </div>
+                <div className="text-xs text-secondary">
+                  Status: {statusLabelMap[item.status] || item.status.replace(/_/g, ' ')}
+                  {item.superseded_at ? ` · Superseded ${new Date(item.superseded_at).toLocaleDateString('en-IN')}` : ''}
+                </div>
+                {item.superseded_reason && (
+                  <div className="mt-1 text-xs text-secondary">{item.superseded_reason}</div>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    ) : null;
 
   return (
     <div className="mt-6 bg-neutral-dark rounded-lg border border-neutral-medium">
@@ -323,19 +418,48 @@ export default function InvestorAgreementPanel({ investor }: Props): React.React
         {loading ? (
           <div className="text-sm text-secondary">Loading agreement...</div>
         ) : !agreement ? (
-          <div className="rounded-lg border border-neutral-medium p-6">
-            <div className="mb-2 text-sm text-secondary">{emptyStateMessage}</div>
-            <div className="mb-4 text-xs text-secondary">
-              Step 1: create the draft agreement with investor details and commercial terms.
+          <>
+            <div className="rounded-lg border border-neutral-medium p-6">
+              <div className="mb-2 text-sm text-secondary">
+                {historyList.length > 0
+                  ? 'No current agreement is active for this investor. Historical agreements remain available below for audit.'
+                  : emptyStateMessage}
+              </div>
+              <div className="mb-4 text-xs text-secondary">
+                Step 1: create the draft agreement with investor details and commercial terms.
+              </div>
+              <Button onClick={() => setShowDraftModal(true)} disabled={processing === 'create'}>
+                Create Agreement
+              </Button>
             </div>
-            <Button onClick={() => setShowDraftModal(true)} disabled={processing === 'create'}>
-              Create Agreement
-            </Button>
-          </div>
+            {renderHistory()}
+          </>
         ) : (
           <>
+            {agreementList.length > 1 && (
+              <div className="flex flex-wrap gap-2">
+                {agreementList.map((item) => (
+                  <button
+                    key={item.id}
+                    type="button"
+                    onClick={() => setSelectedAgreementId(item.id)}
+                    className={`rounded border px-3 py-2 text-xs uppercase ${
+                      item.id === agreement.id
+                        ? 'border-accent-amber/30 bg-accent-amber/10 text-accent-amber'
+                        : 'border-neutral-medium text-secondary hover:text-primary'
+                    }`}
+                  >
+                    {getAgreementLabel(item)} · {statusLabelMap[item.status] || item.status}
+                  </button>
+                ))}
+              </div>
+            )}
             <>
                 <div className="grid md:grid-cols-5 gap-4 text-sm">
+                  <div className="bg-neutral-medium/30 rounded-lg p-4">
+                    <div className="text-secondary mb-1">Sleeve</div>
+                    <div className="text-primary font-semibold">{getAgreementLabel(agreement)}</div>
+                  </div>
                   <div className="bg-neutral-medium/30 rounded-lg p-4">
                     <div className="text-secondary mb-1">Commitment</div>
                     <div className="text-primary font-semibold">Rs {(Number(agreement.commitment_amount) || 0).toLocaleString('en-IN')}</div>
@@ -361,63 +485,70 @@ export default function InvestorAgreementPanel({ investor }: Props): React.React
                   <div className="rounded-lg border border-neutral-medium bg-neutral-medium/20 p-4">
                   <div className="text-sm font-medium text-primary mb-2">Workflow</div>
                   <div className="text-sm text-secondary">
-                    1. Review or edit draft terms.
-                    {' '}2. Generate the draft PDF.
-                    {' '}3. Issue the agreement and notify the investor.
-                    {' '}4. Investor logs in and signs in the portal.
-                    {' '}5. Finverno countersigns and executes the agreement.
+                    One current agreement per sleeve. Replace only before funding; otherwise preserve history.
                   </div>
                 </div>
 
                 <div className="flex flex-wrap gap-3">
-                  {agreement.status === 'executed' && (
+                  {canReplaceBeforeFunding && (
                     <Button
                       onClick={handleRenew}
                       disabled={processing === 'renew'}
+                      variant={primaryAction === 'replace' ? 'primary' : 'secondary'}
                     >
-                      {processing === 'renew' ? 'Creating Renewal Draft...' : 'Renew Agreement'}
+                      {processing === 'renew' ? 'Creating Replacement Draft...' : 'Replace Before Funding'}
                     </Button>
                   )}
-                  <Button
-                    variant="secondary"
-                    onClick={() => setShowDraftModal(true)}
-                    disabled={!canEditDraft}
-                  >
-                    Review / Edit Draft Terms
-                  </Button>
-                  <Button
-                    onClick={handleGenerate}
-                    disabled={processing === 'generate' || !['draft', 'generated', 'issued'].includes(agreement.status)}
-                  >
-                    {processing === 'generate'
-                      ? 'Generating...'
-                      : agreement.status === 'issued'
-                        ? 'Generate Updated Draft PDF'
-                        : 'Generate / Refresh Draft PDF'}
-                  </Button>
-                  <Button
-                    variant="secondary"
-                    onClick={handleIssueAndSend}
-                    disabled={processing === 'issue-send' || !['generated', 'issued'].includes(agreement.status)}
-                  >
-                    {processing === 'issue-send'
-                      ? agreement.status === 'generated'
-                        ? 'Issuing & Sending...'
-                        : 'Sending...'
-                      : agreement.status === 'generated'
-                        ? 'Issue & Notify Investor'
-                        : 'Re-send Notification'}
-                  </Button>
-                  <Button
-                    variant="outline"
-                    onClick={handleVoid}
-                    disabled={processing === 'void' || ['executed', 'voided'].includes(agreement.status)}
-                    className="text-error hover:bg-error/10"
-                  >
-                    {processing === 'void' ? 'Voiding...' : 'Void'}
-                  </Button>
-                  {agreement.status === 'investor_signed' && (
+                  {canEditDraft && (
                     <Button
+                      variant={primaryAction === null ? 'primary' : 'secondary'}
+                      onClick={() => setShowDraftModal(true)}
+                      disabled={processing !== null}
+                    >
+                      Edit Terms
+                    </Button>
+                  )}
+                  {canGenerateDraft && (
+                    <Button
+                      variant={primaryAction === 'generate' ? 'primary' : 'secondary'}
+                      onClick={handleGenerate}
+                      disabled={processing === 'generate'}
+                    >
+                      {processing === 'generate'
+                        ? 'Generating...'
+                        : agreement.status === 'issued'
+                          ? 'Regenerate Draft'
+                          : 'Generate Draft'}
+                    </Button>
+                  )}
+                  {canNotifyInvestor && (
+                    <Button
+                      variant={primaryAction === 'notify' ? 'primary' : 'secondary'}
+                      onClick={handleIssueAndSend}
+                      disabled={processing === 'issue-send'}
+                    >
+                      {processing === 'issue-send'
+                        ? agreement.status === 'generated'
+                          ? 'Issuing & Sending...'
+                          : 'Sending...'
+                        : agreement.status === 'generated'
+                          ? 'Issue & Notify Investor'
+                          : 'Re-send Investor Notification'}
+                    </Button>
+                  )}
+                  {canVoidAgreement && (
+                    <Button
+                      variant="outline"
+                      onClick={handleVoid}
+                      disabled={processing === 'void'}
+                      className="text-error hover:bg-error/10"
+                    >
+                      {processing === 'void' ? 'Voiding...' : 'Void Draft'}
+                    </Button>
+                  )}
+                  {canCountersign && (
+                    <Button
+                      variant={primaryAction === 'execute' ? 'primary' : 'secondary'}
                       onClick={handleCountersign}
                       disabled={processing === 'execute'}
                     >
@@ -426,17 +557,19 @@ export default function InvestorAgreementPanel({ investor }: Props): React.React
                   )}
                 </div>
 
-                {agreement.status === 'executed' && (
+                {stateNotice && (
                   <div className="rounded-lg border border-accent-amber/20 bg-accent-amber/10 px-4 py-3 text-sm text-primary">
-                    Executed agreements are kept immutable for audit purposes. Renewing creates a new draft agreement for this investor and preserves the completed copy in history.
+                    {stateNotice}
                   </div>
                 )}
 
-                {agreement.status === 'issued' && (
-                  <div className="rounded-lg border border-accent-amber/20 bg-accent-amber/10 px-4 py-3 text-sm text-primary">
-                    This agreement has been sent but not yet signed. You can update the draft, regenerate the PDF, and then issue it again to send the revised version to the investor.
+                {!canVoidAgreement && agreement.status !== 'voided' && (
+                  <div className="rounded-lg border border-neutral-medium bg-neutral-medium/20 px-4 py-3 text-sm text-secondary">
+                    Void is only allowed before investor signature and before any funding activity. Once the agreement is signed or tied to transfer review, preserve it for audit and handle the situation through rejection, supersession, or reversal instead.
                   </div>
                 )}
+
+                {renderHistory()}
 
                 <div className="grid md:grid-cols-3 gap-4">
                   <div className="rounded-lg border border-neutral-medium p-4">

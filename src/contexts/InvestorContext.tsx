@@ -131,6 +131,29 @@ interface PoolExposure extends GenericRecord {
   investorNetExposure: number;
 }
 
+interface LenderSleeveSummary {
+  id: string;
+  name: string;
+  modelType: 'fixed_debt' | 'pool_participation';
+  status: string;
+  agreementStatus: string;
+  latestAgreementStatus?: string | null;
+  agreementComplete?: boolean;
+  canFund?: boolean;
+  commitmentAmount: number;
+  fundedAmount: number;
+  summary: GenericRecord;
+}
+
+interface AllocationIntentSummary extends GenericRecord {
+  id: string;
+  status: string;
+  total_amount: number;
+  allocation_payload: GenericRecord[];
+  agreements_ready_at?: string | null;
+  funding_submitted_at?: string | null;
+}
+
 interface InvestorWithData extends InvestorProfile {
   investments: Investment[];
   transactions: InvestorTransaction[];
@@ -142,6 +165,10 @@ interface InvestorWithData extends InvestorProfile {
   poolPosition?: PoolPosition;
   poolSummary?: PoolSummary;
   poolExposure?: PoolExposure[];
+  sleeves?: LenderSleeveSummary[];
+  totalFixedDebtExposure?: number;
+  totalPoolExposure?: number;
+  allocationIntents?: AllocationIntentSummary[];
   availableOpportunities: GenericRecord[];
 }
 

@@ -26,8 +26,10 @@ export default function ContractorStatusPage(): React.ReactElement {
   const [loading, setLoading] = useState(true);
   const [uploadingDoc, setUploadingDoc] = useState<string | null>(null);
   const [agreementData, setAgreementData] = useState<{
-    agreement: ContractorAgreementCardData | null;
-    files: ContractorAgreementCardFiles;
+    agreements: Array<{
+      agreement: ContractorAgreementCardData;
+      files: ContractorAgreementCardFiles;
+    }>;
   } | null>(null);
 
   const loadContractorStatus = useCallback(async () => {
@@ -58,14 +60,13 @@ export default function ContractorStatusPage(): React.ReactElement {
       setAgreementData(
         agreementResponse.ok && agreementResult?.success
           ? {
-              agreement: agreementResult.agreement,
-              files: agreementResult.files || {},
+              agreements: agreementResult.agreements || [],
             }
-          : { agreement: null, files: {} }
+          : { agreements: [] }
       );
     } catch (error) {
       console.error('Error loading contractor status:', error);
-      setAgreementData({ agreement: null, files: {} });
+      setAgreementData({ agreements: [] });
     } finally {
       setLoading(false);
     }
@@ -363,11 +364,24 @@ export default function ContractorStatusPage(): React.ReactElement {
           </div>
 
           <div className="mb-8">
-            <ContractorAgreementStatusCard
-              agreement={agreementData?.agreement || null}
-              files={agreementData?.files || {}}
-              onSigned={loadContractorStatus}
-            />
+            <div className="space-y-6">
+              {agreementData?.agreements?.length ? (
+                agreementData.agreements.map(({ agreement, files }) => (
+                  <ContractorAgreementStatusCard
+                    key={agreement.id}
+                    agreement={agreement}
+                    files={files}
+                    onSigned={loadContractorStatus}
+                  />
+                ))
+              ) : (
+                <ContractorAgreementStatusCard
+                  agreement={null}
+                  files={{}}
+                  onSigned={loadContractorStatus}
+                />
+              )}
+            </div>
           </div>
 
           {/* Actions */}

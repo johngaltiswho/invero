@@ -302,7 +302,8 @@ export default function ContractorAgreementPanel({
             value={form.agreement_date}
             onChange={(event) => setForm((prev) => ({ ...prev, agreement_date: event.target.value }))}
             disabled={(!!agreement && !isEditing) || loading || processing !== null}
-            className="mt-2 w-full px-3 py-2 rounded-lg border border-neutral-medium bg-neutral-dark text-primary"
+            style={{ colorScheme: 'dark' }}
+            className="mt-2 w-full px-3 py-2 rounded-lg border border-neutral-medium bg-neutral-dark text-white"
           />
         </label>
         <label className="block">
@@ -354,6 +355,11 @@ export default function ContractorAgreementPanel({
             {processing === 'issue-send' ? 'Sending...' : agreement.status === 'issued' ? 'Re-send Notification' : 'Issue & Notify SME'}
           </Button>
         )}
+        {agreement?.status === 'issued' && (
+          <Button variant="outline" size="sm" disabled>
+            Issued To SME
+          </Button>
+        )}
         {agreement && ['draft', 'generated', 'issued', 'contractor_signed'].includes(agreement.status) && (
           <Button variant="outline" size="sm" onClick={handleVoid} disabled={processing !== null}>
             {processing === 'void' ? 'Voiding...' : 'Void'}
@@ -382,7 +388,13 @@ export default function ContractorAgreementPanel({
 
       {agreement?.status === 'issued' && (
         <div className="mb-4 rounded-lg border border-accent-blue/30 bg-accent-blue/10 p-4 text-sm text-secondary">
-          Once issued, the contractor can sign this agreement directly in the portal. Use the upload action only if you need to record an offline signed PDF as a fallback.
+          <div className="font-medium text-primary mb-1">Agreement has been issued to the SME</div>
+          <div>
+            {agreement.issued_at
+              ? `Issued on ${new Date(agreement.issued_at).toLocaleString('en-IN')}. `
+              : ''}
+            The contractor can now sign this agreement directly in the portal. Use the upload action only if you need to record an offline signed PDF as a fallback.
+          </div>
         </div>
       )}
 

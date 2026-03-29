@@ -1,7 +1,7 @@
 import type { ContractorAgreementTemplatePayload } from '@/lib/contractor-agreements/types';
 
 export const CONTRACTOR_PROCUREMENT_DECLARATION_TEMPLATE_KEY = 'contractor-procurement-declaration';
-export const CONTRACTOR_PROCUREMENT_DECLARATION_TEMPLATE_VERSION = 'v1';
+export const CONTRACTOR_PROCUREMENT_DECLARATION_TEMPLATE_VERSION = 'v2';
 
 export function renderContractorProcurementDeclarationHTML(payload: ContractorAgreementTemplatePayload): string {
   return `
@@ -66,6 +66,7 @@ export function renderContractorProcurementDeclarationHTML(payload: ContractorAg
           <p style="margin-top: 48px;">__________________________</p>
           <p>${payload.companySignatoryName}</p>
           <p>${payload.companySignatoryTitle}</p>
+          ${payload.companyCountersignedAtLabel ? `<p><strong>Countersigned on:</strong> ${payload.companyCountersignedAtLabel}</p>` : ''}
         </div>
 
         <div style="margin-top: 42px;">

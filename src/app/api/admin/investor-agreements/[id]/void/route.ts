@@ -41,9 +41,36 @@ export async function POST(
     return NextResponse.json({ success: true, agreement });
   } catch (error) {
     console.error('Error voiding agreement:', error);
+    const { id } = await params;
+    const message = error instanceof Error ? error.message : 'Failed to void agreement';
+    const status =
+      message.includes('Only draft, generated, or issued agreements can be voided') ||
+      message.includes('Reject the payment submission instead of voiding the agreement') ||
+      message.includes('Do not void the agreement after transfer') ||
+      message.includes('Review that submission instead of voiding the agreement')
+        ? 409
+        : 500;
+
+    const adminUser = await getAdminUser().catch(() => null);
+    await createAuditLog({
+      userId: adminUser?.id || 'system',
+      userEmail: adminUser?.email,
+      userName: adminUser?.name,
+      userRole: adminUser?.role,
+      action: 'void',
+      entityType: 'investor_agreement',
+      entityId: id,
+      description: status === 409 ? 'Blocked attempt to void investor agreement' : 'Failed attempt to void investor agreement',
+      metadata: {
+        outcome: status === 409 ? 'blocked' : 'error',
+        error: message,
+      },
+      ...getRequestContext(request),
+    });
+
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'Failed to void agreement' },
-      { status: 500 }
+      { error: message },
+      { status }
     );
   }
 }

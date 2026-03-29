@@ -5,6 +5,13 @@ import { sendEmail } from '@/lib/email';
 import { investorAgreementExecutedEmail, investorAgreementReadyEmail } from '@/lib/notifications/email-templates';
 import { buildInvestorAgreementPayload, renderAgreementHTML } from '@/lib/agreements/renderer';
 import { generateInvestorAgreementPDF } from '@/lib/agreements/pdf';
+import {
+  ensureLenderSleeve,
+  getLenderSleeveById,
+  syncLenderSleeveAgreementStatus,
+  type LenderSleeve,
+  type LenderSleeveModelType,
+} from '@/lib/lender-sleeves';
 import type {
   AgreementDeliveryLog,
   AgreementTemplatePayload,
@@ -26,7 +33,7 @@ type InvestorRow = {
   activation_status?: string | null;
 };
 
-type AdminActor = {
+export type AdminActor = {
   id: string;
   email?: string | null;
   name?: string | null;
@@ -37,6 +44,13 @@ type InvestorAcceptance = {
   private_investment: boolean;
   risk_disclosure: boolean;
 };
+
+type AgreementRenderContext = {
+  sleeve: LenderSleeve | null;
+  agreementModelType: LenderSleeveModelType;
+};
+
+class AgreementWorkflowError extends Error {}
 
 function randomToken() {
   return crypto.randomBytes(24).toString('hex');
@@ -91,7 +105,145 @@ export async function getInvestorById(investorId: string): Promise<InvestorRow |
   return data || null;
 }
 
-export async function listInvestorAgreements(investorId?: string): Promise<InvestorAgreement[]> {
+async function getAgreementRenderContext(agreement: InvestorAgreement): Promise<AgreementRenderContext> {
+  let sleeve = agreement.lender_sleeve_id ? await getLenderSleeveById(agreement.lender_sleeve_id) : null;
+  if (!sleeve) {
+    sleeve = await ensureLenderSleeve({
+      investorId: agreement.investor_id,
+      modelType: (agreement.agreement_model_type || 'pool_participation') as LenderSleeveModelType,
+      defaultStatus: 'draft',
+    });
+  }
+
+  return {
+    sleeve,
+    agreementModelType: sleeve.model_type,
+  };
+}
+
+async function supersedePriorCurrentAgreementsForSleeve(input: {
+  investorId: string;
+  lenderSleeveId: string;
+  exceptAgreementId: string;
+  reason: string;
+}) {
+  const { data: priorAgreements, error: priorAgreementsError } = await (supabaseAdmin as any)
+    .from('investor_agreements')
+    .select('id, lender_allocation_intent_id')
+    .eq('investor_id', input.investorId)
+    .eq('lender_sleeve_id', input.lenderSleeveId)
+    .is('superseded_at', null)
+    .neq('id', input.exceptAgreementId)
+    .not('status', 'in', '("voided","expired")');
+
+  if (priorAgreementsError) {
+    throw new Error(priorAgreementsError.message || 'Failed to validate prior current agreements');
+  }
+
+  for (const priorAgreement of priorAgreements || []) {
+    if (!priorAgreement.lender_allocation_intent_id) continue;
+
+    const { data: allocationIntent, error: allocationIntentError } = await (supabaseAdmin as any)
+      .from('lender_allocation_intents')
+      .select('id, status')
+      .eq('id', priorAgreement.lender_allocation_intent_id)
+      .maybeSingle();
+
+    if (allocationIntentError) {
+      throw new Error(allocationIntentError.message || 'Failed to validate prior allocation intent');
+    }
+
+    if (allocationIntent?.status === 'funding_submitted' || allocationIntent?.status === 'completed') {
+      throw new AgreementWorkflowError('Cannot replace the current agreement after funding activity has started. Use amendment or remediation workflow instead');
+    }
+
+    const { data: submissions, error: submissionsError } = await (supabaseAdmin as any)
+      .from('investor_payment_submissions')
+      .select('id')
+      .eq('allocation_intent_id', priorAgreement.lender_allocation_intent_id)
+      .in('status', ['pending', 'approved'])
+      .limit(1);
+
+    if (submissionsError) {
+      throw new Error(submissionsError.message || 'Failed to validate prior payment submissions');
+    }
+
+    if ((submissions || []).length > 0) {
+      throw new AgreementWorkflowError('Cannot replace the current agreement while a payment submission exists for it. Resolve the submission first');
+    }
+  }
+
+  const { error } = await (supabaseAdmin as any)
+    .from('investor_agreements')
+    .update({
+      superseded_at: new Date().toISOString(),
+      superseded_reason: input.reason,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('investor_id', input.investorId)
+    .eq('lender_sleeve_id', input.lenderSleeveId)
+    .is('superseded_at', null)
+    .neq('id', input.exceptAgreementId)
+    .not('status', 'in', '("voided","expired")');
+
+  if (error) {
+    throw new Error(error.message || 'Failed to supersede prior current agreements');
+  }
+}
+
+async function resolveRegenerationEconomics(existing: InvestorAgreement, renderContext: AgreementRenderContext) {
+  let commitmentAmount = Number(existing.commitment_amount) || 0;
+  let fixedCouponRateAnnual = renderContext.sleeve?.fixed_coupon_rate_annual ?? null;
+
+  if (existing.lender_allocation_intent_id && renderContext.sleeve?.model_type) {
+    const { data: allocationIntent, error } = await (supabaseAdmin as any)
+      .from('lender_allocation_intents')
+      .select('allocation_payload, status')
+      .eq('id', existing.lender_allocation_intent_id)
+      .maybeSingle();
+
+    if (error) {
+      throw new Error(error.message || 'Failed to load linked allocation intent');
+    }
+
+    const payload = Array.isArray(allocationIntent?.allocation_payload)
+      ? allocationIntent.allocation_payload
+      : [];
+
+    const matchingAllocation = payload.find(
+      (entry: { modelType?: string; amount?: number }) => entry.modelType === renderContext.sleeve?.model_type
+    );
+
+    if (matchingAllocation && Number(matchingAllocation.amount || 0) > 0) {
+      commitmentAmount = Number(matchingAllocation.amount || 0);
+    }
+  }
+
+  if (renderContext.sleeve?.model_type === 'fixed_debt' && (fixedCouponRateAnnual == null || Math.abs(fixedCouponRateAnnual - 0.12) < 0.0001)) {
+    fixedCouponRateAnnual = 0.14;
+
+    if (renderContext.sleeve?.id) {
+      const { error } = await (supabaseAdmin as any)
+        .from('lender_sleeves')
+        .update({
+          fixed_coupon_rate_annual: fixedCouponRateAnnual,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', renderContext.sleeve.id);
+
+      if (error) {
+        throw new Error(error.message || 'Failed to update fixed debt sleeve coupon rate');
+      }
+    }
+  }
+
+  return {
+    commitmentAmount,
+    fixedCouponRateAnnual,
+  };
+}
+
+export async function listInvestorAgreements(investorId?: string, lenderSleeveId?: string): Promise<InvestorAgreement[]> {
   let query = (supabaseAdmin as any)
     .from('investor_agreements')
     .select('*')
@@ -100,12 +252,35 @@ export async function listInvestorAgreements(investorId?: string): Promise<Inves
   if (investorId) {
     query = query.eq('investor_id', investorId);
   }
+  if (lenderSleeveId) {
+    query = query.eq('lender_sleeve_id', lenderSleeveId);
+  }
 
   const { data, error } = await query;
   if (error) {
     throw new Error(error.message || 'Failed to load agreements');
   }
   return (data || []) as InvestorAgreement[];
+}
+
+export function selectCurrentInvestorAgreements<T extends { lender_sleeve_id?: string | null; agreement_model_type?: string | null; id: string; status?: string | null; superseded_at?: string | null }>(agreements: T[]) {
+  const grouped = new Map<string, T[]>();
+
+  for (const agreement of agreements || []) {
+    const key = agreement.lender_sleeve_id || agreement.agreement_model_type || agreement.id;
+    if (!grouped.has(key)) {
+      grouped.set(key, []);
+    }
+    grouped.get(key)!.push(agreement);
+  }
+
+  return Array.from(grouped.values())
+    .map((group) => {
+      const current =
+        group.find((agreement) => !agreement.superseded_at && !['voided', 'expired'].includes(String(agreement.status || '')));
+      return current;
+    })
+    .filter(Boolean) as T[];
 }
 
 export async function getInvestorAgreement(agreementId: string): Promise<InvestorAgreement | null> {
@@ -163,6 +338,9 @@ export async function listAgreementDeliveryLogs(agreementId: string): Promise<Ag
 
 export async function createInvestorAgreement(input: {
   investorId: string;
+  lenderSleeveId?: string | null;
+  lenderAllocationIntentId?: string | null;
+  agreementModelType?: LenderSleeveModelType | null;
   commitmentAmount: number;
   agreementDate: string;
   investorPan?: string | null;
@@ -177,10 +355,25 @@ export async function createInvestorAgreement(input: {
     throw new Error('Investor not found');
   }
 
+  const sleeve = input.lenderSleeveId
+    ? await getLenderSleeveById(input.lenderSleeveId)
+    : await ensureLenderSleeve({
+        investorId: input.investorId,
+        modelType: input.agreementModelType || 'pool_participation',
+        defaultStatus: 'draft',
+      });
+
+  if (!sleeve) {
+    throw new Error('Lender sleeve not found');
+  }
+
   const { data, error } = await (supabaseAdmin as any)
     .from('investor_agreements')
     .insert({
       investor_id: input.investorId,
+      lender_sleeve_id: sleeve.id,
+      lender_allocation_intent_id: input.lenderAllocationIntentId || null,
+      agreement_model_type: sleeve.model_type,
       commitment_amount: input.commitmentAmount,
       agreement_date: input.agreementDate,
       investor_pan: input.investorPan ?? investor.pan_number ?? null,
@@ -198,9 +391,49 @@ export async function createInvestorAgreement(input: {
     throw new Error(error.message || 'Failed to create agreement');
   }
 
+  await supersedePriorCurrentAgreementsForSleeve({
+    investorId: input.investorId,
+    lenderSleeveId: sleeve.id,
+    exceptAgreementId: data.id,
+    reason: input.lenderAllocationIntentId
+      ? `Superseded by allocation intent ${input.lenderAllocationIntentId}`
+      : 'Superseded by newer agreement draft',
+  });
+
   await syncInvestorAgreementStatus(input.investorId, 'in_progress', 'agreement_pending');
+  await syncLenderSleeveAgreementStatus(sleeve.id, 'in_progress');
 
   return data as InvestorAgreement;
+}
+
+export async function ensureDraftAgreementForSleeve(input: {
+  investorId: string;
+  lenderSleeveId: string;
+  commitmentAmount: number;
+  agreementDate?: string;
+  actor: AdminActor;
+}): Promise<InvestorAgreement> {
+  const sleeve = await getLenderSleeveById(input.lenderSleeveId);
+  if (!sleeve) {
+    throw new Error('Lender sleeve not found');
+  }
+
+  const existing = await listInvestorAgreements(input.investorId, input.lenderSleeveId);
+  const activeAgreement = existing.find((agreement) => agreement.status !== 'voided' && agreement.status !== 'expired');
+  if (activeAgreement) {
+    return activeAgreement;
+  }
+
+  return createInvestorAgreement({
+    investorId: input.investorId,
+    lenderSleeveId: sleeve.id,
+    agreementModelType: sleeve.model_type,
+    commitmentAmount: input.commitmentAmount,
+    agreementDate: input.agreementDate || new Date().toISOString().slice(0, 10),
+    companySignatoryName: 'Authorized Signatory',
+    companySignatoryTitle: 'Director',
+    actor: input.actor,
+  });
 }
 
 export async function regenerateAgreementDraft(
@@ -228,8 +461,10 @@ export async function regenerateAgreementDraft(
   if (!investor) {
     throw new Error('Investor not found');
   }
+  const renderContext = await getAgreementRenderContext(existing);
+  const resolvedEconomics = await resolveRegenerationEconomics(existing, renderContext);
 
-  const commitmentAmount = Number(updates?.commitment_amount ?? existing.commitment_amount) || 0;
+  const commitmentAmount = Number(updates?.commitment_amount ?? resolvedEconomics.commitmentAmount) || 0;
   const agreementDate = updates?.agreement_date ?? existing.agreement_date;
   const investorPan = updates?.investor_pan ?? existing.investor_pan ?? investor.pan_number ?? null;
   const investorAddress = updates?.investor_address ?? existing.investor_address ?? investor.address ?? null;
@@ -238,6 +473,8 @@ export async function regenerateAgreementDraft(
   const notes = updates?.notes ?? existing.notes ?? null;
 
   const payload = buildInvestorAgreementPayload({
+    agreementModelType: renderContext.agreementModelType,
+    sleeveName: renderContext.sleeve?.name || null,
     investor,
     commitmentAmount,
     agreementDate,
@@ -246,6 +483,10 @@ export async function regenerateAgreementDraft(
     companySignatoryName,
     companySignatoryTitle,
     notes,
+    fixedCouponRateAnnual: resolvedEconomics.fixedCouponRateAnnual,
+    payoutPriorityRank: renderContext.sleeve?.payout_priority_rank ?? null,
+    almBucket: renderContext.sleeve?.alm_bucket ?? null,
+    liquidityNotes: renderContext.sleeve?.liquidity_notes ?? null,
   });
   const rendered = renderAgreementHTML(payload);
   const filePath = await uploadAgreementPdf({
@@ -306,6 +547,9 @@ export async function issueAgreement(agreementId: string, actor: AdminActor): Pr
     .single();
 
   if (error) throw new Error(error.message || 'Failed to issue agreement');
+  if (existing.lender_sleeve_id) {
+    await syncLenderSleeveAgreementStatus(existing.lender_sleeve_id, 'in_progress');
+  }
   return data as InvestorAgreement;
 }
 
@@ -351,7 +595,10 @@ export async function signInvestorAgreement(input: {
   }
 
   const signedAt = new Date().toISOString();
+  const renderContext = await getAgreementRenderContext(agreement);
   const payload = buildInvestorAgreementPayload({
+    agreementModelType: renderContext.agreementModelType,
+    sleeveName: renderContext.sleeve?.name || null,
     investor,
     commitmentAmount: Number(agreement.commitment_amount) || 0,
     agreementDate: agreement.agreement_date,
@@ -362,6 +609,10 @@ export async function signInvestorAgreement(input: {
     notes: agreement.notes || null,
     investorSignedName: typedName,
     investorSignedAt: signedAt,
+    fixedCouponRateAnnual: renderContext.sleeve?.fixed_coupon_rate_annual ?? null,
+    payoutPriorityRank: renderContext.sleeve?.payout_priority_rank ?? null,
+    almBucket: renderContext.sleeve?.alm_bucket ?? null,
+    liquidityNotes: renderContext.sleeve?.liquidity_notes ?? null,
   });
   const rendered = renderAgreementHTML(payload);
   const signedPdfPath = await uploadAgreementPdf({
@@ -397,6 +648,9 @@ export async function signInvestorAgreement(input: {
   }
 
   await syncInvestorAgreementStatus(agreement.investor_id, 'in_progress', 'agreement_pending');
+  if (agreement.lender_sleeve_id) {
+    await syncLenderSleeveAgreementStatus(agreement.lender_sleeve_id, 'in_progress');
+  }
 
   return data as InvestorAgreement;
 }
@@ -416,7 +670,8 @@ export async function sendAgreementEmail(
     process.env.NEXT_PUBLIC_APP_URL ||
     (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : null) ||
     'http://localhost:3000';
-  const portalUrl = `${appUrl.replace(/\/$/, '')}/dashboard/investor/agreement`;
+  const agreementPath = '/dashboard/investor/agreement';
+  const portalUrl = `${appUrl.replace(/\/$/, '')}/sign-in?redirect_url=${encodeURIComponent(agreementPath)}`;
 
   const emailTemplate = investorAgreementReadyEmail({
     investorName: investor.name,
@@ -535,6 +790,9 @@ export async function markAgreementExecuted(agreementId: string, actor: AdminAct
   }
 
   await syncInvestorAgreementStatus(agreement.investor_id, 'completed', 'active', executedAt);
+  if (agreement.lender_sleeve_id) {
+    await syncLenderSleeveAgreementStatus(agreement.lender_sleeve_id, 'completed', executedAt);
+  }
   const investor = await getInvestorById(agreement.investor_id);
   if (investor?.email) {
     try {
@@ -555,8 +813,43 @@ export async function markAgreementExecuted(agreementId: string, actor: AdminAct
 export async function voidAgreement(agreementId: string, actor: AdminActor, reason?: string): Promise<InvestorAgreement> {
   const agreement = await getInvestorAgreement(agreementId);
   if (!agreement) throw new Error('Agreement not found');
-  if (agreement.status === 'executed') {
-    throw new Error('Executed agreements cannot be voided');
+  if (!['draft', 'generated', 'issued'].includes(agreement.status)) {
+    throw new AgreementWorkflowError('Only draft, generated, or issued agreements can be voided');
+  }
+
+  if (agreement.lender_allocation_intent_id) {
+    const { data: allocationIntent, error: intentError } = await (supabaseAdmin as any)
+      .from('lender_allocation_intents')
+      .select('id, status, funding_submitted_at, completed_at')
+      .eq('id', agreement.lender_allocation_intent_id)
+      .maybeSingle();
+
+    if (intentError) {
+      throw new Error(intentError.message || 'Failed to validate linked allocation intent');
+    }
+
+    if (allocationIntent?.status === 'funding_submitted') {
+      throw new AgreementWorkflowError('Funding has already been submitted for this allocation. Reject the payment submission instead of voiding the agreement');
+    }
+
+    if (allocationIntent?.status === 'completed') {
+      throw new AgreementWorkflowError('Capital has already been approved for this allocation. Do not void the agreement after transfer; use a reversal or remediation workflow');
+    }
+
+    const { data: submissions, error: submissionsError } = await (supabaseAdmin as any)
+      .from('investor_payment_submissions')
+      .select('id, status')
+      .eq('allocation_intent_id', agreement.lender_allocation_intent_id)
+      .in('status', ['pending', 'approved'])
+      .limit(1);
+
+    if (submissionsError) {
+      throw new Error(submissionsError.message || 'Failed to validate linked payment submissions');
+    }
+
+    if ((submissions || []).length > 0) {
+      throw new AgreementWorkflowError('A payment submission already exists for this allocation. Review that submission instead of voiding the agreement');
+    }
   }
 
   const { data, error } = await (supabaseAdmin as any)
@@ -573,6 +866,9 @@ export async function voidAgreement(agreementId: string, actor: AdminActor, reas
 
   if (error) throw new Error(error.message || 'Failed to void agreement');
   await syncInvestorAgreementStatus(agreement.investor_id, 'voided', 'agreement_pending');
+  if (agreement.lender_sleeve_id) {
+    await syncLenderSleeveAgreementStatus(agreement.lender_sleeve_id, 'voided');
+  }
   return data as InvestorAgreement;
 }
 
@@ -604,9 +900,9 @@ export async function createAgreementSignedUrl(path: string | null, expiresInSec
   return data?.signedUrl || null;
 }
 
-export async function getInvestorAgreementForCurrentUser(): Promise<{
+export async function getInvestorAgreementsForCurrentUser(): Promise<{
   investor: InvestorRow | null;
-  agreement: InvestorAgreement | null;
+  agreements: InvestorAgreement[];
 }> {
   const user = await currentUser();
   if (!user) {
@@ -624,9 +920,10 @@ export async function getInvestorAgreementForCurrentUser(): Promise<{
       .eq('status', 'active')
       .maybeSingle();
     if (error) throw new Error(error.message || 'Failed to load investor');
-    return { investor: (data || null) as InvestorRow | null, agreement: null };
+    return { investor: (data || null) as InvestorRow | null, agreements: [] };
   }
 
   const investor = await getInvestorById(agreement.investor_id);
-  return { investor, agreement };
+  const agreements = await listInvestorAgreements(agreement.investor_id);
+  return { investor, agreements };
 }

@@ -9,6 +9,7 @@ import {
   getInvestorById,
   getInvestorAgreement,
   listInvestorAgreements,
+  selectCurrentInvestorAgreements,
 } from '@/lib/agreements/service';
 
 // Mock dependencies
@@ -47,6 +48,20 @@ jest.mock('@/lib/agreements/renderer', () => ({
     templateKey: 'investor-participation-v1',
     templateVersion: '1.0.0',
   })),
+}));
+
+jest.mock('@/lib/lender-sleeves', () => ({
+  ensureLenderSleeve: jest.fn().mockResolvedValue({
+    id: 'sleeve-123',
+    investor_id: 'investor-123',
+    model_type: 'pool_participation',
+  }),
+  getLenderSleeveById: jest.fn().mockResolvedValue({
+    id: 'sleeve-123',
+    investor_id: 'investor-123',
+    model_type: 'pool_participation',
+  }),
+  syncLenderSleeveAgreementStatus: jest.fn().mockResolvedValue(undefined),
 }));
 
 jest.mock('@clerk/nextjs/server', () => ({
@@ -194,6 +209,43 @@ describe('Agreement Service', () => {
     });
   });
 
+  describe('selectCurrentInvestorAgreements', () => {
+    it('returns only the non-superseded current agreement per sleeve', () => {
+      const agreements = [
+        {
+          id: 'agreement-old',
+          lender_sleeve_id: 'sleeve-1',
+          agreement_model_type: 'pool_participation',
+          status: 'executed',
+          superseded_at: '2026-03-29T10:00:00Z',
+        },
+        {
+          id: 'agreement-current',
+          lender_sleeve_id: 'sleeve-1',
+          agreement_model_type: 'pool_participation',
+          status: 'issued',
+          superseded_at: null,
+        },
+      ];
+
+      expect(selectCurrentInvestorAgreements(agreements as any[])).toEqual([agreements[1]]);
+    });
+
+    it('does not fall back to historical agreements when no current agreement exists', () => {
+      const agreements = [
+        {
+          id: 'agreement-old',
+          lender_sleeve_id: 'sleeve-1',
+          agreement_model_type: 'pool_participation',
+          status: 'executed',
+          superseded_at: '2026-03-29T10:00:00Z',
+        },
+      ];
+
+      expect(selectCurrentInvestorAgreements(agreements as any[])).toEqual([]);
+    });
+  });
+
   describe('createInvestorAgreement', () => {
     it('should create agreement in draft status', async () => {
       (supabaseAdmin.from as jest.Mock).mockImplementation((table: string) => {
@@ -215,16 +267,69 @@ describe('Agreement Service', () => {
             }),
           };
         }
-        return {
-          insert: jest.fn().mockReturnValue({
-            select: jest.fn().mockReturnValue({
-              single: jest.fn().mockResolvedValue({
-                data: mockAgreement,
-                error: null,
+        if (table === 'investor_agreements') {
+          return {
+            insert: jest.fn().mockReturnValue({
+              select: jest.fn().mockReturnValue({
+                single: jest.fn().mockResolvedValue({
+                  data: {
+                    ...mockAgreement,
+                    lender_sleeve_id: 'sleeve-123',
+                    agreement_model_type: 'pool_participation',
+                  },
+                  error: null,
+                }),
               }),
             }),
-          }),
-        };
+            select: jest.fn().mockReturnValue({
+              eq: jest.fn().mockReturnValue({
+                eq: jest.fn().mockReturnValue({
+                  is: jest.fn().mockReturnValue({
+                    neq: jest.fn().mockReturnValue({
+                      not: jest.fn().mockResolvedValue({
+                        data: [],
+                        error: null,
+                      }),
+                    }),
+                  }),
+                }),
+              }),
+            }),
+            update: jest.fn().mockReturnValue({
+              eq: jest.fn().mockReturnValue({
+                eq: jest.fn().mockReturnValue({
+                  is: jest.fn().mockReturnValue({
+                    neq: jest.fn().mockReturnValue({
+                      not: jest.fn().mockResolvedValue({
+                        data: null,
+                        error: null,
+                      }),
+                    }),
+                  }),
+                }),
+              }),
+            }),
+          };
+        }
+        if (table === 'lender_allocation_intents' || table === 'investor_payment_submissions') {
+          return {
+            select: jest.fn().mockReturnValue({
+              eq: jest.fn().mockReturnValue({
+                maybeSingle: jest.fn().mockResolvedValue({
+                  data: null,
+                  error: null,
+                }),
+                in: jest.fn().mockReturnValue({
+                  limit: jest.fn().mockResolvedValue({
+                    data: [],
+                    error: null,
+                  }),
+                }),
+              }),
+            }),
+          };
+        }
+        return {};
       });
 
       const result = await createInvestorAgreement({
@@ -236,7 +341,13 @@ describe('Agreement Service', () => {
         actor: mockActor,
       });
 
-      expect(result).toEqual(mockAgreement);
+      expect(result).toEqual(
+        expect.objectContaining({
+          ...mockAgreement,
+          lender_sleeve_id: 'sleeve-123',
+          agreement_model_type: 'pool_participation',
+        })
+      );
       expect(result.status).toBe('draft');
     });
 
@@ -262,6 +373,178 @@ describe('Agreement Service', () => {
           actor: mockActor,
         })
       ).rejects.toThrow('Investor not found');
+    });
+
+    it('supersedes the prior current agreement when replacing before funding', async () => {
+      const updateNot = jest.fn().mockResolvedValue({ data: null, error: null });
+      const selectNot = jest.fn().mockResolvedValue({
+        data: [{ id: 'agreement-old', lender_allocation_intent_id: null }],
+        error: null,
+      });
+
+      (supabaseAdmin.from as jest.Mock).mockImplementation((table: string) => {
+        if (table === 'investors') {
+          return {
+            select: jest.fn().mockReturnValue({
+              eq: jest.fn().mockReturnValue({
+                maybeSingle: jest.fn().mockResolvedValue({
+                  data: mockInvestor,
+                  error: null,
+                }),
+              }),
+            }),
+            update: jest.fn().mockReturnValue({
+              eq: jest.fn().mockResolvedValue({ data: null, error: null }),
+            }),
+          };
+        }
+
+        if (table === 'investor_agreements') {
+          return {
+            insert: jest.fn().mockReturnValue({
+              select: jest.fn().mockReturnValue({
+                single: jest.fn().mockResolvedValue({
+                  data: {
+                    ...mockAgreement,
+                    id: 'agreement-new',
+                    lender_sleeve_id: 'sleeve-123',
+                    agreement_model_type: 'pool_participation',
+                  },
+                  error: null,
+                }),
+              }),
+            }),
+            select: jest.fn().mockReturnValue({
+              eq: jest.fn().mockReturnValue({
+                eq: jest.fn().mockReturnValue({
+                  is: jest.fn().mockReturnValue({
+                    neq: jest.fn().mockReturnValue({
+                      not: selectNot,
+                    }),
+                  }),
+                }),
+              }),
+            }),
+            update: jest.fn().mockReturnValue({
+              eq: jest.fn().mockReturnValue({
+                eq: jest.fn().mockReturnValue({
+                  is: jest.fn().mockReturnValue({
+                    neq: jest.fn().mockReturnValue({
+                      not: updateNot,
+                    }),
+                  }),
+                }),
+              }),
+            }),
+          };
+        }
+
+        return {};
+      });
+
+      await createInvestorAgreement({
+        investorId: 'investor-123',
+        lenderSleeveId: 'sleeve-123',
+        agreementModelType: 'pool_participation',
+        commitmentAmount: 1000000,
+        agreementDate: '2024-01-15',
+        companySignatoryName: 'John Doe',
+        companySignatoryTitle: 'Director',
+        actor: mockActor,
+      });
+
+      expect(updateNot).toHaveBeenCalled();
+    });
+
+    it('blocks replacement when funding activity has started', async () => {
+      const selectLimit = jest.fn().mockResolvedValue({ data: [], error: null });
+
+      (supabaseAdmin.from as jest.Mock).mockImplementation((table: string) => {
+        if (table === 'investors') {
+          return {
+            select: jest.fn().mockReturnValue({
+              eq: jest.fn().mockReturnValue({
+                maybeSingle: jest.fn().mockResolvedValue({
+                  data: mockInvestor,
+                  error: null,
+                }),
+              }),
+            }),
+          };
+        }
+
+        if (table === 'investor_agreements') {
+          return {
+            insert: jest.fn().mockReturnValue({
+              select: jest.fn().mockReturnValue({
+                single: jest.fn().mockResolvedValue({
+                  data: {
+                    ...mockAgreement,
+                    id: 'agreement-new',
+                    lender_sleeve_id: 'sleeve-123',
+                    agreement_model_type: 'pool_participation',
+                  },
+                  error: null,
+                }),
+              }),
+            }),
+            select: jest.fn().mockReturnValue({
+              eq: jest.fn().mockReturnValue({
+                eq: jest.fn().mockReturnValue({
+                  is: jest.fn().mockReturnValue({
+                    neq: jest.fn().mockReturnValue({
+                      not: jest.fn().mockResolvedValue({
+                        data: [{ id: 'agreement-old', lender_allocation_intent_id: 'intent-123' }],
+                        error: null,
+                      }),
+                    }),
+                  }),
+                }),
+              }),
+            }),
+          };
+        }
+
+        if (table === 'lender_allocation_intents') {
+          return {
+            select: jest.fn().mockReturnValue({
+              eq: jest.fn().mockReturnValue({
+                maybeSingle: jest.fn().mockResolvedValue({
+                  data: { id: 'intent-123', status: 'funding_submitted' },
+                  error: null,
+                }),
+              }),
+            }),
+          };
+        }
+
+        if (table === 'investor_payment_submissions') {
+          return {
+            select: jest.fn().mockReturnValue({
+              eq: jest.fn().mockReturnValue({
+                in: jest.fn().mockReturnValue({
+                  limit: selectLimit,
+                }),
+              }),
+            }),
+          };
+        }
+
+        return {};
+      });
+
+      await expect(
+        createInvestorAgreement({
+          investorId: 'investor-123',
+          lenderSleeveId: 'sleeve-123',
+          agreementModelType: 'pool_participation',
+          commitmentAmount: 1000000,
+          agreementDate: '2024-01-15',
+          companySignatoryName: 'John Doe',
+          companySignatoryTitle: 'Director',
+          actor: mockActor,
+        })
+      ).rejects.toThrow('Cannot replace the current agreement after funding activity has started');
     });
   });
 
@@ -568,7 +851,8 @@ describe('Agreement Service', () => {
 
     describe('voidAgreement', () => {
       it('should void non-executed agreement', async () => {
-        const voidedAgreement = { ...mockAgreement, status: 'voided' };
+        const issuableAgreement = { ...mockAgreement, status: 'issued' };
+        const voidedAgreement = { ...issuableAgreement, status: 'voided' };
 
         (supabaseAdmin.from as jest.Mock).mockImplementation((table: string) => {
           if (table === 'investor_agreements') {
@@ -576,7 +860,7 @@ describe('Agreement Service', () => {
               select: jest.fn().mockReturnValue({
                 eq: jest.fn().mockReturnValue({
                   maybeSingle: jest.fn().mockResolvedValue({
-                    data: mockAgreement,
+                    data: issuableAgreement,
                     error: null,
                   }),
                 }),
@@ -624,7 +908,7 @@ describe('Agreement Service', () => {
 
         await expect(
           voidAgreement('agreement-123', mockActor, 'Test')
-        ).rejects.toThrow('Executed agreements cannot be voided');
+        ).rejects.toThrow('Only draft, generated, or issued agreements can be voided');
       });
     });
   });

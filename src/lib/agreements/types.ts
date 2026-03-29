@@ -14,6 +14,11 @@ export type InvestorAgreementStatus = (typeof INVESTOR_AGREEMENT_STATUSES)[numbe
 export type InvestorAgreement = {
   id: string;
   investor_id: string;
+  lender_sleeve_id?: string | null;
+  lender_allocation_intent_id?: string | null;
+  agreement_model_type?: 'fixed_debt' | 'pool_participation' | null;
+  superseded_at?: string | null;
+  superseded_reason?: string | null;
   agreement_type: string;
   status: InvestorAgreementStatus;
   commitment_amount: number;
@@ -64,6 +69,8 @@ export type AgreementDeliveryLog = {
 };
 
 export type AgreementTemplatePayload = {
+  agreementModelType: 'fixed_debt' | 'pool_participation';
+  sleeveName?: string | null;
   agreementDateLabel: string;
   investorName: string;
   investorEmail: string;
@@ -82,6 +89,10 @@ export type AgreementTemplatePayload = {
   companyCIN?: string | null;
   companyPAN?: string | null;
   jurisdiction: string;
+  fixedCouponRateAnnual?: number | null;
+  payoutPriorityRank?: number | null;
+  almBucket?: string | null;
+  liquidityNotes?: string | null;
   note?: string | null;
 };
 

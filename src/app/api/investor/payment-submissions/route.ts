@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { currentUser } from '@clerk/nextjs/server';
 import { supabaseAdmin } from '@/lib/supabase';
+import { getLenderAllocationIntentById, markAllocationIntentFundingSubmitted } from '@/lib/lender-allocation-intents';
 
 const DOC_BUCKET = 'investor-documents';
 
@@ -90,6 +91,7 @@ export async function POST(request: NextRequest) {
     let paymentMethod = 'bank_transfer';
     let paymentReference = '';
     let notes = '';
+    let allocationIntentId = '';
     let proofDocumentPath: string | null = null;
 
     if (contentType.includes('multipart/form-data')) {
@@ -100,6 +102,7 @@ export async function POST(request: NextRequest) {
       paymentMethod = String(formData.get('payment_method') || 'bank_transfer');
       paymentReference = String(formData.get('payment_reference') || '');
       notes = String(formData.get('notes') || '');
+      allocationIntentId = String(formData.get('allocation_intent_id') || '');
 
       const proofFile = formData.get('proof_file') as File | null;
       if (proofFile) {
@@ -129,15 +132,31 @@ export async function POST(request: NextRequest) {
       paymentMethod = String(body.payment_method || 'bank_transfer');
       paymentReference = String(body.payment_reference || '');
       notes = String(body.notes || '');
+      allocationIntentId = String(body.allocation_intent_id || '');
     }
 
-    if (!Number.isFinite(amount) || amount <= 0) {
-      return NextResponse.json({ error: 'Amount must be a positive number' }, { status: 400 });
+    if (!allocationIntentId) {
+      return NextResponse.json({ error: 'Allocation intent is required' }, { status: 400 });
     }
 
     if (!paymentDate) {
       return NextResponse.json({ error: 'Payment date is required' }, { status: 400 });
     }
+
+    const allocationIntent = await getLenderAllocationIntentById(allocationIntentId);
+    if (!allocationIntent || allocationIntent.investor_id !== investor.id) {
+      return NextResponse.json({ error: 'Allocation intent not found' }, { status: 404 });
+    }
+
+    if (allocationIntent.status !== 'ready_for_funding') {
+      return NextResponse.json(
+        { error: 'This allocation is not ready for funding yet. Finish the required agreements first.' },
+        { status: 400 }
+      );
+    }
+
+    amount = Number(allocationIntent.total_amount);
+    const allocationPayload = allocationIntent.allocation_payload;
 
     const { data, error } = await supabaseAdmin
       .from('investor_payment_submissions')
@@ -149,6 +168,8 @@ export async function POST(request: NextRequest) {
           payment_method: paymentMethod,
           payment_reference: paymentReference || null,
           notes: notes || null,
+          allocation_intent_id: allocationIntent.id,
+          allocation_payload: allocationPayload,
           proof_document_path: proofDocumentPath,
           status: 'pending',
         },
@@ -160,6 +181,8 @@ export async function POST(request: NextRequest) {
       console.error('Failed to create investor payment submission:', error);
       return NextResponse.json({ error: 'Failed to submit payment confirmation' }, { status: 500 });
     }
+
+    await markAllocationIntentFundingSubmitted(allocationIntent.id);
 
     return NextResponse.json({ success: true, submission: data }, { status: 201 });
   } catch (error) {

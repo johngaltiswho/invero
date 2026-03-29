@@ -1,5 +1,10 @@
 import { formatCurrency } from '@/lib/email';
 import {
+  FIXED_DEBT_LENDER_TEMPLATE_KEY,
+  FIXED_DEBT_LENDER_TEMPLATE_VERSION,
+  renderFixedDebtLenderHTML,
+} from '@/lib/agreements/templates/fixed-debt-lender';
+import {
   INVESTOR_PARTICIPATION_TEMPLATE_KEY,
   INVESTOR_PARTICIPATION_TEMPLATE_VERSION,
   renderInvestorParticipationHTML,
@@ -7,6 +12,8 @@ import {
 import type { AgreementTemplatePayload } from '@/lib/agreements/types';
 
 type BuildPayloadInput = {
+  agreementModelType?: 'fixed_debt' | 'pool_participation';
+  sleeveName?: string | null;
   investor: {
     name: string;
     email: string;
@@ -24,6 +31,10 @@ type BuildPayloadInput = {
   notes?: string | null;
   investorSignedName?: string | null;
   investorSignedAt?: string | null;
+  fixedCouponRateAnnual?: number | null;
+  payoutPriorityRank?: number | null;
+  almBucket?: string | null;
+  liquidityNotes?: string | null;
 };
 
 const FINVERNO_COMPANY_NAME = 'Finverno Private Limited';
@@ -55,6 +66,8 @@ export function buildInvestorAgreementPayload(input: BuildPayloadInput): Agreeme
       : input.investorSignedAt || null;
 
   return {
+    agreementModelType: input.agreementModelType || 'pool_participation',
+    sleeveName: input.sleeveName || null,
     agreementDateLabel,
     investorName: input.investor.name,
     investorEmail: input.investor.email,
@@ -73,11 +86,23 @@ export function buildInvestorAgreementPayload(input: BuildPayloadInput): Agreeme
     companyCIN: FINVERNO_COMPANY_CIN,
     companyPAN: FINVERNO_COMPANY_PAN,
     jurisdiction: FINVERNO_JURISDICTION,
+    fixedCouponRateAnnual: input.fixedCouponRateAnnual ?? null,
+    payoutPriorityRank: input.payoutPriorityRank ?? null,
+    almBucket: input.almBucket ?? null,
+    liquidityNotes: input.liquidityNotes ?? null,
     note: input.notes || null,
   };
 }
 
 export function renderAgreementHTML(payload: AgreementTemplatePayload): { templateKey: string; templateVersion: string; html: string } {
+  if (payload.agreementModelType === 'fixed_debt') {
+    return {
+      templateKey: FIXED_DEBT_LENDER_TEMPLATE_KEY,
+      templateVersion: FIXED_DEBT_LENDER_TEMPLATE_VERSION,
+      html: renderFixedDebtLenderHTML(payload),
+    };
+  }
+
   return {
     templateKey: INVESTOR_PARTICIPATION_TEMPLATE_KEY,
     templateVersion: INVESTOR_PARTICIPATION_TEMPLATE_VERSION,

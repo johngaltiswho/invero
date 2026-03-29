@@ -6,6 +6,10 @@ import { Button } from '@/components';
 type AgreementData = {
   id: string;
   status: string;
+  agreement_model_type?: 'fixed_debt' | 'pool_participation' | null;
+  sleeveName?: string | null;
+  lender_sleeve_id?: string | null;
+  funding_unlocked?: boolean;
   commitment_amount: number;
   agreement_date: string;
   company_signatory_name?: string | null;
@@ -49,6 +53,8 @@ export default function InvestorAgreementStatusCard({ agreement, files, onSigned
 
   const amount = `Rs ${(Number(agreement.commitment_amount) || 0).toLocaleString('en-IN')}`;
   const canSign = agreement.status === 'issued' && !!files.draft_url;
+  const canViewDraft = ['issued', 'investor_signed', 'executed'].includes(agreement.status) && !!files.draft_url;
+  const modelLabel = agreement.agreement_model_type === 'fixed_debt' ? 'Fixed Debt Sleeve' : 'Pool Participation Sleeve';
 
   const handleSign = async () => {
     try {
@@ -88,14 +94,18 @@ export default function InvestorAgreementStatusCard({ agreement, files, onSigned
       <div className="flex items-start justify-between gap-4 mb-6">
         <div>
           <h2 className="text-xl font-semibold text-primary mb-2">Agreement Status</h2>
-          <p className="text-secondary">Track your Finverno participation agreement lifecycle.</p>
+          <p className="text-secondary">Track your Finverno agreement lifecycle for the {agreement.sleeveName || modelLabel}.</p>
         </div>
         <span className="px-3 py-1 rounded border text-xs text-accent-amber bg-accent-amber/10 border-accent-amber/20 uppercase">
           {agreement.status.replace(/_/g, ' ')}
         </span>
       </div>
 
-      <div className="grid md:grid-cols-5 gap-4 mb-6 text-sm">
+      <div className="grid md:grid-cols-6 gap-4 mb-6 text-sm">
+        <div className="rounded-lg bg-neutral-medium/30 p-4">
+          <div className="text-secondary mb-1">Sleeve</div>
+          <div className="text-primary font-semibold">{agreement.sleeveName || modelLabel}</div>
+        </div>
         <div className="rounded-lg bg-neutral-medium/30 p-4">
           <div className="text-secondary mb-1">Commitment</div>
           <div className="text-primary font-semibold">{amount}</div>
@@ -126,11 +136,16 @@ export default function InvestorAgreementStatusCard({ agreement, files, onSigned
             {agreement.company_signatory_title ? `, ${agreement.company_signatory_title}` : ''}
             {agreement.executed_at ? ` on ${new Date(agreement.executed_at).toLocaleString('en-IN')}` : ''}.
           </div>
+          <div className="mt-2 text-secondary">
+            {agreement.funding_unlocked
+              ? 'This sleeve is eligible for capital submission.'
+              : 'Capital submission stays locked until the current sleeve agreement is fully executed.'}
+          </div>
         </div>
       )}
 
       <div className="flex flex-wrap gap-3">
-        {files.draft_url && (
+        {canViewDraft && (
           <a href={files.draft_url} target="_blank" rel="noreferrer">
             <Button variant="outline" size="sm">View Draft</Button>
           </a>
@@ -150,6 +165,12 @@ export default function InvestorAgreementStatusCard({ agreement, files, onSigned
       {(message || error) && (
         <div className={`mt-6 rounded-lg border px-4 py-3 text-sm ${error ? 'border-error/30 bg-error/10 text-error' : 'border-success/30 bg-success/10 text-success'}`}>
           {error || message}
+        </div>
+      )}
+
+      {!canSign && agreement.status === 'issued' && (
+        <div className="mt-6 rounded-lg border border-neutral-medium p-5 text-sm text-secondary">
+          This agreement is visible in the portal, but signing will only appear once Finverno has formally released the signable version for this sleeve.
         </div>
       )}
 

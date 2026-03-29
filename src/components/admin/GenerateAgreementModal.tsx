@@ -80,7 +80,8 @@ export default function GenerateAgreementModal({
                 type="date"
                 value={values.agreement_date}
                 onChange={(event) => onChange('agreement_date', event.target.value)}
-                className="w-full rounded-md border border-neutral-medium bg-neutral-darker px-3 py-2 text-primary"
+                style={{ colorScheme: 'dark' }}
+                className="w-full rounded-md border border-neutral-medium bg-neutral-darker px-3 py-2 text-white"
               />
             </div>
             <div>

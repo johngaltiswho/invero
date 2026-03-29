@@ -1,9 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createAgreementSignedUrl, getInvestorAgreementForCurrentUser } from '@/lib/agreements/service';
+import { createAgreementSignedUrl, getInvestorAgreementsForCurrentUser, selectCurrentInvestorAgreements } from '@/lib/agreements/service';
 
 export async function GET(request: NextRequest) {
   try {
-    const { agreement } = await getInvestorAgreementForCurrentUser();
+    const { agreements } = await getInvestorAgreementsForCurrentUser();
+    const requestedAgreementId = new URL(request.url).searchParams.get('agreement_id');
+    const currentAgreements = selectCurrentInvestorAgreements(agreements || []);
+    const agreement = requestedAgreementId
+      ? (agreements || []).find((candidate) => candidate.id === requestedAgreementId) || null
+      : currentAgreements[0] || null;
     if (!agreement) {
       return NextResponse.json({ error: 'Agreement not found' }, { status: 404 });
     }

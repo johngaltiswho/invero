@@ -2,6 +2,9 @@ import { NextResponse } from 'next/server';
 import { currentUser } from '@clerk/nextjs/server';
 import { createClient } from '@supabase/supabase-js';
 import { calculateSoftPoolValuation } from '@/lib/pool-valuation';
+import { listLenderSleevesForInvestor } from '@/lib/lender-sleeves';
+import { listLenderAllocationIntentsForInvestor, refreshAllocationIntentReadiness } from '@/lib/lender-allocation-intents';
+import { selectCurrentInvestorAgreements } from '@/lib/agreements/service';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -51,6 +54,26 @@ export async function GET() {
     }
 
     console.log('✅ Active investor found:', investor.name);
+
+    const [sleeves, investorAgreements, allocationIntents] = await Promise.all([
+      listLenderSleevesForInvestor(investor.id),
+      supabase
+        .from('investor_agreements')
+        .select('id, lender_sleeve_id, status, agreement_model_type, executed_at, created_at, superseded_at')
+        .eq('investor_id', investor.id)
+        .order('created_at', { ascending: false }),
+      listLenderAllocationIntentsForInvestor(investor.id),
+    ]);
+
+    const currentAgreements = selectCurrentInvestorAgreements((investorAgreements.data || []) as any[]);
+    const currentAgreementBySleeveId = new Map(currentAgreements.map((agreement: any) => [agreement.lender_sleeve_id, agreement]));
+    const refreshedAllocationIntents = await Promise.all(
+      (allocationIntents || []).map((intent) =>
+        ['draft', 'agreements_pending', 'ready_for_funding'].includes(intent.status)
+          ? refreshAllocationIntentReadiness(intent.id)
+          : intent
+      )
+    );
 
     // Fetch all projects for investment opportunities
     console.log('🔄 Fetching all projects for opportunities...');
@@ -484,6 +507,63 @@ export async function GET() {
         projectedNetXirr: poolValuation.projectedNetXirr
       },
       poolExposure: investorExposure,
+      sleeves: (sleeves || []).map((sleeve) => {
+        const latestAgreement = currentAgreementBySleeveId.get(sleeve.id) || null;
+        const relatedIntents = refreshedAllocationIntents.filter((intent) =>
+          Array.isArray(intent.required_models) && intent.required_models.includes(sleeve.model_type)
+        );
+        if (sleeve.model_type === 'fixed_debt') {
+          return {
+            id: sleeve.id,
+            name: sleeve.name,
+            modelType: sleeve.model_type,
+            status: sleeve.status,
+            agreementStatus: sleeve.agreement_status,
+            latestAgreementStatus: latestAgreement?.status || null,
+            agreementComplete: latestAgreement?.status === 'executed',
+            canFund: relatedIntents.some((intent) => intent.status === 'ready_for_funding'),
+            commitmentAmount: Number(sleeve.commitment_amount || 0),
+            fundedAmount: Number(sleeve.funded_amount || 0),
+            summary: {
+              principalOutstanding: Number(sleeve.principal_outstanding || 0),
+              fixedCouponRateAnnual: Number(sleeve.fixed_coupon_rate_annual || 0),
+              couponAccrued: Number(sleeve.coupon_accrued || 0),
+              couponPaid: Number(sleeve.coupon_paid || 0),
+              payoutPriorityRank: sleeve.payout_priority_rank,
+              almBucket: sleeve.alm_bucket,
+              liquidityNotes: sleeve.liquidity_notes,
+            },
+          };
+        }
+
+        return {
+          id: sleeve.id,
+          name: sleeve.name,
+          modelType: sleeve.model_type,
+          status: sleeve.status,
+          agreementStatus: sleeve.agreement_status,
+          latestAgreementStatus: latestAgreement?.status || null,
+          agreementComplete: latestAgreement?.status === 'executed',
+          canFund: relatedIntents.some((intent) => intent.status === 'ready_for_funding'),
+          commitmentAmount: Number(sleeve.commitment_amount || 0),
+          fundedAmount: Number(sleeve.funded_amount || 0),
+          summary: {
+            unitsHeld: Number(sleeve.units_held || poolPosition.unitsHeld || 0),
+            entryNavPerUnit: Number(sleeve.entry_nav_per_unit || poolPosition.entryNavPerUnit || 100),
+            ownershipPercent: Number(sleeve.ownership_percent_snapshot || poolPosition.ownershipPercent || 0),
+            grossValue: poolPosition.grossValue,
+            netValue: poolPosition.netValue,
+            deployedPrincipal: poolValuation.deployedPrincipal * ownershipRatio,
+          },
+        };
+      }),
+      totalFixedDebtExposure: (sleeves || [])
+        .filter((sleeve) => sleeve.model_type === 'fixed_debt')
+        .reduce((sum, sleeve) => sum + Number(sleeve.principal_outstanding || sleeve.funded_amount || 0), 0),
+      totalPoolExposure: (sleeves || [])
+        .filter((sleeve) => sleeve.model_type === 'pool_participation')
+        .reduce((sum, sleeve) => sum + Number(sleeve.funded_amount || 0), 0),
+      allocationIntents: refreshedAllocationIntents,
       allProjects: enhancedProjects,
       allContractors: allContractors || [],
       relatedContractors: allContractors || [],

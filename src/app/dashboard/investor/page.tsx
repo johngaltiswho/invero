@@ -15,7 +15,8 @@ export default function InvestorDashboard(): React.ReactElement {
   const router = useRouter();
   const { investor, loading: investorLoading, error } = useInvestor();
   const [isAddCapitalModalOpen, setIsAddCapitalModalOpen] = useState(false);
-  const [agreementData, setAgreementData] = useState<{ agreement: any; files: any } | null>(null);
+  const [agreementData, setAgreementData] = useState<{ agreements: Array<any> } | null>(null);
+  const [activeModelTab, setActiveModelTab] = useState<'pool_participation' | 'fixed_debt'>('pool_participation');
 
   // Redirect if not authenticated
   useEffect(() => {
@@ -35,7 +36,7 @@ export default function InvestorDashboard(): React.ReactElement {
         const response = await fetch('/api/investor/agreement');
         const result = await response.json();
         if (response.ok && result.success) {
-          setAgreementData({ agreement: result.agreement, files: result.files || {} });
+          setAgreementData({ agreements: result.agreements || [] });
         }
       } catch (error) {
         console.error('Failed to load investor agreement status:', error);
@@ -44,6 +45,97 @@ export default function InvestorDashboard(): React.ReactElement {
 
     loadAgreement();
   }, [user, isLoaded]);
+
+  // Use Google Sheets data
+  const portfolioMetrics = investor?.portfolioMetrics || {
+    totalInvested: 0,
+    totalReturns: 0,
+    currentValue: 0,
+    roi: 0,
+    netRoi: 0,
+    portfolioXirr: 0,
+    activeInvestments: 0,
+    completedInvestments: 0,
+    totalInvestments: 0,
+    capitalInflow: 0,
+    capitalReturns: 0,
+    netCapitalReturns: 0,
+    managementFees: 0,
+    performanceFees: 0,
+    potentialPerformanceFees: 0,
+    grossNavPerUnit: 100,
+    netNavPerUnit: 100,
+    unitsHeld: 0,
+    ownershipPercent: 0,
+    deployedPoolShare: 0,
+    poolCashShare: 0,
+    accruedParticipationIncomeShare: 0,
+    preferredReturnAccruedShare: 0,
+    realizedInvestorRoi: 0
+  };
+  const poolSummary = investor?.poolSummary || {
+    grossPoolValue: 0,
+    netPoolValue: 0,
+    grossNavPerUnit: 100,
+    netNavPerUnit: 100,
+    projectedGrossXirr: 0,
+    projectedNetXirr: 0,
+    realizedXirr: 0,
+    totalPoolUnits: 0,
+    poolCash: 0,
+    deployedPrincipal: 0,
+    accruedParticipationIncome: 0,
+    managementFeeAccrued: 0,
+    preferredReturnAccrued: 0,
+    realizedCarryAccrued: 0,
+    potentialCarry: 0,
+    valuationDate: new Date().toISOString()
+  };
+  const poolPosition = investor?.poolPosition || {
+    unitsHeld: 0,
+    ownershipPercent: 0,
+    entryNavPerUnit: 100,
+    grossValue: 0,
+    netValue: 0,
+    grossGain: 0,
+    netGain: 0,
+    contributedCapital: 0,
+    shareOfPoolCash: 0,
+    shareOfDeployedPrincipal: 0,
+    shareOfAccruedParticipationIncome: 0,
+    shareOfPreferredReturnAccrued: 0,
+    shareOfManagementFeeAccrued: 0,
+    shareOfRealizedCarry: 0,
+    shareOfPotentialCarry: 0
+  };
+
+  const poolExposure = investor?.poolExposure || [];
+  const sleeves = investor?.sleeves || [];
+  const totalFixedDebtExposure = investor?.totalFixedDebtExposure || 0;
+  const totalPoolExposure = investor?.totalPoolExposure || 0;
+  const poolSleeve = sleeves.find((sleeve: any) => sleeve.modelType === 'pool_participation') || null;
+  const fixedDebtSleeve = sleeves.find((sleeve: any) => sleeve.modelType === 'fixed_debt') || null;
+  const totalCommittedAcrossSleeves = sleeves.reduce((sum: number, sleeve: any) => sum + Number(sleeve.commitmentAmount || 0), 0);
+  const totalFundedAcrossSleeves = sleeves.reduce((sum: number, sleeve: any) => sum + Number(sleeve.fundedAmount || 0), 0);
+  const fixedIncomeCurrentValue =
+    Number(fixedDebtSleeve?.summary?.principalOutstanding || 0) + Number(fixedDebtSleeve?.summary?.couponAccrued || 0);
+  const combinedCurrentValue = Number(poolSleeve?.summary?.netValue || 0) + fixedIncomeCurrentValue;
+  const combinedAccruedIncome =
+    Math.max(Number(poolSleeve?.summary?.netValue || 0) - Number(poolSleeve?.commitmentAmount || 0), 0) +
+    Number(fixedDebtSleeve?.summary?.couponAccrued || 0);
+  const poolAgreementState =
+    poolSleeve?.canFund ? 'Ready to fund' : poolSleeve?.agreementComplete ? 'Executed' : 'Agreement pending';
+  const fixedDebtAgreementState =
+    fixedDebtSleeve?.canFund ? 'Ready to fund' : fixedDebtSleeve?.agreementComplete ? 'Executed' : 'Agreement pending';
+
+  useEffect(() => {
+    if (activeModelTab === 'fixed_debt' && !fixedDebtSleeve && poolSleeve) {
+      setActiveModelTab('pool_participation');
+    }
+    if (activeModelTab === 'pool_participation' && !poolSleeve && fixedDebtSleeve) {
+      setActiveModelTab('fixed_debt');
+    }
+  }, [activeModelTab, fixedDebtSleeve, poolSleeve]);
 
   // Show loading state while Clerk loads OR investor data loads
   if (!isLoaded || investorLoading) {
@@ -115,71 +207,6 @@ export default function InvestorDashboard(): React.ReactElement {
       </div>
     );
   }
-
-  // Use Google Sheets data
-  const portfolioMetrics = investor?.portfolioMetrics || {
-    totalInvested: 0,
-    totalReturns: 0,
-    currentValue: 0,
-    roi: 0,
-    netRoi: 0,
-    portfolioXirr: 0,
-    activeInvestments: 0,
-    completedInvestments: 0,
-    totalInvestments: 0,
-    capitalInflow: 0,
-    capitalReturns: 0,
-    netCapitalReturns: 0,
-    managementFees: 0,
-    performanceFees: 0,
-    potentialPerformanceFees: 0,
-    grossNavPerUnit: 100,
-    netNavPerUnit: 100,
-    unitsHeld: 0,
-    ownershipPercent: 0,
-    deployedPoolShare: 0,
-    poolCashShare: 0,
-    accruedParticipationIncomeShare: 0,
-    preferredReturnAccruedShare: 0,
-    realizedInvestorRoi: 0
-  };
-  const poolSummary = investor?.poolSummary || {
-    grossPoolValue: 0,
-    netPoolValue: 0,
-    grossNavPerUnit: 100,
-    netNavPerUnit: 100,
-    projectedGrossXirr: 0,
-    projectedNetXirr: 0,
-    realizedXirr: 0,
-    totalPoolUnits: 0,
-    poolCash: 0,
-    deployedPrincipal: 0,
-    accruedParticipationIncome: 0,
-    managementFeeAccrued: 0,
-    preferredReturnAccrued: 0,
-    realizedCarryAccrued: 0,
-    potentialCarry: 0,
-    valuationDate: new Date().toISOString()
-  };
-  const poolPosition = investor?.poolPosition || {
-    unitsHeld: 0,
-    ownershipPercent: 0,
-    entryNavPerUnit: 100,
-    grossValue: 0,
-    netValue: 0,
-    grossGain: 0,
-    netGain: 0,
-    contributedCapital: 0,
-    shareOfPoolCash: 0,
-    shareOfDeployedPrincipal: 0,
-    shareOfAccruedParticipationIncome: 0,
-    shareOfPreferredReturnAccrued: 0,
-    shareOfManagementFeeAccrued: 0,
-    shareOfRealizedCarry: 0,
-    shareOfPotentialCarry: 0
-  };
-
-  const poolExposure = investor?.poolExposure || [];
 
   // Calculate sector allocation from investments
   const sectorData: { [key: string]: number } = {};
@@ -293,83 +320,273 @@ export default function InvestorDashboard(): React.ReactElement {
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
               </svg>
-              Add Capital
+              Funding & Agreements
             </button>
           </div>
         </div>
 
-        {/* Key Metrics */}
-        <div className="grid gap-4 sm:gap-6 md:grid-cols-2 xl:grid-cols-4 mb-8">
-          <div className="bg-neutral-dark p-4 sm:p-6 rounded-lg border border-neutral-medium">
-            <div className="text-accent-amber text-sm font-mono mb-2">CAPITAL COMMITTED</div>
-            <div className="text-2xl font-bold text-primary mb-1">{formatCurrency(poolPosition.contributedCapital)}</div>
-            <div className="text-xs text-secondary">
-              Pool ownership: {poolPosition.ownershipPercent.toFixed(2)}%
+        {sleeves.length > 0 && (
+          <div className="mb-8">
+            <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+              <div>
+                <h2 className="text-xl font-semibold text-primary">Lender Sleeves</h2>
+                <p className="text-sm text-secondary">Your capital can sit in separate pool participation and fixed debt sleeves under one lender profile.</p>
+              </div>
+              <div className="text-sm text-secondary">
+                <div>Pool Exposure: {formatCurrency(totalPoolExposure)}</div>
+                <div>Fixed Debt Exposure: {formatCurrency(totalFixedDebtExposure)}</div>
+              </div>
+            </div>
+            <div className="grid gap-4 lg:grid-cols-2">
+              {sleeves.map((sleeve: any) => (
+                <button
+                  key={sleeve.id}
+                  type="button"
+                  onClick={() => router.push(`/dashboard/investor/sleeves/${sleeve.id}`)}
+                  className="rounded-lg border border-neutral-medium bg-neutral-dark p-5 text-left transition-colors hover:border-accent-amber/40"
+                >
+                  <div className="mb-3 flex items-start justify-between gap-3">
+                    <div>
+                      <div className="text-lg font-semibold text-primary">{sleeve.name}</div>
+                      <div className="text-xs uppercase tracking-wide text-secondary">{String(sleeve.modelType || '').replace(/_/g, ' ')}</div>
+                    </div>
+                    <span className="rounded border border-accent-amber/20 bg-accent-amber/10 px-2 py-1 text-[11px] uppercase text-accent-amber">
+                      {sleeve.latestAgreementStatus || sleeve.agreementStatus || sleeve.status}
+                    </span>
+                  </div>
+                  <div className="mb-3 text-xs text-secondary">
+                    {sleeve.canFund
+                      ? 'Ready to submit capital'
+                      : sleeve.agreementComplete
+                        ? 'Agreement executed. Await Finverno funding instructions for this sleeve.'
+                        : 'Agreement required before funding'}
+                  </div>
+                  <div className="grid grid-cols-2 gap-3 text-sm">
+                    <div className="rounded bg-neutral-medium/20 p-3">
+                      <div className="text-secondary">Committed</div>
+                      <div className="font-medium text-primary">{formatCurrency(Number(sleeve.commitmentAmount || 0))}</div>
+                    </div>
+                    <div className="rounded bg-neutral-medium/20 p-3">
+                      <div className="text-secondary">Funded</div>
+                      <div className="font-medium text-primary">{formatCurrency(Number(sleeve.fundedAmount || 0))}</div>
+                    </div>
+                    {sleeve.modelType === 'fixed_debt' ? (
+                      <>
+                        <div className="rounded bg-neutral-medium/20 p-3">
+                          <div className="text-secondary">Principal Outstanding</div>
+                          <div className="font-medium text-primary">{formatCurrency(Number(sleeve.summary?.principalOutstanding || 0))}</div>
+                        </div>
+                        <div className="rounded bg-neutral-medium/20 p-3">
+                          <div className="text-secondary">Coupon</div>
+                          <div className="font-medium text-primary">{((Number(sleeve.summary?.fixedCouponRateAnnual || 0) || 0) * 100).toFixed(2)}%</div>
+                        </div>
+                      </>
+                    ) : (
+                      <>
+                        <div className="rounded bg-neutral-medium/20 p-3">
+                          <div className="text-secondary">Units Held</div>
+                          <div className="font-medium text-primary">{Number(sleeve.summary?.unitsHeld || 0).toFixed(4)}</div>
+                        </div>
+                        <div className="rounded bg-neutral-medium/20 p-3">
+                          <div className="text-secondary">Net Value</div>
+                          <div className="font-medium text-primary">{formatCurrency(Number(sleeve.summary?.netValue || 0))}</div>
+                        </div>
+                      </>
+                    )}
+                  </div>
+                </button>
+              ))}
             </div>
           </div>
-          <div className="bg-neutral-dark p-4 sm:p-6 rounded-lg border border-neutral-medium">
-            <div className="text-accent-amber text-sm font-mono mb-2">POOL UNITS HELD</div>
-            <div className="text-2xl font-bold text-primary mb-1">{poolPosition.unitsHeld.toFixed(4)}</div>
-            <div className="text-xs text-secondary">Entry NAV: ₹{poolPosition.entryNavPerUnit.toFixed(4)}</div>
-          </div>
-          
-          <div className="bg-neutral-dark p-4 sm:p-6 rounded-lg border border-neutral-medium">
-            <div className="text-accent-amber text-sm font-mono mb-2">CURRENT NET NAV</div>
-            <div className="text-2xl font-bold text-primary mb-1">₹{poolSummary.netNavPerUnit.toFixed(4)}</div>
-            <div className="text-xs text-secondary">Gross NAV: ₹{poolSummary.grossNavPerUnit.toFixed(4)}</div>
-          </div>
-          
-          <div className="bg-neutral-dark p-4 sm:p-6 rounded-lg border border-neutral-medium">
-            <div className="text-accent-amber text-sm font-mono mb-2">CURRENT NET VALUE</div>
-            <div className="text-2xl font-bold text-primary mb-1">{formatCurrency(poolPosition.netValue)}</div>
-            <div className="text-xs text-success">Gross value: {formatCurrency(poolPosition.grossValue)}</div>
-          </div>
-          
-          <div className="bg-neutral-dark p-4 sm:p-6 rounded-lg border border-neutral-medium">
-            <div className="text-accent-amber text-sm font-mono mb-2">PROJECTED GROSS XIRR</div>
-            <div className="text-2xl font-bold text-accent-amber mb-1">
-              {Number.isFinite(poolSummary.projectedGrossXirr) ? poolSummary.projectedGrossXirr.toFixed(1) : '0.0'}%
-            </div>
-            <div className="text-xs text-secondary">Based on current pool value and accrued income</div>
-          </div>
+        )}
 
-          <div className="bg-neutral-dark p-4 sm:p-6 rounded-lg border border-neutral-medium">
-            <div className="text-accent-amber text-sm font-mono mb-2">PROJECTED NET XIRR</div>
-            <div className="text-2xl font-bold text-accent-amber mb-1">
-              {Number.isFinite(poolSummary.projectedNetXirr) ? Number(poolSummary.projectedNetXirr).toFixed(1) : '0.0'}%
-            </div>
-            <div className="text-xs text-secondary">After accrued 2% management fee only</div>
+        <div className="mb-8 rounded-lg border border-neutral-medium bg-neutral-dark p-6">
+          <div className="mb-4">
+            <h2 className="text-xl font-semibold text-primary">Combined Portfolio Snapshot</h2>
+            <p className="text-sm text-secondary">
+              Keep the combined view high-level. Pool participation and fixed income should keep their own return logic, while this slab shows the blended economic position.
+            </p>
           </div>
-          
-          <div className="bg-neutral-dark p-4 sm:p-6 rounded-lg border border-neutral-medium">
-            <div className="text-accent-amber text-sm font-mono mb-2">YOUR DEPLOYED POOL SHARE</div>
-            <div className="text-2xl font-bold text-primary mb-1">
-              {formatCurrency(poolPosition.shareOfDeployedPrincipal)}
+          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+            <div className="rounded-lg bg-neutral-medium/20 p-4">
+              <div className="text-xs font-mono text-accent-amber mb-2">TOTAL COMMITTED</div>
+              <div className="text-2xl font-bold text-primary">{formatCurrency(totalCommittedAcrossSleeves)}</div>
             </div>
-            <div className="text-xs text-secondary">
-              Cash awaiting deployment: {formatCurrency(poolPosition.shareOfPoolCash)}
+            <div className="rounded-lg bg-neutral-medium/20 p-4">
+              <div className="text-xs font-mono text-accent-amber mb-2">TOTAL FUNDED</div>
+              <div className="text-2xl font-bold text-primary">{formatCurrency(totalFundedAcrossSleeves)}</div>
             </div>
-          </div>
-          
-          <div className="bg-neutral-dark p-4 sm:p-6 rounded-lg border border-neutral-medium">
-            <div className="text-accent-amber text-sm font-mono mb-2">YOUR 2% / 20 IMPACT</div>
-            <div className="text-2xl font-bold text-accent-amber mb-1">
-              {formatCurrency(poolPosition.shareOfManagementFeeAccrued + poolPosition.shareOfRealizedCarry)}
+            <div className="rounded-lg bg-neutral-medium/20 p-4">
+              <div className="text-xs font-mono text-accent-amber mb-2">CURRENT COMBINED VALUE</div>
+              <div className="text-2xl font-bold text-primary">{formatCurrency(combinedCurrentValue)}</div>
+              <div className="text-xs text-secondary">
+                Pool value plus fixed-income principal and accrued coupon
+              </div>
             </div>
-            <div className="text-xs text-secondary">
-              Mgmt accrued: {formatCurrency(poolPosition.shareOfManagementFeeAccrued)} • Realized carry: {formatCurrency(poolPosition.shareOfRealizedCarry)}
+            <div className="rounded-lg bg-neutral-medium/20 p-4">
+              <div className="text-xs font-mono text-accent-amber mb-2">ACCRUED / UNLOCKED UPSIDE</div>
+              <div className="text-2xl font-bold text-primary">{formatCurrency(combinedAccruedIncome)}</div>
+              <div className="text-xs text-secondary">
+                Use this instead of a forced blended XIRR across both models
+              </div>
             </div>
-          </div>
-          
-          <div className="bg-neutral-dark p-4 sm:p-6 rounded-lg border border-neutral-medium">
-            <div className="text-accent-amber text-sm font-mono mb-2">POTENTIAL CARRY</div>
-            <div className="text-2xl font-bold text-primary mb-1">{formatCurrency(poolPosition.shareOfPotentialCarry)}</div>
-            <div className="text-xs text-secondary">Shown for transparency only. Not deducted until realized.</div>
           </div>
         </div>
 
         <div className="mb-8">
-          <InvestorAgreementStatusCard agreement={agreementData?.agreement || null} files={agreementData?.files || {}} />
+          <div className="mb-4 flex flex-wrap gap-3">
+            <button
+              type="button"
+              onClick={() => setActiveModelTab('pool_participation')}
+              className={`rounded-lg border px-4 py-2 text-sm font-medium transition-colors ${
+                activeModelTab === 'pool_participation'
+                  ? 'border-accent-amber bg-accent-amber/10 text-accent-amber'
+                  : 'border-neutral-medium bg-neutral-dark text-secondary hover:border-accent-amber/30 hover:text-primary'
+              }`}
+            >
+              Pool Participation
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveModelTab('fixed_debt')}
+              className={`rounded-lg border px-4 py-2 text-sm font-medium transition-colors ${
+                activeModelTab === 'fixed_debt'
+                  ? 'border-accent-amber bg-accent-amber/10 text-accent-amber'
+                  : 'border-neutral-medium bg-neutral-dark text-secondary hover:border-accent-amber/30 hover:text-primary'
+              }`}
+            >
+              Fixed Income
+            </button>
+          </div>
+
+          {activeModelTab === 'pool_participation' ? (
+            <div className="space-y-6">
+              <div className="rounded-lg border border-neutral-medium bg-neutral-dark p-6">
+                <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+                  <div>
+                    <h2 className="text-xl font-semibold text-primary">Pool Participation</h2>
+                    <p className="text-sm text-secondary">All pooled return logic stays here so the portfolio overview is easier to read.</p>
+                  </div>
+                  <div className="text-sm text-secondary">Agreement: {poolAgreementState}</div>
+                </div>
+                <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+                  <div className="rounded-lg bg-neutral-medium/20 p-4">
+                    <div className="text-xs font-mono text-accent-amber mb-2">CAPITAL COMMITTED</div>
+                    <div className="text-2xl font-bold text-primary">{formatCurrency(Number(poolSleeve?.commitmentAmount || poolPosition.contributedCapital || 0))}</div>
+                    <div className="text-xs text-secondary">Pool ownership: {poolPosition.ownershipPercent.toFixed(2)}%</div>
+                  </div>
+                  <div className="rounded-lg bg-neutral-medium/20 p-4">
+                    <div className="text-xs font-mono text-accent-amber mb-2">POOL UNITS HELD</div>
+                    <div className="text-2xl font-bold text-primary">{poolPosition.unitsHeld.toFixed(4)}</div>
+                    <div className="text-xs text-secondary">Entry NAV: ₹{poolPosition.entryNavPerUnit.toFixed(4)}</div>
+                  </div>
+                  <div className="rounded-lg bg-neutral-medium/20 p-4">
+                    <div className="text-xs font-mono text-accent-amber mb-2">CURRENT NET NAV</div>
+                    <div className="text-2xl font-bold text-primary">₹{poolSummary.netNavPerUnit.toFixed(4)}</div>
+                    <div className="text-xs text-secondary">Gross NAV: ₹{poolSummary.grossNavPerUnit.toFixed(4)}</div>
+                  </div>
+                  <div className="rounded-lg bg-neutral-medium/20 p-4">
+                    <div className="text-xs font-mono text-accent-amber mb-2">CURRENT NET VALUE</div>
+                    <div className="text-2xl font-bold text-primary">{formatCurrency(poolPosition.netValue)}</div>
+                    <div className="text-xs text-success">Gross value: {formatCurrency(poolPosition.grossValue)}</div>
+                  </div>
+                  <div className="rounded-lg bg-neutral-medium/20 p-4">
+                    <div className="text-xs font-mono text-accent-amber mb-2">PROJECTED GROSS XIRR</div>
+                    <div className="text-2xl font-bold text-accent-amber">
+                      {Number.isFinite(poolSummary.projectedGrossXirr) ? poolSummary.projectedGrossXirr.toFixed(1) : '0.0'}%
+                    </div>
+                    <div className="text-xs text-secondary">Based on current pool value and accrued income</div>
+                  </div>
+                  <div className="rounded-lg bg-neutral-medium/20 p-4">
+                    <div className="text-xs font-mono text-accent-amber mb-2">PROJECTED NET XIRR</div>
+                    <div className="text-2xl font-bold text-accent-amber">
+                      {Number.isFinite(poolSummary.projectedNetXirr) ? Number(poolSummary.projectedNetXirr).toFixed(1) : '0.0'}%
+                    </div>
+                    <div className="text-xs text-secondary">After accrued 2% management fee only</div>
+                  </div>
+                  <div className="rounded-lg bg-neutral-medium/20 p-4">
+                    <div className="text-xs font-mono text-accent-amber mb-2">DEPLOYED POOL SHARE</div>
+                    <div className="text-2xl font-bold text-primary">{formatCurrency(poolPosition.shareOfDeployedPrincipal)}</div>
+                    <div className="text-xs text-secondary">Cash awaiting deployment: {formatCurrency(poolPosition.shareOfPoolCash)}</div>
+                  </div>
+                  <div className="rounded-lg bg-neutral-medium/20 p-4">
+                    <div className="text-xs font-mono text-accent-amber mb-2">FEE / CARRY IMPACT</div>
+                    <div className="text-2xl font-bold text-primary">{formatCurrency(poolPosition.shareOfManagementFeeAccrued + poolPosition.shareOfRealizedCarry)}</div>
+                    <div className="text-xs text-secondary">
+                      Mgmt accrued: {formatCurrency(poolPosition.shareOfManagementFeeAccrued)} • Realized carry: {formatCurrency(poolPosition.shareOfRealizedCarry)}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div className="space-y-6">
+              <div className="rounded-lg border border-neutral-medium bg-neutral-dark p-6">
+                <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+                  <div>
+                    <h2 className="text-xl font-semibold text-primary">Fixed Income</h2>
+                    <p className="text-sm text-secondary">Keep the debt economics in a separate slab so coupon, liquidity, and payout sequencing are not mixed with pool NAV logic.</p>
+                  </div>
+                  <div className="text-sm text-secondary">Agreement: {fixedDebtAgreementState}</div>
+                </div>
+                {fixedDebtSleeve ? (
+                  <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+                    <div className="rounded-lg bg-neutral-medium/20 p-4">
+                      <div className="text-xs font-mono text-accent-amber mb-2">COMMITTED</div>
+                      <div className="text-2xl font-bold text-primary">{formatCurrency(Number(fixedDebtSleeve.commitmentAmount || 0))}</div>
+                    </div>
+                    <div className="rounded-lg bg-neutral-medium/20 p-4">
+                      <div className="text-xs font-mono text-accent-amber mb-2">FUNDED</div>
+                      <div className="text-2xl font-bold text-primary">{formatCurrency(Number(fixedDebtSleeve.fundedAmount || 0))}</div>
+                    </div>
+                    <div className="rounded-lg bg-neutral-medium/20 p-4">
+                      <div className="text-xs font-mono text-accent-amber mb-2">PRINCIPAL OUTSTANDING</div>
+                      <div className="text-2xl font-bold text-primary">{formatCurrency(Number(fixedDebtSleeve.summary?.principalOutstanding || 0))}</div>
+                    </div>
+                    <div className="rounded-lg bg-neutral-medium/20 p-4">
+                      <div className="text-xs font-mono text-accent-amber mb-2">FIXED COUPON</div>
+                      <div className="text-2xl font-bold text-primary">{((Number(fixedDebtSleeve.summary?.fixedCouponRateAnnual || 0) || 0) * 100).toFixed(2)}%</div>
+                    </div>
+                    <div className="rounded-lg bg-neutral-medium/20 p-4">
+                      <div className="text-xs font-mono text-accent-amber mb-2">COUPON ACCRUED</div>
+                      <div className="text-2xl font-bold text-primary">{formatCurrency(Number(fixedDebtSleeve.summary?.couponAccrued || 0))}</div>
+                    </div>
+                    <div className="rounded-lg bg-neutral-medium/20 p-4">
+                      <div className="text-xs font-mono text-accent-amber mb-2">COUPON PAID</div>
+                      <div className="text-2xl font-bold text-primary">{formatCurrency(Number(fixedDebtSleeve.summary?.couponPaid || 0))}</div>
+                    </div>
+                    <div className="rounded-lg bg-neutral-medium/20 p-4">
+                      <div className="text-xs font-mono text-accent-amber mb-2">PAYOUT PRIORITY</div>
+                      <div className="text-2xl font-bold text-primary">
+                        {fixedDebtSleeve.summary?.payoutPriorityRank != null ? String(fixedDebtSleeve.summary.payoutPriorityRank) : 'Not set'}
+                      </div>
+                    </div>
+                    <div className="rounded-lg bg-neutral-medium/20 p-4">
+                      <div className="text-xs font-mono text-accent-amber mb-2">ALM BUCKET</div>
+                      <div className="text-2xl font-bold text-primary">{String(fixedDebtSleeve.summary?.almBucket || 'Not set')}</div>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="rounded-lg border border-neutral-medium bg-neutral-medium/10 p-5 text-sm text-secondary">
+                    No fixed-income sleeve is active yet. Once Finverno prepares a fixed-income allocation for you, this slab will show coupon and principal metrics here.
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
+
+        <div className="mb-8 space-y-4">
+          {(agreementData?.agreements || []).map((agreement: any) => (
+            <InvestorAgreementStatusCard
+              key={agreement.id}
+              agreement={agreement}
+              files={agreement.files || {}}
+            />
+          ))}
+          {!agreementData?.agreements?.length && (
+            <InvestorAgreementStatusCard agreement={null} files={{}} />
+          )}
         </div>
 
         <div className={`grid gap-8 ${showPortfolioInsights ? 'lg:grid-cols-3' : ''}`}>

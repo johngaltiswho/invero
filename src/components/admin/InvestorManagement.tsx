@@ -3,6 +3,8 @@
 import React, { useState, useEffect } from 'react';
 import { Button } from '@/components';
 import InvestorAgreementPanel from '@/components/admin/InvestorAgreementPanel';
+import InvestorAllocationPanel from '@/components/admin/InvestorAllocationPanel';
+import InvestorInterestPanel from '@/components/admin/InvestorInterestPanel';
 
 interface Investor {
   id: string;
@@ -499,6 +501,8 @@ const InvestorManagement: React.FC = () => {
                 </div>
 
                 <InvestorAgreementPanel investor={selectedInvestor} />
+                <InvestorAllocationPanel investor={selectedInvestor} />
+                <InvestorInterestPanel investor={selectedInvestor} />
               </div>
             </div>
           ) : (

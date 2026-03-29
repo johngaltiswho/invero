@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { currentUser } from '@clerk/nextjs/server';
 import { supabaseAdmin } from '@/lib/supabase';
+import { selectCurrentInvestorAgreements } from '@/lib/agreements/service';
 
 const BUCKET = 'investor-documents';
 
@@ -58,10 +59,44 @@ function parseDocumentMetadata(fileName: string) {
   };
 }
 
+function buildAgreementDocumentName(input: {
+  agreementModelType?: string | null;
+  documentType: 'agreement-draft' | 'agreement-signed' | 'agreement-executed';
+  sleeveName?: string | null;
+}) {
+  const baseLabel =
+    input.agreementModelType === 'fixed_debt' ? 'Fixed Debt Sleeve' : 'Pool Participation Sleeve';
+  const sleeveLabel = input.sleeveName || baseLabel;
+  const statusLabel =
+    input.documentType === 'agreement-executed'
+      ? 'Executed Agreement'
+      : input.documentType === 'agreement-signed'
+        ? 'Signed Agreement'
+        : 'Agreement Draft';
+
+  return `${sleeveLabel} - ${statusLabel}.pdf`;
+}
+
 export async function GET() {
   try {
     const investor = await getActiveInvestor();
     await ensureBucket();
+
+    const { data: agreements, error: agreementsError } = await supabaseAdmin
+      .from('investor_agreements')
+      .select('id, lender_sleeve_id, agreement_model_type, draft_pdf_path, signed_pdf_path, executed_pdf_path, updated_at, created_at, superseded_at, status')
+      .eq('investor_id', investor.id)
+      .order('updated_at', { ascending: false });
+
+    if (agreementsError) {
+      console.error('Failed to load investor agreements for documents:', agreementsError);
+      return NextResponse.json({ error: 'Failed to fetch documents' }, { status: 500 });
+    }
+
+    const { data: sleeves } = await supabaseAdmin
+      .from('lender_sleeves')
+      .select('id, name, model_type')
+      .eq('investor_id', investor.id);
 
     const { data: files, error } = await supabaseAdmin.storage
       .from(BUCKET)
@@ -76,9 +111,63 @@ export async function GET() {
       return NextResponse.json({ error: 'Failed to fetch documents' }, { status: 500 });
     }
 
-    const filteredFiles = (files || []).filter((file: any) => file.metadata?.size);
+    const sleeveMap = new Map<string, { id: string; name: string; model_type?: string | null }>(
+      ((sleeves || []) as Array<{ id: string; name: string; model_type?: string | null }>).map((sleeve) => [sleeve.id, sleeve])
+    );
 
-    const documents = await Promise.all(
+    const latestAgreementPaths = new Map<
+      string,
+      {
+        storagePath: string;
+        documentType: 'agreement-draft' | 'agreement-signed' | 'agreement-executed';
+        agreementModelType?: string | null;
+        sleeveName?: string | null;
+        createdAt?: string | null;
+      }
+    >();
+
+    for (const agreement of selectCurrentInvestorAgreements((agreements || []) as any[])) {
+      const sleeve = agreement.lender_sleeve_id ? sleeveMap.get(agreement.lender_sleeve_id) : null;
+      const groupKeyPrefix = agreement.lender_sleeve_id || agreement.agreement_model_type || 'legacy';
+      const candidatePaths = [
+        {
+          key: `${groupKeyPrefix}:agreement-draft`,
+          storagePath: agreement.draft_pdf_path,
+          documentType: 'agreement-draft' as const,
+        },
+        {
+          key: `${groupKeyPrefix}:agreement-signed`,
+          storagePath: agreement.signed_pdf_path,
+          documentType: 'agreement-signed' as const,
+        },
+        {
+          key: `${groupKeyPrefix}:agreement-executed`,
+          storagePath: agreement.executed_pdf_path,
+          documentType: 'agreement-executed' as const,
+        },
+      ];
+
+      for (const candidate of candidatePaths) {
+        if (!candidate.storagePath || latestAgreementPaths.has(candidate.key)) continue;
+        latestAgreementPaths.set(candidate.key, {
+          storagePath: candidate.storagePath,
+          documentType: candidate.documentType,
+          agreementModelType: agreement.agreement_model_type,
+          sleeveName: sleeve?.name || null,
+          createdAt: agreement.updated_at || agreement.created_at || null,
+        });
+      }
+    }
+
+    const agreementPathSet = new Set(
+      Array.from(latestAgreementPaths.values()).map((document) => document.storagePath)
+    );
+
+    const filteredFiles = (files || []).filter(
+      (file: any) => file.metadata?.size && !String(file.name || '').startsWith('agreement-')
+    );
+
+    const storageDocuments = await Promise.all(
       filteredFiles.map(async (file: any) => {
         const storagePath = `${investor.id}/${file.name}`;
         const { documentType, originalName, uploadedAt } = parseDocumentMetadata(file.name);
@@ -97,6 +186,35 @@ export async function GET() {
         };
       })
     );
+
+    const agreementDocuments = await Promise.all(
+      Array.from(latestAgreementPaths.values()).map(async (document) => {
+        const { data: signed } = await supabaseAdmin.storage
+          .from(BUCKET)
+          .createSignedUrl(document.storagePath, 60 * 60);
+
+        return {
+          name: buildAgreementDocumentName({
+            agreementModelType: document.agreementModelType,
+            documentType: document.documentType,
+            sleeveName: document.sleeveName,
+          }),
+          documentType: document.documentType,
+          size: 0,
+          createdAt: document.createdAt || null,
+          path: document.storagePath,
+          signedUrl: signed?.signedUrl || null,
+        };
+      })
+    );
+
+    const documents = [...agreementDocuments, ...storageDocuments]
+      .filter((document) => document.signedUrl || !agreementPathSet.has(document.path))
+      .sort((left, right) => {
+        const leftTime = left.createdAt ? new Date(left.createdAt).getTime() : 0;
+        const rightTime = right.createdAt ? new Date(right.createdAt).getTime() : 0;
+        return rightTime - leftTime;
+      });
 
     return NextResponse.json({ success: true, documents });
   } catch (error) {

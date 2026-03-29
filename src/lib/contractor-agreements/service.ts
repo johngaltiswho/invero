@@ -178,6 +178,39 @@ async function buildAgreementArtifacts(existing: ContractorAgreement, updates: {
   return { contractor, payload, rendered, filePath, agreementDate, companySignatoryName, companySignatoryTitle, notes };
 }
 
+async function buildExecutedAgreementArtifacts(
+  agreement: ContractorAgreement,
+  companyCountersignedAt: string
+) {
+  const contractor = await ContractorService.getContractorById(agreement.contractor_id);
+  if (!contractor) throw new Error('Contractor not found');
+  const underwriting = await getContractorUnderwritingSummary(agreement.contractor_id);
+  const payload = buildContractorAgreementPayload({
+    agreementType: agreement.agreement_type,
+    contractor,
+    agreementDate: agreement.agreement_date,
+    companySignatoryName: agreement.company_signatory_name || '',
+    companySignatoryTitle: agreement.company_signatory_title || '',
+    financingLimit: underwriting.financing_limit,
+    repaymentBasis: underwriting.repayment_basis,
+    paymentWindowDays: underwriting.payment_window_days,
+    lateDefaultTerms: underwriting.late_default_terms,
+    notes: agreement.notes || null,
+    contractorSignedName: agreement.contractor_signed_name || contractor.contact_person,
+    contractorSignedAt: agreement.contractor_signed_at,
+    companyCountersignedAt,
+  });
+  const rendered = renderContractorAgreementHTML(payload);
+  const executedPdfPath = await uploadAgreementPdf({
+    contractor,
+    payload,
+    prefix: `${agreement.agreement_type}-executed`,
+    templateVersion: rendered.templateVersion,
+  });
+
+  return { contractor, payload, rendered, executedPdfPath };
+}
+
 export async function regenerateContractorAgreementDraft(
   agreementId: string,
   actor: AdminActor,
@@ -256,7 +289,8 @@ export async function sendContractorAgreementEmail(agreementId: string, actor: A
 
   const draftUrl = await createContractorAgreementSignedUrl(agreement.draft_pdf_path);
   const appUrl = getAppUrl();
-  const portalUrl = `${appUrl.replace(/\/$/, '')}/dashboard/contractor/agreement`;
+  const agreementPath = '/dashboard/contractor/agreement';
+  const portalUrl = `${appUrl.replace(/\/$/, '')}/sign-in?redirect_url=${encodeURIComponent(agreementPath)}`;
   const emailPayload = contractorAgreementReadyEmail({
     contractorName: contractor.company_name,
     agreementType: agreement.agreement_type,
@@ -338,6 +372,36 @@ export async function uploadContractorAgreementFile(input: {
   return data as ContractorAgreement;
 }
 
+function getPortalAgreementPriority(status: string): number {
+  switch (status) {
+    case 'issued':
+      return 0;
+    case 'contractor_signed':
+      return 1;
+    case 'executed':
+      return 2;
+    case 'generated':
+      return 3;
+    case 'draft':
+      return 4;
+    default:
+      return 5;
+  }
+}
+
+function selectPortalAgreement(agreements: ContractorAgreement[]): ContractorAgreement | null {
+  if (!agreements.length) return null;
+
+  return [...agreements].sort((left, right) => {
+    const priorityDiff = getPortalAgreementPriority(left.status) - getPortalAgreementPriority(right.status);
+    if (priorityDiff !== 0) return priorityDiff;
+
+    const leftCreatedAt = new Date(left.created_at || 0).getTime();
+    const rightCreatedAt = new Date(right.created_at || 0).getTime();
+    return rightCreatedAt - leftCreatedAt;
+  })[0] || null;
+}
+
 async function getLatestContractorAgreementForEmail(email: string): Promise<ContractorAgreement | null> {
   const contractor = await ContractorService.getContractorByEmail(email.toLowerCase());
   if (!contractor) return null;
@@ -347,15 +411,13 @@ async function getLatestContractorAgreementForEmail(email: string): Promise<Cont
     .select('*')
     .eq('contractor_id', contractor.id)
     .in('agreement_type', ['master_platform', 'financing_addendum', 'procurement_declaration'])
-    .order('created_at', { ascending: false })
-    .limit(1)
-    .maybeSingle();
+    .order('created_at', { ascending: false });
 
   if (error) {
     throw new Error(error.message || 'Failed to load contractor agreement');
   }
 
-  return (data || null) as ContractorAgreement | null;
+  return selectPortalAgreement((data || []) as ContractorAgreement[]);
 }
 
 export async function getContractorAgreementForCurrentUser(): Promise<{
@@ -380,6 +442,39 @@ export async function getContractorAgreementForCurrentUser(): Promise<{
 
   const contractor = await ContractorService.getContractorById(agreement.contractor_id);
   return { contractor, agreement };
+}
+
+export async function listContractorAgreementsForCurrentUser(): Promise<{
+  contractor: Awaited<ReturnType<typeof ContractorService.getContractorById>> | null;
+  agreements: ContractorAgreement[];
+}> {
+  const user = await currentUser();
+  if (!user) {
+    throw new Error('Not authenticated');
+  }
+
+  const email = user.emailAddresses[0]?.emailAddress?.toLowerCase();
+  if (!email) {
+    throw new Error('Missing email');
+  }
+
+  const contractor = await ContractorService.getContractorByEmail(email);
+  if (!contractor) {
+    return { contractor: null, agreements: [] };
+  }
+
+  const agreements = await listContractorAgreements(contractor.id);
+  return {
+    contractor,
+    agreements: agreements.sort((left, right) => {
+      const priorityDiff = getPortalAgreementPriority(left.status) - getPortalAgreementPriority(right.status);
+      if (priorityDiff !== 0) return priorityDiff;
+
+      const leftCreatedAt = new Date(left.created_at || 0).getTime();
+      const rightCreatedAt = new Date(right.created_at || 0).getTime();
+      return rightCreatedAt - leftCreatedAt;
+    }),
+  };
 }
 
 export async function signContractorAgreement(input: {
@@ -479,16 +574,21 @@ export async function markContractorAgreementExecuted(agreementId: string, actor
   const agreement = await getContractorAgreement(agreementId);
   if (!agreement) throw new Error('Agreement not found');
   if (agreement.status !== 'contractor_signed') throw new Error('Contractor-signed agreement is required before execution');
-  const executedPdfPath = agreement.executed_pdf_path || agreement.signed_pdf_path;
-  if (!executedPdfPath) throw new Error('Signed agreement file is required before countersigning');
+  if (!agreement.signed_pdf_path) throw new Error('Signed agreement file is required before countersigning');
 
   const executedAt = new Date().toISOString();
+  const { contractor, payload, rendered, executedPdfPath } = await buildExecutedAgreementArtifacts(agreement, executedAt);
+
   const { data, error } = await supabaseAdmin
     .from('contractor_agreements')
     .update({
       status: 'executed',
       executed_pdf_path: executedPdfPath,
       executed_at: executedAt,
+      payload_snapshot: payload,
+      rendered_html: rendered.html,
+      template_key: rendered.templateKey,
+      template_version: rendered.templateVersion,
       updated_by: actor.id,
       updated_at: executedAt,
     })
@@ -499,25 +599,103 @@ export async function markContractorAgreementExecuted(agreementId: string, actor
 
   await syncContractorOnboarding(agreement.contractor_id);
 
-  const contractor = await ContractorService.getContractorById(agreement.contractor_id);
-  if (contractor) {
-    try {
-      const emailPayload = contractorAgreementExecutedEmail({
-        contractorName: contractor.company_name,
-        agreementType: agreement.agreement_type,
-      });
-      await sendEmail({
-        to: contractor.email,
-        subject: emailPayload.subject,
-        text: emailPayload.text,
-        html: emailPayload.html,
-      });
-    } catch (emailError) {
-      console.error('Failed to send contractor executed agreement email:', emailError);
-    }
+  try {
+    const emailPayload = contractorAgreementExecutedEmail({
+      contractorName: contractor.company_name,
+      agreementType: agreement.agreement_type,
+    });
+    await sendEmail({
+      to: contractor.email,
+      subject: emailPayload.subject,
+      text: emailPayload.text,
+      html: emailPayload.html,
+    });
+  } catch (emailError) {
+    console.error('Failed to send contractor executed agreement email:', emailError);
   }
 
   return data as ContractorAgreement;
+}
+
+export async function regenerateExecutedContractorAgreement(
+  agreementId: string,
+  actor: AdminActor
+): Promise<ContractorAgreement> {
+  const agreement = await getContractorAgreement(agreementId);
+  if (!agreement) throw new Error('Agreement not found');
+  if (agreement.status !== 'executed') throw new Error('Only executed agreements can be regenerated');
+  if (!agreement.contractor_signed_at) throw new Error('Contractor signature timestamp is required to regenerate the executed copy');
+
+  const companyCountersignedAt = agreement.executed_at || agreement.updated_at || new Date().toISOString();
+  const { payload, rendered, executedPdfPath } = await buildExecutedAgreementArtifacts(agreement, companyCountersignedAt);
+
+  const { data, error } = await supabaseAdmin
+    .from('contractor_agreements')
+    .update({
+      executed_pdf_path: executedPdfPath,
+      payload_snapshot: payload,
+      rendered_html: rendered.html,
+      template_key: rendered.templateKey,
+      template_version: rendered.templateVersion,
+      updated_by: actor.id,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', agreementId)
+    .select('*')
+    .single();
+  if (error) throw new Error(error.message || 'Failed to regenerate executed agreement');
+
+  return data as ContractorAgreement;
+}
+
+export async function bulkRegenerateExecutedContractorAgreements(
+  actor: AdminActor,
+  filters?: {
+    contractorId?: string;
+    agreementType?: ContractorAgreementType;
+  }
+): Promise<{
+  total: number;
+  regenerated: number;
+  failed: Array<{ agreementId: string; error: string }>;
+}> {
+  let query = supabaseAdmin
+    .from('contractor_agreements')
+    .select('*')
+    .eq('status', 'executed')
+    .order('created_at', { ascending: false });
+
+  if (filters?.contractorId) {
+    query = query.eq('contractor_id', filters.contractorId);
+  }
+  if (filters?.agreementType) {
+    query = query.eq('agreement_type', filters.agreementType);
+  }
+
+  const { data, error } = await query;
+  if (error) throw new Error(error.message || 'Failed to load executed contractor agreements');
+
+  const agreements = (data || []) as ContractorAgreement[];
+  const failed: Array<{ agreementId: string; error: string }> = [];
+  let regenerated = 0;
+
+  for (const agreement of agreements) {
+    try {
+      await regenerateExecutedContractorAgreement(agreement.id, actor);
+      regenerated += 1;
+    } catch (regenerationError) {
+      failed.push({
+        agreementId: agreement.id,
+        error: regenerationError instanceof Error ? regenerationError.message : 'Failed to regenerate executed copy',
+      });
+    }
+  }
+
+  return {
+    total: agreements.length,
+    regenerated,
+    failed,
+  };
 }
 
 export async function voidContractorAgreement(agreementId: string, actor: AdminActor, reason?: string): Promise<ContractorAgreement> {

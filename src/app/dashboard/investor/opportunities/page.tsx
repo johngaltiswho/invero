@@ -1,586 +1,323 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { DashboardLayout } from '@/components/DashboardLayout';
-import { LoadingSpinner } from '@/components';
 import { useInvestor } from '@/contexts/InvestorContext';
 
-interface OpportunityCard {
+type InterestSubmission = {
   id: string;
-  projectName: string;
-  contractor: string;
-  client: string;
-  clientType: string;
-  sector: string;
-  fundingRequired: string;
-  projectValue: string;
-  expectedIRR: string;
-  tenure: string;
-  currentProgress?: number;
-  teamSize?: number;
-  riskRating: string;
-  esgRating: string;
-  status: string;
-  funded: number;
-  remainingFunding: string;
-  totalInvested: string;
-  numberOfInvestors: number;
-  milestones: string[];
-  highlights: string[];
-  esgData?: {
-    environmental: {
-      wasteReduction: number;
-      energyEfficiency: number;
-      localSourcing: number;
-    };
-    social: {
-      localEmployment: number;
-      skillDevelopment: number;
-      safetyCompliance: number;
-    };
-    governance: {
-      transparency: number;
-      compliance: number;
-      audits: number;
-    };
-  } | null;
-  esgNote?: string;
-  fundingNumeric?: number;
-  expectedIrrValue?: number | null;
-  tenureValue?: number | null;
-}
+  preferred_model: 'pool_participation' | 'fixed_debt' | 'open_to_both';
+  proposed_amount: number;
+  indicative_pool_amount: number;
+  indicative_fixed_debt_amount: number;
+  liquidity_preference?: 'flexible' | 'income_focused' | 'balanced' | 'higher_return' | null;
+  notes?: string | null;
+  status: 'new' | 'reviewed' | 'allocation_prepared' | 'converted' | 'cancelled';
+  created_at: string;
+};
 
-interface ProjectRecord {
-  id: string;
-  contractor_id: string;
-  project_name?: string | null;
-  client_name?: string | null;
-  funding_required?: number | null;
-  project_value?: number | null;
-  expected_irr?: number | null;
-  project_tenure?: number | null;
-  purchase_request_total?: number | null;
-  purchase_requests_total?: number | null;
-  total_purchase_requests?: number | null;
-  total_purchase_value?: number | null;
-  status?: string | null;
-  project_status?: string | null;
-  current_progress?: number | null;
-  team_size?: number | null;
-  esg_compliance?: string | null;
-  risk_level?: string | null;
-  next_milestone?: string | null;
-  [key: string]: string | number | null | undefined;
-}
+const MODEL_OPTIONS = [
+  {
+    id: 'pool_participation',
+    title: 'Pool Participation',
+    subtitle: 'Variable-return pooled participation',
+    points: [
+      'Participates in the pooled working-capital strategy rather than one specific receivable.',
+      'Current structure includes 12% hurdle, 2% management fee on deployed capital only, and 20% carry above hurdle.',
+      'Designed for investors comfortable with portfolio-style performance and variable cashflow timing.',
+    ],
+    idealFor: 'Investors seeking higher upside, portfolio diversification, and NAV-based reporting.',
+  },
+  {
+    id: 'fixed_debt',
+    title: 'Fixed Income',
+    subtitle: 'Private fixed-income sleeve',
+    points: [
+      'Annualized coupon is set on funded and outstanding principal.',
+      'Repayment timing depends on receivable realization, ALM, and payout sequencing rather than a hard maturity date.',
+      'Designed for investors who want clearer fixed-income economics with separate sleeve reporting.',
+    ],
+    idealFor: 'Investors prioritizing income visibility over pool-style variable return participation.',
+  },
+] as const;
 
-interface ContractorRecord {
-  id: string;
-  company_name?: string | null;
-  business_category?: string | null;
-  risk_rating?: string | null;
-  completed_projects?: number | null;
-  success_rate?: number | null;
-  [key: string]: string | number | null | undefined;
-}
-
-export default function InvestmentOpportunities(): React.ReactElement {
-  const [selectedFilter, setSelectedFilter] = useState('all');
-  const [selectedRisk, setSelectedRisk] = useState('all');
-  const [selectedESG, setSelectedESG] = useState('all');
-  const { investor, loading } = useInvestor();
-
-  // Generate dynamic opportunities from available contractors and projects
-  const generateOpportunities = () => {
-    console.log('🔍 Generating opportunities...');
-    console.log('Full investor data structure:', investor);
-    
-    if (!investor) {
-      console.log('❌ No investor data available');
-      return [];
-    }
-
-    // Debug: Log all available data with details
-    console.log('Available contractors:', investor.availableOpportunities?.length || 0, investor.availableOpportunities);
-    console.log('Related contractors:', investor.relatedContractors?.length || 0, investor.relatedContractors);
-    console.log('Related projects:', investor.relatedProjects?.length || 0, investor.relatedProjects);
-    console.log('Current investments:', investor.investments?.length || 0, investor.investments);
-
-    // Show ALL projects as opportunities (regardless of investment status)
-    const allProjects = investor.relatedProjects || [];
-    const allContractors = investor.relatedContractors || [];
-    
-    const allActiveProjects = allProjects.filter(project => {
-      const status = String(project.project_status || project.status || '').toLowerCase();
-      return status === 'awarded' || status === 'finalized';
-    });
-    
-    console.log('📋 Total projects available:', allProjects.length);
-    console.log('📋 Active projects for opportunities:', allActiveProjects.length);
-    console.log('📋 Total contractors available:', allContractors.length);
-
-    const opportunities: OpportunityCard[] = [];
-
-    // Create opportunities from ALL active projects
-    allActiveProjects.forEach((project, index) => {
-      console.log(`Processing project ${index + 1}:`, project.project_name, 'from contractor:', project.contractor_id);
-      
-      // Find the contractor for this project from ALL contractors
-      const contractor = allContractors.find(c => c.id === project.contractor_id);
-      
-      if (!contractor) {
-        console.log(`⚠️ No contractor found for project ${project.id} (${project.contractor_id}) - skipping`);
-        return; // Skip projects without contractors
-      }
-
-      const opportunity = createOpportunityFromProject(project as ProjectRecord, contractor as ContractorRecord, index);
-      if (opportunity) {
-        opportunities.push(opportunity);
-      }
-    });
-
-    // Helper function to create opportunity from project and contractor
-    function createOpportunityFromProject(
-      project: ProjectRecord,
-      contractor: ContractorRecord,
-      index: number
-    ): OpportunityCard | null {
-      const purchaseRequestTotal =
-        project.purchase_request_total ||
-        project.purchase_requests_total ||
-        project.total_purchase_requests ||
-        project.total_purchase_value ||
-        0;
-
-      const fundingNumeric = purchaseRequestTotal || project.funding_required || project.project_value || 0;
-      const fundingRequired = new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', minimumFractionDigits: 0 }).format(fundingNumeric);
-      const projectValueNumeric = Number(project.estimated_value || project.project_value || fundingNumeric);
-      const projectValueDisplay = new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', minimumFractionDigits: 0 }).format(projectValueNumeric);
-      const expectedIRRDisplay = '--';
-      const tenureDisplay = '3-6 months';
-      
-      // Calculate real funding progress from actual investments
-      const allInvestments = investor!.investments || [];
-      const projectInvestments = allInvestments.filter(inv => inv.project_id === project.id);
-      const totalInvested = projectInvestments.reduce((sum, inv) => sum + inv.investment_amount, 0);
-      const fundedPercentage = fundingNumeric > 0 ? Math.round((totalInvested / fundingNumeric) * 100) : 0;
-      
-      // Calculate remaining funding needed
-      const remainingFunding = Math.max(0, fundingNumeric - totalInvested);
-      
-      console.log(`📋 Project ${project.project_name} funding analysis:`, {
-        fundingRequired: project.funding_required,
-        totalInvested: totalInvested,
-        fundedPercentage: fundedPercentage,
-        remainingFunding: remainingFunding,
-        numberOfInvestors: projectInvestments.length,
-        expectedIRR: project.expected_irr,
-        projectTenure: project.project_tenure,
-        fundingStatus: project.status
-      });
-      
-      // Generate ESG score based on contractor profile
-      const esgScore = contractor.business_category?.includes('Engineering') ? 'Gold' : 
-                      contractor.business_category?.includes('IT') ? 'Silver' : 'Bronze';
-
-      // Create client name for the opportunity
-      const clientName = project.client_name || `${contractor.business_category || 'Industrial'} Client`;
-      const projectName = project.project_name || `${contractor.business_category || 'Engineering'} Project`;
-
-      const formatMilestoneDate = (dateValue?: string | null) => {
-        if (!dateValue) return null;
-        const date = new Date(dateValue);
-        if (Number.isNaN(date.getTime())) return null;
-        return date.toLocaleDateString('en-IN', { month: 'short', day: 'numeric' });
-      };
-
-      const milestones: string[] = [];
-      const nextMilestone = project.next_milestone as string | null;
-      const nextMilestoneDate = formatMilestoneDate(project.next_milestone_date as string | null);
-      if (nextMilestone) {
-        milestones.push(nextMilestoneDate ? `${nextMilestone} • ${nextMilestoneDate}` : nextMilestone);
-      }
-      if (typeof project.current_progress === 'number') {
-        milestones.push(`Current progress: ${project.current_progress}%`);
-      }
-      if (project.project_status) {
-        milestones.push(`Status: ${project.project_status}`);
-      }
-      if (milestones.length === 0) {
-        milestones.push('Project milestones will be updated as schedules sync from the contractor.');
-      }
-
-      const highlights: string[] = [
-        'Project highlights will be updated from contractor reports soon.'
-      ];
-
-      const scheduleProgress =
-        typeof project.schedule_progress === 'number'
-          ? project.schedule_progress
-          : typeof project.current_progress === 'number'
-          ? project.current_progress
-          : 0;
-
-      const opportunity: OpportunityCard = {
-        id: `OPP-2025-${String(index + 150).padStart(3, '0')}`,
-        projectName: projectName,
-        contractor: contractor.company_name || 'Unknown Contractor',
-        client: clientName,
-        clientType: ['Tata', 'Mahindra', 'HCL', 'Infosys', 'TCS'].some(mnc => 
-          clientName?.includes(mnc)) ? 'MNC' : 'Large Enterprise',
-        sector: contractor.business_category || 'Engineering Services',
-        fundingRequired,
-        projectValue: projectValueDisplay,
-        fundingNumeric,
-        expectedIrrValue: typeof project.expected_irr === 'number' ? project.expected_irr : null,
-        tenureValue: typeof project.project_tenure === 'number' ? project.project_tenure : null,
-        expectedIRR: expectedIRRDisplay,
-        tenure: tenureDisplay,
-        riskRating: project.risk_level || contractor.risk_rating || 'Medium',
-        esgRating: project.esg_compliance === 'Yes' ? 'Gold' : esgScore,
-        status: project.status || 'Open',
-        funded: fundedPercentage,
-        remainingFunding: new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', minimumFractionDigits: 0 }).format(remainingFunding),
-        totalInvested: new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', minimumFractionDigits: 0 }).format(totalInvested),
-        numberOfInvestors: projectInvestments.length,
-        currentProgress: scheduleProgress,
-        teamSize: project.team_size || 8,
-        milestones,
-        highlights,
-        esgData: null,
-        esgNote: 'ESG performance metrics will be published once contractor reporting is synced.'
-      };
-
-      console.log(`✅ Created opportunity ${opportunity.id} for ${contractor.company_name} - ${projectName}`);
-      return opportunity;
-    }
-
-    console.log(`📊 Generated ${opportunities.length} opportunities total`);
-    
-    return opportunities;
-  };
-
-  const opportunities = generateOpportunities();
-
-  const getRiskColor = (risk: string) => {
-    switch (risk) {
-      case 'Low': return 'text-success';
-      case 'Medium': return 'text-accent-amber';
-      case 'High': return 'text-warning';
-      default: return 'text-secondary';
-    }
-  };
-
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case 'Open': return 'bg-accent-blue/10 text-accent-blue';
-      case 'Funding': return 'bg-accent-amber/10 text-accent-amber';
-      case 'Closed': return 'bg-neutral-medium text-secondary';
-      default: return 'bg-neutral-medium text-secondary';
-    }
-  };
-
-  const getESGColor = (rating: string) => {
-    switch (rating) {
-      case 'Gold': return 'text-accent-amber';
-      case 'Silver': return 'text-neutral-light';
-      case 'Bronze': return 'text-orange-400';
-      default: return 'text-secondary';
-    }
-  };
-
-  const filteredOpportunities = opportunities.filter(opp => {
-    if (selectedFilter !== 'all' && opp.sector !== selectedFilter) return false;
-    if (selectedRisk !== 'all' && opp.riskRating !== selectedRisk) return false;
-    if (selectedESG !== 'all' && opp.esgRating !== selectedESG) return false;
-    return true;
+export default function InvestorOptionsPage(): React.ReactElement {
+  const { investor } = useInvestor();
+  const [submissions, setSubmissions] = useState<InterestSubmission[]>([]);
+  const [submitting, setSubmitting] = useState(false);
+  const [message, setMessage] = useState<string | null>(null);
+  const [form, setForm] = useState({
+    preferredModel: 'open_to_both',
+    proposedAmount: '',
+    indicativePoolAmount: '',
+    indicativeFixedDebtAmount: '',
+    liquidityPreference: 'balanced',
+    notes: '',
   });
 
-  const totalFundingRequired = filteredOpportunities.reduce(
-    (sum, opportunity) => sum + (opportunity.fundingNumeric ?? 0),
-    0
-  );
+  const latestSubmission = submissions[0] || null;
 
-  const irrValues = filteredOpportunities
-    .map((opportunity) => opportunity.expectedIrrValue)
-    .filter((value): value is number => typeof value === 'number');
-  const avgIrrValue = irrValues.length
-    ? irrValues.reduce((sum, value) => sum + value, 0) / irrValues.length
-    : null;
+  useEffect(() => {
+    void loadSubmissions();
+  }, []);
 
-  const tenureValues = filteredOpportunities
-    .map((opportunity) => opportunity.tenureValue)
-    .filter((value): value is number => typeof value === 'number');
-  const avgTenureValue = tenureValues.length
-    ? tenureValues.reduce((sum, value) => sum + value, 0) / tenureValues.length
-    : null;
+  const loadSubmissions = async () => {
+    try {
+      const response = await fetch('/api/investor/interest');
+      const result = await response.json();
+      if (response.ok && result.success) {
+        setSubmissions(result.submissions || []);
+      }
+    } catch (error) {
+      console.error('Failed to load investor interest submissions:', error);
+    }
+  };
 
-  if (loading) {
-    return (
-      <DashboardLayout activeTab="opportunities">
-        <div className="p-6">
-          <LoadingSpinner 
-            title="Discovering Investment Opportunities"
-            description="Analyzing market data and ESG-compliant projects to find the best investment opportunities for you"
-            icon="💼"
-            fullScreen={true}
-            steps={[
-              "Scanning active projects...",
-              "Evaluating ESG compliance ratings...",
-              "Calculating risk-return profiles..."
-            ]}
-          />
-        </div>
-      </DashboardLayout>
-    );
-  }
+  const suggestedSplitText = useMemo(() => {
+    if (form.preferredModel !== 'open_to_both') return null;
+    const pool = Number(form.indicativePoolAmount || 0);
+    const fixed = Number(form.indicativeFixedDebtAmount || 0);
+    if (pool <= 0 && fixed <= 0) return 'You can leave the split blank if you want Finverno to recommend one.';
+    return `Indicative split: Pool ${formatCurrency(pool)} · Fixed Income ${formatCurrency(fixed)}`;
+  }, [form.preferredModel, form.indicativePoolAmount, form.indicativeFixedDebtAmount]);
+
+  const submitInterest = async (event: React.FormEvent) => {
+    event.preventDefault();
+    setSubmitting(true);
+    setMessage(null);
+
+    try {
+      const response = await fetch('/api/investor/interest', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          preferred_model: form.preferredModel,
+          proposed_amount: Number(form.proposedAmount),
+          indicative_pool_amount: Number(form.indicativePoolAmount || 0),
+          indicative_fixed_debt_amount: Number(form.indicativeFixedDebtAmount || 0),
+          liquidity_preference: form.liquidityPreference,
+          notes: form.notes,
+        }),
+      });
+
+      const result = await response.json();
+      if (!response.ok) {
+        throw new Error(result?.error || 'Failed to submit investment preference');
+      }
+
+      setMessage('Your preference has been shared with Finverno. We will review it and prepare the proposed allocation and agreement set.');
+      setForm({
+        preferredModel: 'open_to_both',
+        proposedAmount: '',
+        indicativePoolAmount: '',
+        indicativeFixedDebtAmount: '',
+        liquidityPreference: 'balanced',
+        notes: '',
+      });
+      await loadSubmissions();
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : 'Failed to submit investment preference');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const formatCurrency = (amount: number) =>
+    new Intl.NumberFormat('en-IN', {
+      style: 'currency',
+      currency: 'INR',
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 0,
+    }).format(amount);
 
   return (
     <DashboardLayout activeTab="opportunities">
-      <div className="p-6">
-        {/* Header */}
+      <div className="p-4 sm:p-6">
         <div className="mb-8">
-          <h1 className="text-3xl font-bold text-primary mb-2">ESG-Integrated Investment Opportunities</h1>
+          <h1 className="text-2xl sm:text-3xl font-bold text-primary mb-2">Investment Options</h1>
           <p className="text-secondary">
-            Curated project financing opportunities with institutional-grade due diligence and ESG compliance verification
+            Review the two Finverno models, share your preference, and let us prepare the final allocation and agreement flow with you.
           </p>
         </div>
 
-        {/* Filters */}
-        <div className="bg-neutral-dark rounded-lg border border-neutral-medium p-6 mb-8">
-          <div className="grid md:grid-cols-5 gap-6">
-            <div>
-              <label className="block text-sm font-medium text-primary mb-2">Sector</label>
-              <select 
-                value={selectedFilter} 
-                onChange={(e) => setSelectedFilter(e.target.value)}
-                className="w-full px-3 py-2 bg-neutral-medium border border-neutral-light rounded text-primary text-sm"
-              >
-                <option value="all">All Sectors</option>
-                <option value="Manufacturing">Manufacturing</option>
-                <option value="IT Services">IT Services</option>
-                <option value="Industrial Automation">Industrial Automation</option>
-                <option value="Engineering Services">Engineering Services</option>
-                <option value="Construction">Construction</option>
-              </select>
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-primary mb-2">Risk Rating</label>
-              <select 
-                value={selectedRisk} 
-                onChange={(e) => setSelectedRisk(e.target.value)}
-                className="w-full px-3 py-2 bg-neutral-medium border border-neutral-light rounded text-primary text-sm"
-              >
-                <option value="all">All Risk Levels</option>
-                <option value="Low">Low Risk</option>
-                <option value="Medium">Medium Risk</option>
-                <option value="High">High Risk</option>
-              </select>
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-primary mb-2">ESG Rating</label>
-              <select 
-                value={selectedESG} 
-                onChange={(e) => setSelectedESG(e.target.value)}
-                className="w-full px-3 py-2 bg-neutral-medium border border-neutral-light rounded text-primary text-sm"
-              >
-                <option value="all">All ESG Ratings</option>
-                <option value="Gold">ESG Gold</option>
-                <option value="Silver">ESG Silver</option>
-                <option value="Bronze">ESG Bronze</option>
-              </select>
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-primary mb-2">XIRR Range</label>
-              <select className="w-full px-3 py-2 bg-neutral-medium border border-neutral-light rounded text-primary text-sm">
-                <option value="all">All XIRR Ranges</option>
-                <option value="12-14">12-14%</option>
-                <option value="14-16">14-16%</option>
-                <option value="16+">16%+</option>
-              </select>
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-primary mb-2">Tenure</label>
-              <select className="w-full px-3 py-2 bg-neutral-medium border border-neutral-light rounded text-primary text-sm">
-                <option value="all">All Tenures</option>
-                <option value="3-6">3-6 months</option>
-                <option value="6-9">6-9 months</option>
-                <option value="9-12">9-12 months</option>
-              </select>
-            </div>
-          </div>
+        <div className="grid gap-6 xl:grid-cols-2">
+          {MODEL_OPTIONS.map((model) => (
+            <section key={model.id} className="rounded-lg border border-neutral-medium bg-neutral-dark p-6">
+              <div className="mb-4">
+                <h2 className="text-xl font-semibold text-primary">{model.title}</h2>
+                <p className="mt-1 text-sm text-secondary">{model.subtitle}</p>
+              </div>
+              <div className="space-y-3 text-sm text-secondary">
+                {model.points.map((point) => (
+                  <p key={point}>{point}</p>
+                ))}
+              </div>
+              <div className="mt-4 rounded-lg bg-neutral-medium/20 p-4 text-sm">
+                <div className="text-primary font-medium mb-1">Best suited for</div>
+                <div className="text-secondary">{model.idealFor}</div>
+              </div>
+            </section>
+          ))}
         </div>
 
-        {/* Summary Stats */}
-        <div className="grid md:grid-cols-4 gap-6 mb-8">
-          <div className="bg-neutral-dark p-4 rounded-lg border border-neutral-medium">
-            <div className="text-accent-amber text-sm font-mono mb-1">AVAILABLE DEALS</div>
-            <div className="text-2xl font-bold text-primary">{filteredOpportunities.length}</div>
-          </div>
-          <div className="bg-neutral-dark p-4 rounded-lg border border-neutral-medium">
-            <div className="text-accent-amber text-sm font-mono mb-1">TOTAL FUNDING</div>
-            <div className="text-2xl font-bold text-primary">
-              {new Intl.NumberFormat('en-IN', {
-                style: 'currency',
-                currency: 'INR',
-                minimumFractionDigits: 0,
-                maximumFractionDigits: 0
-              }).format(totalFundingRequired)}
-            </div>
-          </div>
-          <div className="bg-neutral-dark p-4 rounded-lg border border-neutral-medium">
-            <div className="text-accent-amber text-sm font-mono mb-1">AVG. XIRR</div>
-            <div className="text-2xl font-bold text-accent-amber">
-              {avgIrrValue !== null ? `${avgIrrValue.toFixed(1)}%` : '--'}
-            </div>
-          </div>
-          <div className="bg-neutral-dark p-4 rounded-lg border border-neutral-medium">
-            <div className="text-accent-amber text-sm font-mono mb-1">AVG. TENURE</div>
-            <div className="text-2xl font-bold text-primary">
-              {avgTenureValue !== null ? `${avgTenureValue.toFixed(1)} months` : '--'}
-            </div>
-          </div>
-        </div>
-
-        {/* Opportunities List */}
-        <div className="space-y-6">
-          {filteredOpportunities.length === 0 ? (
-            <div className="text-center py-12 bg-neutral-dark rounded-lg border border-neutral-medium">
-              <div className="text-4xl mb-4">💼</div>
-              <h3 className="text-lg font-semibold text-primary mb-2">No Opportunities Available</h3>
-              <p className="text-secondary">
-                {opportunities.length === 0 
-                  ? 'No investment opportunities are currently available in your data.'
-                  : 'No opportunities match your current filter criteria. Try adjusting your filters.'}
+        <div className="mt-8 grid gap-6 xl:grid-cols-[1.1fr,0.9fr]">
+          <section className="rounded-lg border border-neutral-medium bg-neutral-dark p-6">
+            <div className="mb-4">
+              <h2 className="text-xl font-semibold text-primary">Share Your Preference</h2>
+              <p className="mt-1 text-sm text-secondary">
+                Tell us the amount and indicative model preference. Finverno will review it offline, prepare the proposed split, and then issue the relevant agreements.
               </p>
             </div>
-          ) : (
-            filteredOpportunities.map((opportunity) => (
-            <div key={opportunity.id} className="bg-neutral-dark rounded-lg border border-neutral-medium">
-              <div className="p-6">
-                <div className="flex justify-between items-start mb-4">
-                  <div>
-                    <h3 className="text-xl font-bold text-primary mb-2">{opportunity.projectName}</h3>
-                    <div className="flex items-center space-x-4 text-sm text-secondary">
-                      <span>Contractor: {opportunity.contractor}</span>
-                      <span>•</span>
-                      <span>Client: {opportunity.client}</span>
-                      <span>•</span>
-                      <span>{opportunity.clientType}</span>
-                    </div>
-                  </div>
-                  <div className="flex items-center space-x-3">
-                    <span className={`px-2 py-1 rounded text-xs font-medium ${getStatusColor(opportunity.status)}`}>
-                      {opportunity.status}
-                    </span>
-                    <span className={`text-sm font-semibold ${getRiskColor(opportunity.riskRating)}`}>
-                      {opportunity.riskRating} Risk
-                    </span>
-                    <span className={`px-2 py-1 rounded text-xs font-medium bg-neutral-medium ${getESGColor(opportunity.esgRating)}`}>
-                      ESG {opportunity.esgRating}
-                    </span>
-                  </div>
-                </div>
 
-                <div className="grid lg:grid-cols-4 md:grid-cols-4 gap-6 mb-6">
-                  <div>
-                    <div className="text-xs text-secondary mb-1">Project Value</div>
-                    <div className="text-lg font-bold text-primary">{opportunity.projectValue}</div>
-                  </div>
-                  <div>
-                    <div className="text-xs text-secondary mb-1">Funding Required</div>
-                    <div className="text-lg font-bold text-primary">{opportunity.fundingRequired}</div>
-                  </div>
-                  <div>
-                    <div className="text-xs text-secondary mb-1">Expected XIRR</div>
-                    <div className="text-lg font-bold text-accent-amber">{opportunity.expectedIRR}</div>
-                  </div>
-                  <div>
-                    <div className="text-xs text-secondary mb-1">Tenure</div>
-                    <div className="text-lg font-bold text-primary">{opportunity.tenure}</div>
-                  </div>
+            <form className="space-y-4" onSubmit={submitInterest}>
+              <div className="grid gap-4 md:grid-cols-2">
+                <div>
+                  <label className="mb-1 block text-sm font-medium text-primary">Preferred Model</label>
+                  <select
+                    value={form.preferredModel}
+                    onChange={(event) => setForm((prev) => ({ ...prev, preferredModel: event.target.value }))}
+                    className="w-full rounded-lg border border-neutral-medium bg-neutral-darker px-3 py-2 text-primary"
+                  >
+                    <option value="pool_participation">Pool Participation</option>
+                    <option value="fixed_debt">Fixed Income</option>
+                    <option value="open_to_both">Open To Both</option>
+                  </select>
                 </div>
-
-                <div className="mb-6">
-                  <div className="flex justify-between text-sm mb-2">
-                    <span className="text-secondary">Project Progress (Schedule)</span>
-                    <span className="text-primary">
-                      {Math.round(opportunity.currentProgress || 0)}% complete
-                    </span>
-                  </div>
-                  <div className="w-full bg-neutral-medium rounded-full h-2 mb-2">
-                    <div
-                      className="bg-accent-amber h-2 rounded-full"
-                      style={{ width: `${Math.min(100, Math.max(0, opportunity.currentProgress || 0))}%` }}
-                    ></div>
-                  </div>
-                  <div className="text-xs text-secondary">
-                    Progress is calculated from the latest uploaded project schedule.
-                  </div>
-                </div>
-
-                <div className="grid md:grid-cols-3 gap-6 mb-6">
-                  <div>
-                    <h4 className="text-sm font-semibold text-primary mb-3">Project Milestones</h4>
-                    <ul className="space-y-2">
-                      {opportunity.milestones.map((milestone, index) => (
-                        <li key={index} className="text-sm text-secondary flex items-start">
-                          <span className="text-accent-amber mr-2">•</span>
-                          {milestone}
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                  <div>
-                    <h4 className="text-sm font-semibold text-primary mb-3">Key Highlights</h4>
-                    <ul className="space-y-2">
-                      {opportunity.highlights.map((highlight, index) => (
-                        <li key={index} className="text-sm text-secondary flex items-start">
-                          <span className="text-success mr-2">✓</span>
-                          {highlight}
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                  <div>
-                    <h4 className="text-sm font-semibold text-primary mb-3">ESG Performance</h4>
-                    {opportunity.esgData ? (
-                      <div className="space-y-3">
-                        <div className="flex justify-between items-center">
-                          <span className="text-xs text-secondary">Environmental</span>
-                          <span className="text-xs text-green-400 font-semibold">
-                            {opportunity.esgData.environmental.wasteReduction}%
-                          </span>
-                        </div>
-                        <div className="flex justify-between items-center">
-                          <span className="text-xs text-secondary">Social</span>
-                          <span className="text-xs text-blue-400 font-semibold">
-                            {opportunity.esgData.social.localEmployment}%
-                          </span>
-                        </div>
-                        <div className="flex justify-between items-center">
-                          <span className="text-xs text-secondary">Governance</span>
-                          <span className="text-xs text-purple-400 font-semibold">
-                            {opportunity.esgData.governance.transparency}%
-                          </span>
-                        </div>
-                      </div>
-                    ) : (
-                      <p className="text-sm text-secondary">
-                        {opportunity.esgNote || 'ESG performance will be updated as compliance data becomes available.'}
-                      </p>
-                    )}
-                  </div>
-                </div>
-
-                <div className="flex justify-between items-center pt-4 border-t border-neutral-medium">
-                  <div className="text-sm text-secondary">
-                    Project ID: {opportunity.id} • Sector: {opportunity.sector}
-                  </div>
+                <div>
+                  <label className="mb-1 block text-sm font-medium text-primary">Indicative Amount</label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={form.proposedAmount}
+                    onChange={(event) => setForm((prev) => ({ ...prev, proposedAmount: event.target.value }))}
+                    className="w-full rounded-lg border border-neutral-medium bg-neutral-darker px-3 py-2 text-primary"
+                    placeholder="Enter amount"
+                  />
                 </div>
               </div>
+
+              {form.preferredModel === 'open_to_both' && (
+                <div className="grid gap-4 md:grid-cols-2">
+                  <div>
+                    <label className="mb-1 block text-sm font-medium text-primary">Indicative Pool Split</label>
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      value={form.indicativePoolAmount}
+                      onChange={(event) => setForm((prev) => ({ ...prev, indicativePoolAmount: event.target.value }))}
+                      className="w-full rounded-lg border border-neutral-medium bg-neutral-darker px-3 py-2 text-primary"
+                      placeholder="0"
+                    />
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-sm font-medium text-primary">Indicative Fixed Income Split</label>
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      value={form.indicativeFixedDebtAmount}
+                      onChange={(event) => setForm((prev) => ({ ...prev, indicativeFixedDebtAmount: event.target.value }))}
+                      className="w-full rounded-lg border border-neutral-medium bg-neutral-darker px-3 py-2 text-primary"
+                      placeholder="0"
+                    />
+                  </div>
+                </div>
+              )}
+
+              <div>
+                <label className="mb-1 block text-sm font-medium text-primary">Liquidity Preference</label>
+                <select
+                  value={form.liquidityPreference}
+                  onChange={(event) => setForm((prev) => ({ ...prev, liquidityPreference: event.target.value }))}
+                  className="w-full rounded-lg border border-neutral-medium bg-neutral-darker px-3 py-2 text-primary"
+                >
+                  <option value="flexible">Flexible</option>
+                  <option value="income_focused">Income Focused</option>
+                  <option value="balanced">Balanced</option>
+                  <option value="higher_return">Higher Return Oriented</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="mb-1 block text-sm font-medium text-primary">Notes</label>
+                <textarea
+                  rows={4}
+                  value={form.notes}
+                  onChange={(event) => setForm((prev) => ({ ...prev, notes: event.target.value }))}
+                  className="w-full rounded-lg border border-neutral-medium bg-neutral-darker px-3 py-2 text-primary"
+                  placeholder="Anything else you want us to consider before we propose the final split"
+                />
+              </div>
+
+              {suggestedSplitText && <div className="text-xs text-secondary">{suggestedSplitText}</div>}
+              {message && <div className="rounded-lg bg-neutral-medium/20 p-3 text-sm text-secondary">{message}</div>}
+
+              <button
+                type="submit"
+                disabled={submitting}
+                className="rounded-lg bg-accent-amber px-5 py-3 font-semibold text-neutral-darker transition-colors hover:bg-accent-amber/90 disabled:opacity-60"
+              >
+                {submitting ? 'Submitting...' : 'Share Preference'}
+              </button>
+            </form>
+          </section>
+
+          <section className="rounded-lg border border-neutral-medium bg-neutral-dark p-6">
+            <div className="mb-4">
+              <h2 className="text-xl font-semibold text-primary">What Happens Next</h2>
+              <p className="mt-1 text-sm text-secondary">
+                Keep the first discussion simple. We’ll do the structuring in the background.
+              </p>
             </div>
-            ))
-          )}
+            <div className="space-y-4 text-sm text-secondary">
+              <div>
+                <div className="text-primary font-medium">1. Preference Review</div>
+                <div>Finverno reviews your amount, model preference, and any indicative split you shared.</div>
+              </div>
+              <div>
+                <div className="text-primary font-medium">2. Proposed Allocation</div>
+                <div>We discuss and finalize the proposed allocation offline, then configure the sleeve allocation in your account.</div>
+              </div>
+              <div>
+                <div className="text-primary font-medium">3. Agreements</div>
+                <div>The relevant agreement set is issued for review and signature.</div>
+              </div>
+              <div>
+                <div className="text-primary font-medium">4. Funding</div>
+                <div>Once executed, the dashboard unlocks funding instructions and transfer confirmation.</div>
+              </div>
+            </div>
+
+            <div className="mt-6 rounded-lg border border-neutral-medium bg-neutral-darker/40 p-4">
+              <div className="text-sm font-medium text-primary">Latest Preference</div>
+              {latestSubmission ? (
+                <div className="mt-2 space-y-2 text-sm text-secondary">
+                  <div>
+                    {latestSubmission.preferred_model === 'pool_participation'
+                      ? 'Pool Participation'
+                      : latestSubmission.preferred_model === 'fixed_debt'
+                      ? 'Fixed Income'
+                      : 'Open To Both'}
+                  </div>
+                  <div>{formatCurrency(Number(latestSubmission.proposed_amount || 0))}</div>
+                  {latestSubmission.preferred_model === 'open_to_both' && (
+                    <div className="text-xs">
+                      Pool: {formatCurrency(Number(latestSubmission.indicative_pool_amount || 0))} · Fixed Income: {formatCurrency(Number(latestSubmission.indicative_fixed_debt_amount || 0))}
+                    </div>
+                  )}
+                  <div className="text-xs uppercase">{latestSubmission.status.replace(/_/g, ' ')}</div>
+                </div>
+              ) : (
+                <div className="mt-2 text-sm text-secondary">No preference submitted yet.</div>
+              )}
+            </div>
+
+            <div className="mt-6 rounded-lg border border-neutral-medium bg-neutral-darker/40 p-4 text-sm text-secondary">
+              Logged in as <span className="text-primary font-medium">{(investor as any)?.investorName || (investor as any)?.name || 'Investor'}</span>
+            </div>
+          </section>
         </div>
       </div>
     </DashboardLayout>

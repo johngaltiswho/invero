@@ -63,6 +63,7 @@ export type ContractorAgreementTemplatePayload = {
   contractorEmail: string;
   contractorSignedName?: string | null;
   contractorSignedAtLabel?: string | null;
+  companyCountersignedAtLabel?: string | null;
   contractorAddress?: string | null;
   contactPerson?: string | null;
   contactDesignation?: string | null;

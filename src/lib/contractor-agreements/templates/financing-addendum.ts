@@ -1,7 +1,7 @@
 import type { ContractorAgreementTemplatePayload } from '@/lib/contractor-agreements/types';
 
 export const CONTRACTOR_FINANCING_TEMPLATE_KEY = 'contractor-financing-addendum';
-export const CONTRACTOR_FINANCING_TEMPLATE_VERSION = 'v2';
+export const CONTRACTOR_FINANCING_TEMPLATE_VERSION = 'v3';
 
 export function renderContractorFinancingHTML(payload: ContractorAgreementTemplatePayload): string {
   return `
@@ -70,6 +70,7 @@ export function renderContractorFinancingHTML(payload: ContractorAgreementTempla
           <p style="margin-top: 48px;">__________________________</p>
           <p>${payload.companySignatoryName}</p>
           <p>${payload.companySignatoryTitle}</p>
+          ${payload.companyCountersignedAtLabel ? `<p><strong>Countersigned on:</strong> ${payload.companyCountersignedAtLabel}</p>` : ''}
         </div>
 
         <div style="margin-top: 42px;">

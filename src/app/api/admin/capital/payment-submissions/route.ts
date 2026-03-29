@@ -1,6 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAdmin, getAdminUser } from '@/lib/admin-auth';
 import { createClient } from '@supabase/supabase-js';
+import {
+  applyLenderCapitalAllocations,
+  normalizeLenderCapitalAllocations,
+} from '@/lib/lender-sleeves';
+import {
+  getLenderAllocationIntentById,
+  markAllocationIntentCompleted,
+} from '@/lib/lender-allocation-intents';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -99,6 +107,18 @@ export async function PATCH(request: NextRequest) {
     }
 
     if (action === 'reject') {
+      if (submission.allocation_intent_id) {
+        await supabase
+          .from('lender_allocation_intents')
+          .update({
+            status: 'ready_for_funding',
+            funding_submitted_at: null,
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', submission.allocation_intent_id)
+          .eq('status', 'funding_submitted');
+      }
+
       const { data: rejected, error: rejectError } = await supabase
         .from('investor_payment_submissions')
         .update({
@@ -134,13 +154,28 @@ export async function PATCH(request: NextRequest) {
       body.reference_number || submission.payment_reference || ''
     ).trim();
 
+    if (!submission.allocation_intent_id) {
+      return NextResponse.json({ error: 'Legacy payment submissions are not eligible under the agreement-first flow' }, { status: 400 });
+    }
+
+    const allocationIntent = await getLenderAllocationIntentById(submission.allocation_intent_id);
+    if (!allocationIntent || allocationIntent.investor_id !== submission.investor_id) {
+      return NextResponse.json({ error: 'Linked allocation intent not found' }, { status: 400 });
+    }
+    if (allocationIntent.status !== 'funding_submitted') {
+      return NextResponse.json({ error: 'This payment submission is not linked to a funding-submitted allocation intent' }, { status: 400 });
+    }
+
     const { data: transaction, error: transactionError } = await supabase
       .from('capital_transactions')
       .insert([
         {
           investor_id: submission.investor_id,
           transaction_type: 'inflow',
-          amount: Number(submission.amount),
+          amount: Number(allocationIntent.total_amount),
+          model_type: Array.isArray(allocationIntent.allocation_payload) && allocationIntent.allocation_payload.length === 1
+            ? allocationIntent.allocation_payload[0]?.modelType || null
+            : null,
           description,
           reference_number: referenceNumber || null,
           admin_user_id: adminUser?.id || 'unknown',
@@ -153,6 +188,31 @@ export async function PATCH(request: NextRequest) {
     if (transactionError || !transaction) {
       console.error('Failed to create inflow transaction for submission:', transactionError);
       return NextResponse.json({ error: 'Failed to create capital inflow transaction' }, { status: 500 });
+    }
+
+    let normalizedAllocations;
+    try {
+      normalizedAllocations = normalizeLenderCapitalAllocations(
+        Number(allocationIntent.total_amount),
+        Array.isArray(allocationIntent.allocation_payload) ? allocationIntent.allocation_payload : []
+      );
+    } catch (allocationError) {
+      console.error('Failed to normalize lender allocations:', allocationError);
+      return NextResponse.json({ error: 'Invalid lender sleeve allocation payload' }, { status: 400 });
+    }
+
+    let sleeves;
+    try {
+      sleeves = await applyLenderCapitalAllocations({
+        investorId: submission.investor_id,
+        totalAmount: Number(allocationIntent.total_amount),
+        capitalTransactionId: transaction.id,
+        paymentSubmissionId: submissionId,
+        allocations: normalizedAllocations,
+      });
+    } catch (allocationError) {
+      console.error('Failed to apply lender allocations:', allocationError);
+      return NextResponse.json({ error: 'Failed to apply lender sleeve allocations' }, { status: 500 });
     }
 
     const { data: approved, error: updateError } = await supabase
@@ -173,7 +233,9 @@ export async function PATCH(request: NextRequest) {
       return NextResponse.json({ error: 'Failed to update payment submission status' }, { status: 500 });
     }
 
-    return NextResponse.json({ success: true, submission: approved, transaction });
+    await markAllocationIntentCompleted(allocationIntent.id);
+
+    return NextResponse.json({ success: true, submission: approved, transaction, sleeves });
   } catch (error) {
     console.error('Error in PATCH /api/admin/capital/payment-submissions:', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });

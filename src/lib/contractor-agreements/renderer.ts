@@ -50,6 +50,7 @@ type BuildPayloadInput = {
   notes?: string | null;
   contractorSignedName?: string | null;
   contractorSignedAt?: string | null;
+  companyCountersignedAt?: string | null;
 };
 
 const FINVERNO_COMPANY_NAME = 'Finverno Private Limited';
@@ -123,6 +124,17 @@ export function buildContractorAgreementPayload(input: BuildPayloadInput): Contr
           minute: '2-digit',
         })
       : input.contractorSignedAt || null;
+  const companyCountersignedAt = input.companyCountersignedAt ? new Date(input.companyCountersignedAt) : null;
+  const companyCountersignedAtLabel =
+    companyCountersignedAt && !Number.isNaN(companyCountersignedAt.getTime())
+      ? companyCountersignedAt.toLocaleString('en-IN', {
+          day: '2-digit',
+          month: 'long',
+          year: 'numeric',
+          hour: '2-digit',
+          minute: '2-digit',
+        })
+      : input.companyCountersignedAt || null;
 
   return {
     agreementType: input.agreementType,
@@ -131,6 +143,7 @@ export function buildContractorAgreementPayload(input: BuildPayloadInput): Contr
     contractorEmail: input.contractor.email,
     contractorSignedName: input.contractorSignedName || null,
     contractorSignedAtLabel,
+    companyCountersignedAtLabel,
     contractorAddress: buildContractorAddress(input.contractor),
     contactPerson: input.contractor.contact_person || null,
     contactDesignation: input.contractor.designation || null,
