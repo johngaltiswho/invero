@@ -3,6 +3,7 @@ import { getAdminUser, requireAdmin } from '@/lib/admin-auth';
 import { normalizeLenderCapitalAllocations } from '@/lib/lender-sleeves';
 import {
   createAllocationIntent,
+  getAllocationIntentFundingSnapshot,
   listLenderAllocationIntentsForInvestor,
   refreshAllocationIntentReadiness,
 } from '@/lib/lender-allocation-intents';
@@ -20,10 +21,20 @@ export async function GET(request: NextRequest) {
     const intents = await listLenderAllocationIntentsForInvestor(investorId);
     const refreshed = await Promise.all(
       intents.map(async (intent) => {
-        if (['draft', 'agreements_pending', 'ready_for_funding'].includes(intent.status)) {
-          return refreshAllocationIntentReadiness(intent.id);
-        }
-        return intent;
+        const nextIntent = ['draft', 'agreements_pending', 'ready_for_funding'].includes(intent.status)
+          ? await refreshAllocationIntentReadiness(intent.id)
+          : intent;
+        const funding = await getAllocationIntentFundingSnapshot(
+          nextIntent.id,
+          Number(nextIntent.total_amount || 0)
+        );
+        return {
+          ...nextIntent,
+          funded_amount: funding.approvedAmount,
+          pending_amount: funding.pendingAmount,
+          remaining_amount: funding.remainingAmount,
+          tranche_count: funding.trancheCount,
+        };
       })
     );
 

@@ -151,6 +151,8 @@ function SignInComponent() {
               formFieldInput:
                 'bg-neutral-medium border border-neutral-medium text-primary placeholder-secondary rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-accent-orange focus:border-accent-orange transition-all',
               formFieldLabel: 'text-secondary text-sm font-medium mb-1 block',
+              formFieldHintText: 'text-secondary/90 text-sm',
+              formFieldWarningText: 'text-secondary/90 text-sm',
               formFieldAction: 'text-accent-orange hover:text-accent-orange/80 text-sm',
               formButtonPrimary:
                 'w-full bg-accent-orange hover:bg-orange-600 text-white font-medium py-3 px-4 rounded-lg transition-colors focus:outline-none focus:ring-2 focus:ring-accent-orange focus:ring-offset-2 focus:ring-offset-neutral-dark',
@@ -163,6 +165,12 @@ function SignInComponent() {
               identityPreviewEditButton: 'text-accent-orange hover:text-accent-orange/80',
               footerActionText: 'text-secondary text-sm',
               footerActionLink: 'text-accent-orange hover:text-accent-orange/80 font-medium',
+              otpCodeFieldInput:
+                'bg-neutral-medium border border-neutral-medium text-primary rounded-lg focus:outline-none focus:ring-2 focus:ring-accent-orange focus:border-accent-orange',
+              otpCodeFieldInputBox:
+                'bg-neutral-medium border border-neutral-medium text-primary rounded-lg focus-within:ring-2 focus-within:ring-accent-orange focus-within:border-accent-orange',
+              formResendCodeLink: 'text-accent-orange hover:text-accent-orange/80 text-sm font-medium',
+              formResendCodeLink__loading: 'text-secondary text-sm',
               dividerLine: 'bg-neutral-medium',
               dividerText: 'text-secondary bg-neutral-dark px-2 text-sm',
               footer: 'hidden',

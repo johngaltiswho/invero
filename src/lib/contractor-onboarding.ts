@@ -1,4 +1,5 @@
 import { supabaseAdmin } from '@/lib/supabase';
+import { DocumentService } from '@/lib/document-service';
 import type { Contractor } from '@/types/supabase';
 import type { RegistrationStep } from '@/types/contractor-access';
 
@@ -117,8 +118,15 @@ function getMissingChecklist(contractor: Contractor): string[] {
   const missing: string[] = [];
   const documents = contractor.documents || ({} as Contractor['documents']);
 
-  if (!documents.pan_card?.uploaded) missing.push('PAN card');
   if (!documents.gst_certificate?.uploaded) missing.push('GST certificate');
+
+  return missing;
+}
+
+function getMissingFinancingChecklist(contractor: Contractor): string[] {
+  const missing: string[] = [];
+  const documents = contractor.documents || ({} as Contractor['documents']);
+
   if (!documents.company_registration?.uploaded) missing.push('Company registration');
   if (!documents.cancelled_cheque?.uploaded) missing.push('Cancelled cheque');
 
@@ -131,6 +139,7 @@ export function deriveContractorOnboardingSnapshot(
   underwriting: ContractorUnderwritingSummary
 ): ContractorOnboardingSnapshot {
   const missingChecklist = getMissingChecklist(contractor);
+  const missingFinancingChecklist = getMissingFinancingChecklist(contractor);
   const masterStatus = agreementSummary.masterAgreement.status;
   const financingStatus = agreementSummary.financingAgreement.status;
   const docsStatus = contractor.verification_status;
@@ -181,7 +190,7 @@ export function deriveContractorOnboardingSnapshot(
       underwritingStatus: underwriting.status,
       registrationStep: 'docs_pending',
       reason: 'pending_documents',
-      message: 'Upload your KYC documents to continue onboarding.',
+      message: 'Upload GST proof to continue onboarding.',
       canRetry: true,
       missingChecklist,
     };
@@ -198,7 +207,7 @@ export function deriveContractorOnboardingSnapshot(
       underwritingStatus: underwriting.status,
       registrationStep: 'docs_uploaded',
       reason: 'under_review',
-      message: 'Your documents have been uploaded and are awaiting KYC review.',
+      message: 'Your GST proof has been uploaded and is awaiting review.',
       canRetry: false,
       missingChecklist,
     };
@@ -215,7 +224,7 @@ export function deriveContractorOnboardingSnapshot(
       underwritingStatus: underwriting.status,
       registrationStep: 'under_review',
       reason: 'under_review',
-      message: 'Your KYC is under review. Procurement access will open after agreement execution.',
+      message: 'Your GST-based onboarding is under review. Procurement access will open after agreement execution.',
       canRetry: false,
       missingChecklist,
     };
@@ -244,8 +253,11 @@ export function deriveContractorOnboardingSnapshot(
 
     const portalActive = true;
     const procurementEnabled = true;
+    const financingDocsVerified = DocumentService.checkFinancingDocumentsVerified(
+      (contractor.documents || {}) as Record<string, any>
+    );
     const financingEnabled =
-      underwriting.status === 'commercial_approved' && financingStatus === 'executed';
+      underwriting.status === 'commercial_approved' && financingStatus === 'executed' && financingDocsVerified;
 
     let onboardingStage: ContractorOnboardingSnapshot['onboardingStage'] = 'active';
     let registrationStep: RegistrationStep = 'complete';
@@ -257,6 +269,11 @@ export function deriveContractorOnboardingSnapshot(
       registrationStep = 'commercial_review';
       reason = 'commercial_review';
       message = 'Commercial review is in progress. Financing access remains pending.';
+    } else if (underwriting.status === 'commercial_approved' && !financingDocsVerified) {
+      onboardingStage = 'financing_pending';
+      registrationStep = 'active';
+      reason = 'verified';
+      message = `Contractor portal access is active. Upload ${missingFinancingChecklist.join(' and ')} to continue financing activation.`;
     } else if (underwriting.status === 'commercial_approved' && financingStatus !== 'executed') {
       onboardingStage =
         financingStatus === 'issued' || financingStatus === 'contractor_signed'

@@ -14,6 +14,57 @@ function isValidEmail(value: string): boolean {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
 }
 
+function splitDisplayName(value: string): { firstName?: string; lastName?: string } {
+  const parts = value.trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return {};
+  if (parts.length === 1) return { firstName: parts[0] };
+  return {
+    firstName: parts[0],
+    lastName: parts.slice(1).join(' ')
+  };
+}
+
+async function ensureContractorClerkUser(input: {
+  email: string;
+  contactPerson: string;
+  companyName: string;
+}): Promise<{ clerkUserId: string; created: boolean }> {
+  const client = await clerkClient();
+  const normalizedEmail = input.email.toLowerCase().trim();
+  const existing = await client.users.getUserList({ emailAddress: [normalizedEmail], limit: 1 });
+  const matchedUser = existing.data[0];
+  const nameParts = splitDisplayName(input.contactPerson);
+
+  if (matchedUser) {
+    await client.users.updateUser(matchedUser.id, {
+      ...nameParts,
+      publicMetadata: {
+        ...(matchedUser.publicMetadata || {}),
+        role: 'contractor',
+        contractor_email: normalizedEmail,
+        contractor_name: input.contactPerson.trim(),
+        company_name: input.companyName.trim()
+      }
+    });
+    return { clerkUserId: matchedUser.id, created: false };
+  }
+
+  const createdUser = await client.users.createUser({
+    emailAddress: [normalizedEmail],
+    ...nameParts,
+    skipPasswordChecks: true,
+    skipPasswordRequirement: true,
+    publicMetadata: {
+      role: 'contractor',
+      contractor_email: normalizedEmail,
+      contractor_name: input.contactPerson.trim(),
+      company_name: input.companyName.trim()
+    }
+  });
+
+  return { clerkUserId: createdUser.id, created: true };
+}
+
 async function syncContractorEmailWithClerk(contractorId: string, nextEmail: string) {
   const contractor = await ContractorService.getContractorById(contractorId);
   if (!contractor) {
@@ -68,31 +119,15 @@ async function syncContractorEmailWithClerk(contractorId: string, nextEmail: str
       }
     }
   } else {
-    const clerkSecretKey = process.env.CLERK_SECRET_KEY;
-    if (clerkSecretKey) {
-      try {
-        const inviteRes = await fetch('https://api.clerk.com/v1/invitations', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${clerkSecretKey}`
-          },
-          body: JSON.stringify({
-            email_address: normalizedEmail,
-            public_metadata: { role: 'contractor', name: contractor.contact_person?.trim() || contractor.company_name }
-          })
-        });
+    const ensured = await ensureContractorClerkUser({
+      email: normalizedEmail,
+      contactPerson: contractor.contact_person?.trim() || contractor.company_name,
+      companyName: contractor.company_name
+    });
 
-        if (!inviteRes.ok) {
-          const err = await inviteRes.json().catch(() => ({}));
-          if (inviteRes.status !== 409 && !(err as any)?.errors?.[0]?.code?.includes('duplicate')) {
-            console.warn('Clerk invitation warning during contractor email change:', err);
-          }
-        }
-      } catch (inviteErr) {
-        console.warn('Failed to send Clerk invite after contractor email change:', inviteErr);
-      }
-    }
+    await ContractorService.updateContractor(contractorId, {
+      clerk_user_id: ensured.clerkUserId
+    });
   }
 
   const updated = await ContractorService.updateContractor(contractorId, {
@@ -237,49 +272,59 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: false, error: 'A contractor with this email already exists' }, { status: 409 });
     }
 
-    const contractor = await ContractorService.createContractor({
-      email: email.toLowerCase().trim(),
-      contact_person: contact_person.trim(),
-      company_name: company_name.trim(),
-      phone: phone?.trim() || null,
-      status: 'pending',
-      verification_status: 'documents_pending',
-      onboarding_stage: 'documents_pending',
-      portal_active: false,
-      procurement_enabled: false,
-      financing_enabled: false,
-      application_date: new Date().toISOString()
-    });
+    const normalizedEmail = email.toLowerCase().trim();
+    const trimmedContactPerson = contact_person.trim();
+    const trimmedCompanyName = company_name.trim();
+
+    let provisionedClerkUserId: string | null = null;
+    let createdNewClerkUser = false;
+
+    try {
+      const ensured = await ensureContractorClerkUser({
+        email: normalizedEmail,
+        contactPerson: trimmedContactPerson,
+        companyName: trimmedCompanyName
+      });
+      provisionedClerkUserId = ensured.clerkUserId;
+      createdNewClerkUser = ensured.created;
+    } catch (clerkError) {
+      console.error('Failed to provision Clerk contractor user:', clerkError);
+      return NextResponse.json({
+        success: false,
+        error: 'Failed to provision portal login for this SME'
+      }, { status: 500 });
+    }
+
+    let contractor;
+    try {
+      contractor = await ContractorService.createContractor({
+        email: normalizedEmail,
+        contact_person: trimmedContactPerson,
+        company_name: trimmedCompanyName,
+        phone: phone?.trim() || null,
+        clerk_user_id: provisionedClerkUserId,
+        status: 'pending',
+        verification_status: 'documents_pending',
+        onboarding_stage: 'documents_pending',
+        portal_active: false,
+        procurement_enabled: false,
+        financing_enabled: false,
+        application_date: new Date().toISOString()
+      });
+    } catch (dbError) {
+      if (createdNewClerkUser && provisionedClerkUserId) {
+        try {
+          const client = await clerkClient();
+          await client.users.deleteUser(provisionedClerkUserId);
+        } catch (rollbackError) {
+          console.warn('Failed to rollback Clerk user after contractor creation failure:', rollbackError);
+        }
+      }
+      throw dbError;
+    }
 
     if (contractor) {
       await syncContractorOnboarding(contractor.id);
-    }
-
-    // Send Clerk invitation
-    const clerkSecretKey = process.env.CLERK_SECRET_KEY;
-    if (clerkSecretKey && contractor) {
-      try {
-        const inviteRes = await fetch('https://api.clerk.com/v1/invitations', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${clerkSecretKey}`
-          },
-          body: JSON.stringify({
-            email_address: email.toLowerCase().trim(),
-            public_metadata: { role: 'contractor', name: contact_person.trim() }
-          })
-        });
-        if (!inviteRes.ok) {
-          const err = await inviteRes.json().catch(() => ({}));
-          // 409/duplicate is fine — user already has a Clerk account
-          if (inviteRes.status !== 409 && !(err as any)?.errors?.[0]?.code?.includes('duplicate')) {
-            console.warn('Clerk invitation warning:', err);
-          }
-        }
-      } catch (inviteErr) {
-        console.warn('Failed to send Clerk invite (non-fatal):', inviteErr);
-      }
     }
 
     return NextResponse.json({ success: true, data: contractor });
@@ -303,6 +348,8 @@ export async function PUT(request: NextRequest) {
       email,
       documentType,
       rejectionReason,
+      gst_manual_verified,
+      gst_manual_verification_notes,
       platform_fee_rate,
       platform_fee_cap,
       participation_fee_rate_daily
@@ -452,6 +499,24 @@ export async function PUT(request: NextRequest) {
 
         result = await syncContractorEmailWithClerk(contractorId, requestedEmail);
         await syncContractorOnboarding(contractorId);
+        break;
+      }
+
+      case 'update_gst_manual_verification': {
+        const manualVerified = Boolean(gst_manual_verified);
+        const notes =
+          typeof gst_manual_verification_notes === 'string' && gst_manual_verification_notes.trim().length > 0
+            ? gst_manual_verification_notes.trim()
+            : null;
+
+        const updateResult = await ContractorService.updateContractor(contractorId, {
+          gst_manual_verified: manualVerified,
+          gst_manual_verified_at: manualVerified ? new Date().toISOString() : null,
+          gst_manual_verified_by: manualVerified ? 'admin' : null,
+          gst_manual_verification_notes: notes
+        });
+        await syncContractorOnboarding(contractorId);
+        result = { success: !!updateResult, data: updateResult };
         break;
       }
 

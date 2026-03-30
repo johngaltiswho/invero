@@ -7,7 +7,7 @@ import {
 } from '@/lib/lender-sleeves';
 import {
   getLenderAllocationIntentById,
-  markAllocationIntentCompleted,
+  syncAllocationIntentFundingStatus,
 } from '@/lib/lender-allocation-intents';
 
 const supabase = createClient(
@@ -166,15 +166,17 @@ export async function PATCH(request: NextRequest) {
       return NextResponse.json({ error: 'This payment submission is not linked to a funding-submitted allocation intent' }, { status: 400 });
     }
 
+    const trancheAmount = Number(submission.amount || 0);
+
     const { data: transaction, error: transactionError } = await supabase
       .from('capital_transactions')
       .insert([
         {
           investor_id: submission.investor_id,
           transaction_type: 'inflow',
-          amount: Number(allocationIntent.total_amount),
+          amount: trancheAmount,
           model_type: Array.isArray(allocationIntent.allocation_payload) && allocationIntent.allocation_payload.length === 1
-            ? allocationIntent.allocation_payload[0]?.modelType || null
+            ? submission.allocation_payload?.[0]?.modelType || null
             : null,
           description,
           reference_number: referenceNumber || null,
@@ -193,8 +195,8 @@ export async function PATCH(request: NextRequest) {
     let normalizedAllocations;
     try {
       normalizedAllocations = normalizeLenderCapitalAllocations(
-        Number(allocationIntent.total_amount),
-        Array.isArray(allocationIntent.allocation_payload) ? allocationIntent.allocation_payload : []
+        trancheAmount,
+        Array.isArray(submission.allocation_payload) ? submission.allocation_payload : []
       );
     } catch (allocationError) {
       console.error('Failed to normalize lender allocations:', allocationError);
@@ -205,7 +207,7 @@ export async function PATCH(request: NextRequest) {
     try {
       sleeves = await applyLenderCapitalAllocations({
         investorId: submission.investor_id,
-        totalAmount: Number(allocationIntent.total_amount),
+        totalAmount: trancheAmount,
         capitalTransactionId: transaction.id,
         paymentSubmissionId: submissionId,
         allocations: normalizedAllocations,
@@ -233,7 +235,7 @@ export async function PATCH(request: NextRequest) {
       return NextResponse.json({ error: 'Failed to update payment submission status' }, { status: 500 });
     }
 
-    await markAllocationIntentCompleted(allocationIntent.id);
+    await syncAllocationIntentFundingStatus(allocationIntent.id);
 
     return NextResponse.json({ success: true, submission: approved, transaction, sleeves });
   } catch (error) {

@@ -30,6 +30,7 @@ const MODEL_LABELS: Record<InterestSubmission['preferred_model'], string> = {
 export default function InvestorInterestPanel({ investor }: Props): React.ReactElement {
   const [submissions, setSubmissions] = useState<InterestSubmission[]>([]);
   const [loading, setLoading] = useState(false);
+  const [downloading, setDownloading] = useState(false);
 
   useEffect(() => {
     void load();
@@ -58,13 +59,51 @@ export default function InvestorInterestPanel({ investor }: Props): React.ReactE
       maximumFractionDigits: 0,
     }).format(amount);
 
+  const handleDownloadProspectus = async () => {
+    try {
+      setDownloading(true);
+      const response = await fetch(`/api/admin/investor-prospectus?investor_id=${investor.id}`);
+
+      if (!response.ok) {
+        const result = await response.json().catch(() => ({}));
+        throw new Error(result?.error || 'Failed to generate prospectus');
+      }
+
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `${investor.name.replace(/[^a-zA-Z0-9]+/g, '_')}_Finverno_Prospectus.pdf`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+    } catch (error) {
+      console.error('Failed to download investor prospectus:', error);
+    } finally {
+      setDownloading(false);
+    }
+  };
+
   return (
     <div className="mt-6 rounded-lg border border-neutral-medium bg-neutral-dark">
       <div className="border-b border-neutral-medium p-6">
-        <h3 className="text-xl font-semibold text-primary">Investor Interest</h3>
-        <p className="mt-1 text-sm text-secondary">
-          These are the model preferences {investor.name} has submitted before final allocation is prepared.
-        </p>
+        <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+          <div>
+            <h3 className="text-xl font-semibold text-primary">Investor Interest</h3>
+            <p className="mt-1 text-sm text-secondary">
+              These are the model preferences {investor.name} has submitted before final allocation is prepared.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={handleDownloadProspectus}
+            disabled={downloading}
+            className="inline-flex items-center justify-center rounded-lg border border-neutral-medium bg-neutral-darker px-4 py-2 text-sm font-medium text-primary transition hover:bg-neutral-medium/20 disabled:opacity-60"
+          >
+            {downloading ? 'Generating...' : 'Download Prospectus'}
+          </button>
+        </div>
       </div>
       <div className="space-y-3 p-6">
         {loading && <div className="text-sm text-secondary">Loading investor interest...</div>}

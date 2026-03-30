@@ -22,6 +22,10 @@ type AllocationIntent = {
   allocation_payload: Allocation[];
   agreements_ready_at?: string | null;
   funding_submitted_at?: string | null;
+  funded_amount?: number;
+  pending_amount?: number;
+  remaining_amount?: number;
+  tranche_count?: number;
   created_at: string;
 };
 
@@ -77,6 +81,7 @@ export function AddCapitalModal({ isOpen, onClose }: AddCapitalModalProps) {
   const [allocationIntents, setAllocationIntents] = useState<AllocationIntent[]>([]);
   const [paymentForm, setPaymentForm] = useState({
     allocationIntentId: '',
+    amount: '',
     paymentDate: '',
     paymentMethod: 'bank_transfer',
     paymentReference: '',
@@ -109,8 +114,20 @@ export function AddCapitalModal({ isOpen, onClose }: AddCapitalModalProps) {
     setPaymentForm((prev) => ({
       ...prev,
       allocationIntentId: prev.allocationIntentId || readyIntents[0]?.id || '',
+      amount: prev.amount || String(readyIntents[0]?.remaining_amount || readyIntents[0]?.total_amount || ''),
     }));
   }, [readyIntents]);
+
+  useEffect(() => {
+    if (!selectedReadyIntent) return;
+    setPaymentForm((prev) => ({
+      ...prev,
+      amount:
+        prev.allocationIntentId === selectedReadyIntent.id && prev.amount
+          ? prev.amount
+          : String(selectedReadyIntent.remaining_amount || selectedReadyIntent.total_amount || ''),
+    }));
+  }, [selectedReadyIntent]);
 
   const fetchFinvernoBankDetails = async () => {
     try {
@@ -156,12 +173,16 @@ export function AddCapitalModal({ isOpen, onClose }: AddCapitalModalProps) {
       if (!paymentForm.allocationIntentId) {
         throw new Error('Select a ready allocation before submitting payment');
       }
+      if (!paymentForm.amount || Number(paymentForm.amount) <= 0) {
+        throw new Error('Enter the tranche amount you are funding');
+      }
       if (!paymentForm.paymentDate) {
         throw new Error('Please select payment date');
       }
 
       const formData = new FormData();
       formData.append('allocation_intent_id', paymentForm.allocationIntentId);
+      formData.append('amount', paymentForm.amount);
       formData.append('payment_date', paymentForm.paymentDate);
       formData.append('payment_method', paymentForm.paymentMethod);
       formData.append('payment_reference', paymentForm.paymentReference);
@@ -183,6 +204,7 @@ export function AddCapitalModal({ isOpen, onClose }: AddCapitalModalProps) {
       setPaymentSubmissionMessage('Payment confirmation submitted. Admin will review and approve.');
       setPaymentForm({
         allocationIntentId: '',
+        amount: '',
         paymentDate: '',
         paymentMethod: 'bank_transfer',
         paymentReference: '',
@@ -289,6 +311,9 @@ export function AddCapitalModal({ isOpen, onClose }: AddCapitalModalProps) {
                           <div className="font-medium text-primary">{formatCurrency(Number(intent.total_amount || 0))}</div>
                           <div className="text-xs text-secondary">{renderAllocationSummary(intent.allocation_payload)}</div>
                           <div className="mt-1 text-xs text-secondary">
+                            Funded {formatCurrency(Number(intent.funded_amount || 0))} · Remaining {formatCurrency(Number(intent.remaining_amount ?? intent.total_amount ?? 0))}
+                          </div>
+                          <div className="mt-1 text-xs text-secondary">
                             Proposed {formatDate(intent.created_at)}
                             {intent.agreements_ready_at ? ` · Ready ${formatDate(intent.agreements_ready_at)}` : ''}
                           </div>
@@ -335,9 +360,25 @@ export function AddCapitalModal({ isOpen, onClose }: AddCapitalModalProps) {
                   <div className="rounded-lg border border-green-500/20 bg-green-500/5 p-3 text-sm text-secondary">
                     <div className="font-medium text-primary">{formatCurrency(Number(selectedReadyIntent.total_amount || 0))}</div>
                     <div className="mt-1">{renderAllocationSummary(selectedReadyIntent.allocation_payload)}</div>
+                    <div className="mt-1">
+                      Funded so far: {formatCurrency(Number(selectedReadyIntent.funded_amount || 0))} · Remaining: {formatCurrency(Number(selectedReadyIntent.remaining_amount ?? selectedReadyIntent.total_amount ?? 0))}
+                    </div>
                     <div className="mt-1">Agreements ready on {formatDate(selectedReadyIntent.agreements_ready_at || selectedReadyIntent.created_at)}</div>
                   </div>
                 )}
+
+                <div>
+                  <label className="text-xs uppercase tracking-wide text-secondary">Tranche Amount</label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={paymentForm.amount}
+                    onChange={(e) => setPaymentForm((prev) => ({ ...prev, amount: e.target.value }))}
+                    className="mt-2 w-full rounded-lg border border-neutral-medium bg-neutral-darker px-3 py-2 text-sm text-primary"
+                    placeholder="Enter the amount you transferred"
+                  />
+                </div>
 
                 <div>
                   <label className="text-xs uppercase tracking-wide text-secondary">Payment Date</label>
@@ -411,6 +452,9 @@ export function AddCapitalModal({ isOpen, onClose }: AddCapitalModalProps) {
                     <div>
                       <div className="text-primary font-medium">{formatCurrency(Number(intent.total_amount || 0))}</div>
                       <div className="text-xs text-secondary">{renderAllocationSummary(intent.allocation_payload)}</div>
+                      <div className="mt-1 text-xs text-secondary">
+                        Funded {formatCurrency(Number(intent.funded_amount || 0))} · Remaining {formatCurrency(Number(intent.remaining_amount ?? intent.total_amount ?? 0))}
+                      </div>
                       <div className="mt-1 text-xs text-secondary">Created {formatDate(intent.created_at)}</div>
                     </div>
                     <span className={`inline-flex items-center rounded px-2 py-1 text-xs ${getStatusColor(intent.status)}`}>

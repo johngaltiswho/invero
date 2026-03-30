@@ -261,6 +261,9 @@ export default function AdminVerificationDashboard(): React.ReactElement {
   const [emailForm, setEmailForm] = useState({ value: '' });
   const [emailSaving, setEmailSaving] = useState(false);
   const [editingEmail, setEditingEmail] = useState(false);
+  const [gstReviewForm, setGstReviewForm] = useState({ verified: false, notes: '' });
+  const [gstReviewSaving, setGstReviewSaving] = useState(false);
+  const [editingGstReview, setEditingGstReview] = useState(false);
   const [addPumpForm, setAddPumpForm] = useState({
     pump_name: '',
     address: '',
@@ -339,10 +342,15 @@ export default function AdminVerificationDashboard(): React.ReactElement {
 
   useEffect(() => {
     setEmailForm({ value: selectedContractor?.email ?? '' });
+    setGstReviewForm({
+      verified: selectedContractor?.gst_manual_verified ?? false,
+      notes: selectedContractor?.gst_manual_verification_notes ?? ''
+    });
     setEditingEmail(false);
+    setEditingGstReview(false);
     setEditingTerms(false);
     setEditingFuelSettings(false);
-  }, [selectedContractor?.id, selectedContractor?.email]);
+  }, [selectedContractor?.id, selectedContractor?.email, selectedContractor?.gst_manual_verified, selectedContractor?.gst_manual_verification_notes]);
 
   const loadContractors = async () => {
     try {
@@ -474,6 +482,51 @@ export default function AdminVerificationDashboard(): React.ReactElement {
       alert(error instanceof Error ? error.message : 'Failed to update SME email');
     } finally {
       setEmailSaving(false);
+    }
+  };
+
+  const handleSaveGstReview = async () => {
+    if (!selectedContractor) return;
+
+    setGstReviewSaving(true);
+    try {
+      const response = await fetch('/api/admin/contractors', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contractorId: selectedContractor.id,
+          action: 'update_gst_manual_verification',
+          gst_manual_verified: gstReviewForm.verified,
+          gst_manual_verification_notes: gstReviewForm.notes
+        })
+      });
+
+      const result = await response.json();
+      if (!response.ok || !result.success) {
+        throw new Error(result.error || 'Failed to save GST review');
+      }
+
+      const updatedContractor = {
+        ...selectedContractor,
+        gst_manual_verified: gstReviewForm.verified,
+        gst_manual_verified_at: gstReviewForm.verified ? new Date().toISOString() : null,
+        gst_manual_verified_by: gstReviewForm.verified ? 'admin' : null,
+        gst_manual_verification_notes: gstReviewForm.notes.trim() || null
+      };
+
+      setSelectedContractor(updatedContractor);
+      setContractors((prev) =>
+        prev.map((contractor) =>
+          contractor.id === selectedContractor.id ? updatedContractor : contractor
+        )
+      );
+      setEditingGstReview(false);
+      alert('GST review updated successfully.');
+    } catch (error) {
+      console.error('Failed to save GST review:', error);
+      alert(error instanceof Error ? error.message : 'Failed to save GST review');
+    } finally {
+      setGstReviewSaving(false);
     }
   };
 
@@ -1521,7 +1574,7 @@ export default function AdminVerificationDashboard(): React.ReactElement {
                   <p className="text-sm text-secondary mt-4">{selectedContractor.onboarding?.message || 'Complete KYC, execute the master agreement, and approve commercial terms to activate access.'}</p>
                   {!!selectedContractor.onboarding?.missingChecklist?.length && (
                     <p className="text-xs text-accent-orange mt-2">
-                      Missing required documents: {selectedContractor.onboarding.missingChecklist.join(', ')}
+                      Missing onboarding items: {selectedContractor.onboarding.missingChecklist.join(', ')}
                     </p>
                   )}
                 </div>
@@ -1565,6 +1618,78 @@ export default function AdminVerificationDashboard(): React.ReactElement {
                       disabled={!editingEmail}
                       className="mt-2 w-full px-3 py-2 rounded-lg border border-neutral-medium bg-neutral-dark text-primary focus:outline-none focus:ring-2 focus:ring-accent-orange"
                       placeholder="Enter SME email"
+                    />
+                  </label>
+                </div>
+
+                <div className="bg-neutral-darker/60 border border-neutral-medium rounded-lg p-4 mb-6">
+                  <div className="flex items-center justify-between mb-4 gap-4">
+                    <div>
+                      <h3 className="text-lg font-semibold text-primary">Manual GST Review</h3>
+                      <p className="text-xs text-secondary">Track whether GST details were manually checked on the GST portal.</p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      {editingGstReview && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => {
+                            setGstReviewForm({
+                              verified: selectedContractor?.gst_manual_verified ?? false,
+                              notes: selectedContractor?.gst_manual_verification_notes ?? ''
+                            });
+                            setEditingGstReview(false);
+                          }}
+                          disabled={gstReviewSaving}
+                        >
+                          Cancel
+                        </Button>
+                      )}
+                      <Button
+                        variant="primary"
+                        size="sm"
+                        onClick={editingGstReview ? handleSaveGstReview : () => setEditingGstReview(true)}
+                        disabled={gstReviewSaving}
+                      >
+                        {gstReviewSaving ? 'Saving...' : editingGstReview ? 'Save GST Review' : 'Edit GST Review'}
+                      </Button>
+                    </div>
+                  </div>
+                  <div className="grid md:grid-cols-2 gap-4 text-sm mb-4">
+                    <div className="rounded-lg border border-neutral-medium p-4">
+                      <div className="text-secondary mb-1">Manual GST Status</div>
+                      <div className={`font-medium ${selectedContractor.gst_manual_verified ? 'text-success' : 'text-secondary'}`}>
+                        {selectedContractor.gst_manual_verified ? 'Verified manually' : 'Not marked yet'}
+                      </div>
+                    </div>
+                    <div className="rounded-lg border border-neutral-medium p-4">
+                      <div className="text-secondary mb-1">Last Reviewed</div>
+                      <div className="text-primary font-medium">
+                        {selectedContractor.gst_manual_verified_at
+                          ? `${new Date(selectedContractor.gst_manual_verified_at).toLocaleDateString()} by ${selectedContractor.gst_manual_verified_by || 'admin'}`
+                          : 'Not recorded'}
+                      </div>
+                    </div>
+                  </div>
+                  <label className="flex items-center gap-3 text-sm text-primary mb-4">
+                    <input
+                      type="checkbox"
+                      checked={gstReviewForm.verified}
+                      onChange={(event) => setGstReviewForm((prev) => ({ ...prev, verified: event.target.checked }))}
+                      disabled={!editingGstReview}
+                      className="h-4 w-4 rounded border-neutral-medium bg-neutral-dark text-accent-orange"
+                    />
+                    GST details checked manually on GST portal
+                  </label>
+                  <label className="block text-sm">
+                    <span className="text-secondary">GST review notes</span>
+                    <textarea
+                      value={gstReviewForm.notes}
+                      onChange={(event) => setGstReviewForm((prev) => ({ ...prev, notes: event.target.value }))}
+                      disabled={!editingGstReview}
+                      className="mt-2 w-full px-3 py-2 rounded-lg border border-neutral-medium bg-neutral-dark text-primary focus:outline-none focus:ring-2 focus:ring-accent-orange"
+                      rows={3}
+                      placeholder="Example: GSTIN matched legal name on portal; principal address reviewed; active status confirmed."
                     />
                   </label>
                 </div>

@@ -177,7 +177,7 @@ export class ContractorAccessService {
     if (verificationStatus === 'documents_pending') {
       return {
         title: 'Documents Required',
-        description: 'Please upload all required KYC documents to complete your application.',
+        description: 'Please upload GST proof to complete your basic onboarding.',
         type: 'warning'
       };
     }
@@ -212,7 +212,7 @@ export class ContractorAccessService {
 
     if (verificationStatus === 'under_verification' || verificationStatus === 'documents_uploaded') {
       return [
-        'Wait for document review (1-2 business days)',
+        'Wait for GST-based onboarding review (1-2 business days)',
         'You will be notified via email once review is complete',
         'Contact support if you have questions'
       ];

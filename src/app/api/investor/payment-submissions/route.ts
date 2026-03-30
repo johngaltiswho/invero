@@ -1,7 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { currentUser } from '@clerk/nextjs/server';
 import { supabaseAdmin } from '@/lib/supabase';
-import { getLenderAllocationIntentById, markAllocationIntentFundingSubmitted } from '@/lib/lender-allocation-intents';
+import {
+  calculateTrancheAllocations,
+  getAllocationIntentFundingSnapshot,
+  getLenderAllocationIntentById,
+  markAllocationIntentFundingSubmitted,
+} from '@/lib/lender-allocation-intents';
 
 const DOC_BUCKET = 'investor-documents';
 
@@ -139,6 +144,10 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Allocation intent is required' }, { status: 400 });
     }
 
+    if (!Number.isFinite(amount) || amount <= 0) {
+      return NextResponse.json({ error: 'Payment amount must be a positive number' }, { status: 400 });
+    }
+
     if (!paymentDate) {
       return NextResponse.json({ error: 'Payment date is required' }, { status: 400 });
     }
@@ -155,8 +164,28 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    amount = Number(allocationIntent.total_amount);
-    const allocationPayload = allocationIntent.allocation_payload;
+    const fundingSnapshot = await getAllocationIntentFundingSnapshot(
+      allocationIntent.id,
+      Number(allocationIntent.total_amount || 0)
+    );
+
+    if (fundingSnapshot.remainingAmount <= 0.009) {
+      return NextResponse.json({ error: 'This allocation has already been fully funded' }, { status: 400 });
+    }
+
+    if (amount - fundingSnapshot.remainingAmount > 0.01) {
+      return NextResponse.json(
+        { error: `Payment exceeds the remaining approved amount of ${fundingSnapshot.remainingAmount.toFixed(2)}` },
+        { status: 400 }
+      );
+    }
+
+    const allocationPayload = calculateTrancheAllocations({
+      totalIntentAmount: Number(allocationIntent.total_amount || 0),
+      trancheAmount: amount,
+      targetAllocations: Array.isArray(allocationIntent.allocation_payload) ? allocationIntent.allocation_payload : [],
+      alreadyAllocatedByModel: fundingSnapshot.allocatedByModel,
+    });
 
     const { data, error } = await supabaseAdmin
       .from('investor_payment_submissions')

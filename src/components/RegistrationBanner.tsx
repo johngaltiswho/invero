@@ -12,9 +12,9 @@ interface Props {
 
 const STEPS: { key: RegistrationStep; label: string }[] = [
   { key: 'not_applied', label: 'Apply' },
-  { key: 'docs_pending', label: 'Upload Docs' },
-  { key: 'docs_uploaded', label: 'Docs Submitted' },
-  { key: 'under_review', label: 'Under Review' },
+  { key: 'docs_pending', label: 'Basic KYC' },
+  { key: 'docs_uploaded', label: 'KYC Submitted' },
+  { key: 'under_review', label: 'KYC Review' },
   { key: 'agreement_pending', label: 'Agreement' },
   { key: 'commercial_review', label: 'Commercial' },
   { key: 'complete', label: 'Verified' },
@@ -48,10 +48,10 @@ export default function RegistrationBanner({ registrationStep, message, canRetry
 
   const ctaLabel =
     registrationStep === 'not_applied' ? 'Start Application' :
-    registrationStep === 'applied' || registrationStep === 'docs_pending' ? 'Upload Documents' :
+    registrationStep === 'applied' || registrationStep === 'docs_pending' ? 'Complete Basic KYC' :
     registrationStep === 'agreement_pending' ? 'View Agreement Status' :
     registrationStep === 'commercial_review' || registrationStep === 'active' ? 'View Status' :
-    canRetry ? 'Re-upload Documents' :
+    canRetry ? 'Re-upload KYC' :
     'View Status';
 
   return (

@@ -2,6 +2,9 @@ import { supabase, supabaseAdmin } from './supabase'
 
 export type DocumentType = 'pan_card' | 'gst_certificate' | 'company_registration' | 'cancelled_cheque'
 
+export const PROCUREMENT_REQUIRED_DOCUMENTS: DocumentType[] = ['gst_certificate']
+export const FINANCING_REQUIRED_DOCUMENTS: DocumentType[] = ['company_registration', 'cancelled_cheque']
+
 export interface DocumentUploadResult {
   success: boolean
   fileUrl?: string
@@ -166,8 +169,12 @@ export class DocumentService {
 
   // Check if all required documents are uploaded
   static checkAllDocumentsUploaded(documents: Record<string, DocumentStatus>): boolean {
-    const requiredDocs: DocumentType[] = ['pan_card', 'gst_certificate', 'company_registration', 'cancelled_cheque']
+    const requiredDocs = PROCUREMENT_REQUIRED_DOCUMENTS
     return requiredDocs.every(docType => documents[docType]?.uploaded === true)
+  }
+
+  static checkFinancingDocumentsUploaded(documents: Record<string, DocumentStatus>): boolean {
+    return FINANCING_REQUIRED_DOCUMENTS.every(docType => documents[docType]?.uploaded === true)
   }
 
   // Get document status for contractor
@@ -247,20 +254,24 @@ export class DocumentService {
 
   // Check if all required documents are verified
   static checkAllDocumentsVerified(documents: Record<string, DocumentStatus>): boolean {
-    const requiredDocs: DocumentType[] = ['pan_card', 'gst_certificate', 'company_registration', 'cancelled_cheque']
+    const requiredDocs = PROCUREMENT_REQUIRED_DOCUMENTS
     return requiredDocs.every(docType => documents[docType]?.verified === true)
+  }
+
+  static checkFinancingDocumentsVerified(documents: Record<string, DocumentStatus>): boolean {
+    return FINANCING_REQUIRED_DOCUMENTS.every(docType => documents[docType]?.verified === true)
   }
 
   // Get document upload progress percentage
   static getUploadProgress(documents: Record<string, DocumentStatus>): number {
-    const requiredDocs: DocumentType[] = ['pan_card', 'gst_certificate', 'company_registration', 'cancelled_cheque']
+    const requiredDocs = PROCUREMENT_REQUIRED_DOCUMENTS
     const uploadedCount = requiredDocs.filter(docType => documents[docType]?.uploaded === true).length
     return Math.round((uploadedCount / requiredDocs.length) * 100)
   }
 
   // Get document verification progress percentage  
   static getVerificationProgress(documents: Record<string, DocumentStatus>): number {
-    const requiredDocs: DocumentType[] = ['pan_card', 'gst_certificate', 'company_registration', 'cancelled_cheque']
+    const requiredDocs = PROCUREMENT_REQUIRED_DOCUMENTS
     const verifiedCount = requiredDocs.filter(docType => documents[docType]?.verified === true).length
     return Math.round((verifiedCount / requiredDocs.length) * 100)
   }

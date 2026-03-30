@@ -163,6 +163,8 @@ export default function ContractorStatusPage(): React.ReactElement {
 
   const statusInfo = ContractorAccessService.getStatusMessage(contractor);
   const nextSteps = ContractorAccessService.getNextSteps(contractor);
+  const procurementDocs: DocumentType[] = ['gst_certificate'];
+  const financingDocs: DocumentType[] = ['company_registration', 'cancelled_cheque'];
 
   const DocumentUploadCard = ({ docType, docInfo }: { docType: DocumentType; docInfo: DocumentInfo }) => (
     <div className="border border-neutral-medium rounded-lg p-4">
@@ -298,7 +300,7 @@ export default function ContractorStatusPage(): React.ReactElement {
 
             {!!contractor.missingChecklist?.length && (
               <p className="text-sm text-accent-orange mb-4">
-                Missing required documents: {contractor.missingChecklist.join(', ')}
+                Missing onboarding documents: {contractor.missingChecklist.join(', ')}
               </p>
             )}
 
@@ -342,11 +344,35 @@ export default function ContractorStatusPage(): React.ReactElement {
 
           {/* Documents Section */}
           <div className="bg-neutral-dark rounded-lg border border-neutral-medium p-6 mb-8">
-            <h3 className="text-lg font-semibold text-primary mb-4">KYC Documents</h3>
-            <div className="grid md:grid-cols-2 gap-4">
-              {contractor.documentsStatus && Object.entries(contractor.documentsStatus).map(([docType, docInfo]) => (
-                <DocumentUploadCard key={docType} docType={docType as DocumentType} docInfo={docInfo} />
-              ))}
+            <h3 className="text-lg font-semibold text-primary mb-2">Documents</h3>
+            <p className="text-sm text-secondary mb-4">
+              GST proof is enough to complete portal onboarding. Company registration and cancelled cheque are only needed later for financing activation.
+            </p>
+            <div className="space-y-6">
+              <div>
+                <h4 className="text-sm font-semibold uppercase tracking-wide text-primary mb-3">Required for portal onboarding</h4>
+                <div className="grid md:grid-cols-2 gap-4">
+                  {procurementDocs.map((docType) => (
+                    <DocumentUploadCard
+                      key={docType}
+                      docType={docType}
+                      docInfo={(contractor.documentsStatus?.[docType] || {}) as DocumentInfo}
+                    />
+                  ))}
+                </div>
+              </div>
+              <div>
+                <h4 className="text-sm font-semibold uppercase tracking-wide text-primary mb-3">Required later for financing</h4>
+                <div className="grid md:grid-cols-2 gap-4">
+                  {financingDocs.map((docType) => (
+                    <DocumentUploadCard
+                      key={docType}
+                      docType={docType}
+                      docInfo={(contractor.documentsStatus?.[docType] || {}) as DocumentInfo}
+                    />
+                  ))}
+                </div>
+              </div>
             </div>
           </div>
 

@@ -12,6 +12,10 @@ export interface Database {
           registration_number: string | null
           pan_number: string | null
           gstin: string | null
+          gst_manual_verified: boolean
+          gst_manual_verified_at: string | null
+          gst_manual_verified_by: string | null
+          gst_manual_verification_notes: string | null
           incorporation_date: string | null
           company_type: 'private-limited' | 'partnership' | 'proprietorship' | 'llp' | null
           business_address: string | null
@@ -133,6 +137,10 @@ export interface Database {
           registration_number?: string | null
           pan_number?: string | null
           gstin?: string | null
+          gst_manual_verified?: boolean
+          gst_manual_verified_at?: string | null
+          gst_manual_verified_by?: string | null
+          gst_manual_verification_notes?: string | null
           incorporation_date?: string | null
           company_type?: 'private-limited' | 'partnership' | 'proprietorship' | 'llp' | null
           business_address?: string | null
@@ -201,6 +209,10 @@ export interface Database {
           registration_number?: string | null
           pan_number?: string | null
           gstin?: string | null
+          gst_manual_verified?: boolean
+          gst_manual_verified_at?: string | null
+          gst_manual_verified_by?: string | null
+          gst_manual_verification_notes?: string | null
           incorporation_date?: string | null
           company_type?: 'private-limited' | 'partnership' | 'proprietorship' | 'llp' | null
           business_address?: string | null

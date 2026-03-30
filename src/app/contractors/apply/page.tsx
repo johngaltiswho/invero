@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Layout, Button, Input } from '@/components';
 import Link from 'next/link';
 
@@ -32,13 +32,20 @@ interface FormData {
 }
 
 const steps = [
-  { id: 1, title: 'Company Information', description: 'Basic company details and registration' },
-  { id: 2, title: 'Documents & Review', description: 'Upload documents and review application' }
+  { id: 1, title: 'Basic Details', description: 'Confirm GSTIN and contact details' },
+  { id: 2, title: 'Documents & Review', description: 'Upload core proof and submit' }
 ];
 
 export default function ContractorApplyPage(): React.ReactElement {
   const [currentStep, setCurrentStep] = useState(1);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isLoadingProfile, setIsLoadingProfile] = useState(true);
+  const [gstLookup, setGstLookup] = useState<{
+    loading: boolean;
+    pan: string | null;
+    stateName: string | null;
+    error: string | null;
+  }>({ loading: false, pan: null, stateName: null, error: null });
   const [submitStatus, setSubmitStatus] = useState<{
     type: 'success' | 'error' | null;
     message: string;
@@ -52,6 +59,51 @@ export default function ContractorApplyPage(): React.ReactElement {
     }
   });
 
+  useEffect(() => {
+    let active = true;
+
+    const loadProfile = async () => {
+      try {
+        const response = await fetch('/api/contractor/profile');
+        const result = await response.json();
+        if (!response.ok || !result?.success || !active) return;
+
+        const data = result.data;
+        setFormData((prev) => ({
+          ...prev,
+          companyName: data.company_name || prev.companyName,
+          registrationNumber: data.registration_number || prev.registrationNumber,
+          panNumber: data.pan_number || prev.panNumber,
+          gstin: data.gstin || prev.gstin,
+          incorporationDate: data.incorporation_date || prev.incorporationDate,
+          companyType: data.company_type || prev.companyType,
+          businessAddress: data.business_address || prev.businessAddress,
+          contactPerson: data.contact_person || prev.contactPerson,
+          designation: data.designation || prev.designation,
+          email: data.email || prev.email,
+          phone: data.phone || prev.phone,
+        }));
+      } finally {
+        if (active) setIsLoadingProfile(false);
+      }
+    };
+
+    loadProfile();
+
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (formData.gstin.trim().length === 15) {
+      void runGstinLookup();
+    } else {
+      setGstLookup({ loading: false, pan: null, stateName: null, error: null });
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [formData.gstin]);
+
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
     setFormData({ ...formData, [e.target.name]: e.target.value });
   };
@@ -62,6 +114,38 @@ export default function ContractorApplyPage(): React.ReactElement {
       ...formData,
       documents: { ...formData.documents, [docType]: file }
     });
+  };
+
+  const runGstinLookup = async () => {
+    if (formData.gstin.trim().length !== 15) {
+      setGstLookup({ loading: false, pan: null, stateName: null, error: null });
+      return;
+    }
+
+    setGstLookup((prev) => ({ ...prev, loading: true, error: null }));
+
+    try {
+      const response = await fetch('/api/contractor/gstin-lookup', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ gstin: formData.gstin }),
+      });
+      const result = await response.json();
+
+      if (!response.ok || !result?.success) {
+        setGstLookup({ loading: false, pan: null, stateName: null, error: result?.error || 'GST lookup failed' });
+        return;
+      }
+
+      setGstLookup({
+        loading: false,
+        pan: result.data?.pan || null,
+        stateName: result.data?.stateName || null,
+        error: null,
+      });
+    } catch {
+      setGstLookup({ loading: false, pan: null, stateName: null, error: 'GST lookup failed' });
+    }
   };
 
   const nextStep = () => setCurrentStep(prev => Math.min(prev + 1, 2));
@@ -111,7 +195,7 @@ export default function ContractorApplyPage(): React.ReactElement {
         setSubmitStatus({
           type: 'success',
           message: result.message,
-          applicationId: result.applicationId,
+          applicationId: result.data?.applicationId,
         });
       } else {
         setSubmitStatus({
@@ -166,44 +250,39 @@ export default function ContractorApplyPage(): React.ReactElement {
       case 1:
         return (
           <div className="space-y-6">
+            <div className="bg-accent-orange/10 border border-accent-orange/20 p-4 rounded-lg">
+              <h4 className="text-accent-orange font-semibold mb-2">Start with basic onboarding</h4>
+              <p className="text-sm text-secondary">
+                Confirm your GSTIN and basic contact details. We use the admin-created profile as the starting point.
+                Registered business details can be enriched from GST verification and updated later if needed.
+              </p>
+            </div>
             <div className="grid md:grid-cols-2 gap-6">
               <Input label="Company Name *" name="companyName" value={formData.companyName} onChange={handleInputChange} required />
-              <Input
-                label={formData.companyType === 'private-limited' ? 'CIN *' : formData.companyType === 'llp' ? 'LLPIN *' : 'Registration Number *'}
-                name="registrationNumber"
-                value={formData.registrationNumber}
-                onChange={handleInputChange}
-                required
-              />
+              <Input label="GSTIN *" name="gstin" value={formData.gstin} onChange={handleInputChange} onBlur={runGstinLookup} required />
+            </div>
+            <div className="rounded-lg border border-neutral-medium bg-neutral-darker/40 p-4 text-sm">
+              {gstLookup.loading ? (
+                <p className="text-secondary">Reading GSTIN structure...</p>
+              ) : gstLookup.error ? (
+                <p className="text-red-400">{gstLookup.error}</p>
+              ) : gstLookup.pan || gstLookup.stateName ? (
+                <div className="space-y-1 text-secondary">
+                  {gstLookup.pan && <p>Derived PAN from GSTIN: <span className="text-primary">{gstLookup.pan}</span></p>}
+                  {gstLookup.stateName && <p>Derived state from GSTIN: <span className="text-primary">{gstLookup.stateName}</span></p>}
+                  <p className="text-xs">Full legal name and registered address will be pulled once we connect a GST data provider.</p>
+                </div>
+              ) : (
+                <p className="text-secondary">Enter a valid GSTIN to derive PAN and state automatically.</p>
+              )}
             </div>
             <div className="grid md:grid-cols-2 gap-6">
-              <Input label="GSTIN *" name="gstin" value={formData.gstin} onChange={handleInputChange} required />
-              <Input label="PAN Number *" name="panNumber" value={formData.panNumber} onChange={handleInputChange} required />
-            </div>
-            <div className="grid md:grid-cols-2 gap-6">
-              <Input label="Incorporation Date *" name="incorporationDate" type="date" value={formData.incorporationDate} onChange={handleInputChange} required />
-            </div>
-            <div className="grid md:grid-cols-2 gap-6">
-              <div>
-                <label className="block text-sm font-medium text-primary mb-2">Company Type *</label>
-                <select name="companyType" value={formData.companyType} onChange={handleInputChange} className="w-full px-4 py-3 rounded-lg border bg-neutral-dark text-primary focus:outline-none focus:ring-2 focus:ring-accent-orange border-neutral-medium" required>
-                  <option value="">Select company type</option>
-                  <option value="private-limited">Private Limited</option>
-                  <option value="partnership">Partnership</option>
-                  <option value="proprietorship">Proprietorship</option>
-                  <option value="llp">LLP</option>
-                </select>
-              </div>
               <Input label="Contact Person *" name="contactPerson" value={formData.contactPerson} onChange={handleInputChange} required />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-primary mb-2">Business Address *</label>
-              <textarea name="businessAddress" value={formData.businessAddress} onChange={handleInputChange} className="w-full px-4 py-3 rounded-lg border bg-neutral-dark text-primary placeholder-text-secondary focus:outline-none focus:ring-2 focus:ring-accent-orange border-neutral-medium" rows={3} required />
-            </div>
-            <div className="grid md:grid-cols-3 gap-6">
-              <Input label="Designation *" name="designation" value={formData.designation} onChange={handleInputChange} required />
-              <Input label="Email *" name="email" type="email" value={formData.email} onChange={handleInputChange} required />
               <Input label="Phone *" name="phone" type="tel" value={formData.phone} onChange={handleInputChange} required />
+            </div>
+            <div className="grid md:grid-cols-2 gap-6">
+              <Input label="Email" name="email" type="email" value={formData.email} onChange={handleInputChange} disabled />
+              <Input label="Designation" name="designation" value={formData.designation} onChange={handleInputChange} />
             </div>
           </div>
         );
@@ -212,30 +291,29 @@ export default function ContractorApplyPage(): React.ReactElement {
         return (
           <div className="space-y-6">
             <div className="bg-accent-orange/10 border border-accent-orange/20 p-4 rounded-lg mb-6">
-              <h4 className="text-accent-orange font-semibold mb-2">📋 Required KYC Documents</h4>
+              <h4 className="text-accent-orange font-semibold mb-2">📋 Basic onboarding documents</h4>
               <p className="text-sm text-secondary">
-                Upload the following documents for verification. All documents must be clear, readable, and in PDF or image format (max 20MB each).
+                Upload GST proof now. PAN can be shared as a fallback if GST verification does not give us the full business profile cleanly.
               </p>
             </div>
             
             <div className="grid md:grid-cols-2 gap-6">
-              <FileUpload label="PAN Card" docType="panCard" required helpText="Company/Individual PAN card" />
-              <FileUpload label="GST Certificate" docType="gstCertificate" required helpText="GST registration certificate" />
+              <FileUpload label="PAN Card" docType="panCard" helpText="Optional fallback if GST verification does not give us the PAN cleanly." />
+              <FileUpload label="GST Certificate" docType="gstCertificate" required helpText="Primary proof for business verification and registered address." />
             </div>
             <div className="grid md:grid-cols-2 gap-6">
-              <FileUpload label="Company Registration" docType="companyRegistration" required helpText="CIN/LLP/Partnership certificate" />
-              <FileUpload label="Cancelled Cheque" docType="cancelledCheque" required helpText="Bank account verification" />
+              <FileUpload label="Company Registration" docType="companyRegistration" helpText="Optional now. Needed later for financing activation." />
+              <FileUpload label="Cancelled Cheque" docType="cancelledCheque" helpText="Optional now. Needed later for financing activation." />
             </div>
             
             <div className="bg-neutral-medium p-6 rounded-lg mt-8">
               <h3 className="text-xl font-bold text-primary mb-4">Application Summary</h3>
               <div className="grid md:grid-cols-2 gap-4 text-sm">
                 <div><span className="text-secondary">Company:</span> <span className="text-primary">{formData.companyName}</span></div>
-                <div><span className="text-secondary">{formData.companyType === 'private-limited' ? 'CIN' : formData.companyType === 'llp' ? 'LLPIN' : 'Registration Number'}:</span> <span className="text-primary">{formData.registrationNumber}</span></div>
                 <div><span className="text-secondary">GST Number:</span> <span className="text-primary">{formData.gstin}</span></div>
-                <div><span className="text-secondary">PAN Number:</span> <span className="text-primary">{formData.panNumber}</span></div>
                 <div><span className="text-secondary">Contact Person:</span> <span className="text-primary">{formData.contactPerson}</span></div>
                 <div><span className="text-secondary">Email:</span> <span className="text-primary">{formData.email}</span></div>
+                <div><span className="text-secondary">Phone:</span> <span className="text-primary">{formData.phone}</span></div>
               </div>
             </div>
             
@@ -293,8 +371,8 @@ export default function ContractorApplyPage(): React.ReactElement {
             Apply for <span className="accent-orange">Contract-Backed Material Supply</span>
           </h1>
           <p className="text-lg text-secondary mb-8 leading-relaxed">
-            Complete our comprehensive application to access direct-to-site material supply for your verified MNC contracts. 
-            Our proprietary vetting process ensures fast approval for qualified SMEs.
+            Complete a light onboarding flow to access the portal and begin procurement review.
+            We start with GST verification and the contact details already seeded by the admin team.
           </p>
         </div>
       </section>
@@ -337,6 +415,9 @@ export default function ContractorApplyPage(): React.ReactElement {
               <h2 className="text-2xl font-bold text-primary mb-8">
                 {steps[currentStep - 1]?.title || 'Application Step'}
               </h2>
+              {isLoadingProfile && (
+                <p className="text-sm text-secondary mb-6">Loading your admin-invited profile...</p>
+              )}
               
               {renderStepContent()}
 
@@ -379,17 +460,17 @@ export default function ContractorApplyPage(): React.ReactElement {
               <div>
                 <div className="text-3xl accent-orange mb-4">📋</div>
                 <h3 className="text-lg font-bold text-primary mb-2">Application Review</h3>
-                <p className="text-secondary">Our team reviews your application within 48 hours using our proprietary scoring model.</p>
+                <p className="text-secondary">Our team reviews your basic onboarding details and core KYC first so you can move into procurement workflow quickly.</p>
               </div>
               <div>
                 <div className="text-3xl accent-orange mb-4">🤝</div>
-                <h3 className="text-lg font-bold text-primary mb-2">Contract Verification</h3>
-                <p className="text-secondary">We conduct comprehensive verification of MNC client contracts and project execution capabilities.</p>
+                <h3 className="text-lg font-bold text-primary mb-2">Procurement Activation</h3>
+                <p className="text-secondary">Once approved, your team gets access to Finverno's procurement workflow, vendor coordination, and project-side visibility.</p>
               </div>
               <div>
                 <div className="text-3xl accent-orange mb-4">🚚</div>
-                <h3 className="text-lg font-bold text-primary mb-2">Material Supply Enablement</h3>
-                <p className="text-secondary">Upon approval, direct-to-site material supply begins according to work order milestones within 5-7 business days.</p>
+                <h3 className="text-lg font-bold text-primary mb-2">Financing Later If Needed</h3>
+                <p className="text-secondary">If your account later moves into financing, we will separately request company registration and bank proof before commercial activation.</p>
               </div>
             </div>
           </div>
