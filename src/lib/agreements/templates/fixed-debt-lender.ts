@@ -227,6 +227,7 @@ export function renderFixedDebtLenderHTML(payload: AgreementTemplatePayload): st
           <p style="margin-top: 48px;">__________________________</p>
           <p>${payload.companySignatoryName}</p>
           <p>${payload.companySignatoryTitle}</p>
+          ${payload.companyCountersignedAtLabel ? `<p><strong>Countersigned on:</strong> ${payload.companyCountersignedAtLabel}</p>` : ''}
         </div>
 
         <div style="margin-top: 42px;">

@@ -31,6 +31,7 @@ type BuildPayloadInput = {
   notes?: string | null;
   investorSignedName?: string | null;
   investorSignedAt?: string | null;
+  companyCountersignedAt?: string | null;
   fixedCouponRateAnnual?: number | null;
   payoutPriorityRank?: number | null;
   almBucket?: string | null;
@@ -65,6 +66,18 @@ export function buildInvestorAgreementPayload(input: BuildPayloadInput): Agreeme
         })
       : input.investorSignedAt || null;
 
+  const companyCountersignedAt = input.companyCountersignedAt ? new Date(input.companyCountersignedAt) : null;
+  const companyCountersignedAtLabel =
+    companyCountersignedAt && !Number.isNaN(companyCountersignedAt.getTime())
+      ? companyCountersignedAt.toLocaleString('en-IN', {
+          day: '2-digit',
+          month: 'long',
+          year: 'numeric',
+          hour: '2-digit',
+          minute: '2-digit',
+        })
+      : input.companyCountersignedAt || null;
+
   return {
     agreementModelType: input.agreementModelType || 'pool_participation',
     sleeveName: input.sleeveName || null,
@@ -77,6 +90,7 @@ export function buildInvestorAgreementPayload(input: BuildPayloadInput): Agreeme
     investorAddress: input.investorAddress ?? input.investor.address ?? null,
     investorSignedName: input.investorSignedName || null,
     investorSignedAtLabel,
+    companyCountersignedAtLabel,
     commitmentAmount: input.commitmentAmount,
     commitmentAmountLabel: formatCurrency(input.commitmentAmount),
     companyName: FINVERNO_COMPANY_NAME,

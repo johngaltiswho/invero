@@ -59,7 +59,7 @@ function randomToken() {
 async function uploadAgreementPdf(params: {
   investor: InvestorRow;
   payload: AgreementTemplatePayload;
-  prefix: 'agreement-draft' | 'agreement-signed';
+  prefix: 'agreement-draft' | 'agreement-signed' | 'agreement-executed';
   templateVersion: string;
 }) {
   await ensureBucket();
@@ -767,18 +767,54 @@ export async function markAgreementExecuted(agreementId: string, actor: AdminAct
   if (!['investor_signed', 'signed_copy_received'].includes(agreement.status)) {
     throw new Error('Agreement must be investor-signed before countersigning');
   }
-  const executedPdfPath = agreement.executed_pdf_path || agreement.signed_pdf_path;
-  if (!executedPdfPath) {
+  if (!agreement.signed_pdf_path && !agreement.draft_pdf_path) {
     throw new Error('Investor-signed agreement file is required before countersigning');
   }
 
+  const investor = await getInvestorById(agreement.investor_id);
+  if (!investor) {
+    throw new Error('Investor not found');
+  }
+
   const executedAt = new Date().toISOString();
+  const renderContext = await getAgreementRenderContext(agreement);
+  const payload = buildInvestorAgreementPayload({
+    agreementModelType: renderContext.agreementModelType,
+    sleeveName: renderContext.sleeve?.name || null,
+    investor,
+    commitmentAmount: Number(agreement.commitment_amount) || 0,
+    agreementDate: agreement.agreement_date,
+    investorPan: agreement.investor_pan ?? investor.pan_number ?? null,
+    investorAddress: agreement.investor_address ?? investor.address ?? null,
+    companySignatoryName: agreement.company_signatory_name || '',
+    companySignatoryTitle: agreement.company_signatory_title || '',
+    notes: agreement.notes || null,
+    investorSignedName: agreement.investor_signed_name || null,
+    investorSignedAt: agreement.investor_signed_at || null,
+    companyCountersignedAt: executedAt,
+    fixedCouponRateAnnual: renderContext.sleeve?.fixed_coupon_rate_annual ?? null,
+    payoutPriorityRank: renderContext.sleeve?.payout_priority_rank ?? null,
+    almBucket: renderContext.sleeve?.alm_bucket ?? null,
+    liquidityNotes: renderContext.sleeve?.liquidity_notes ?? null,
+  });
+  const rendered = renderAgreementHTML(payload);
+  const executedPdfPath = await uploadAgreementPdf({
+    investor,
+    payload,
+    prefix: 'agreement-executed',
+    templateVersion: rendered.templateVersion,
+  });
+
   const { data, error } = await (supabaseAdmin as any)
     .from('investor_agreements')
     .update({
       status: 'executed',
       executed_pdf_path: executedPdfPath,
       executed_at: executedAt,
+      payload_snapshot: payload,
+      rendered_html: rendered.html,
+      template_key: rendered.templateKey,
+      template_version: rendered.templateVersion,
       updated_by: actor.id,
       updated_at: executedAt,
     })
@@ -793,7 +829,6 @@ export async function markAgreementExecuted(agreementId: string, actor: AdminAct
   if (agreement.lender_sleeve_id) {
     await syncLenderSleeveAgreementStatus(agreement.lender_sleeve_id, 'completed', executedAt);
   }
-  const investor = await getInvestorById(agreement.investor_id);
   if (investor?.email) {
     try {
       await sendEmail({
@@ -808,6 +843,124 @@ export async function markAgreementExecuted(agreementId: string, actor: AdminAct
     }
   }
   return data as InvestorAgreement;
+}
+
+export async function regenerateExecutedInvestorAgreement(
+  agreementId: string,
+  actor: AdminActor
+): Promise<InvestorAgreement> {
+  const agreement = await getInvestorAgreement(agreementId);
+  if (!agreement) throw new Error('Agreement not found');
+  if (agreement.status !== 'executed') throw new Error('Only executed agreements can be regenerated');
+  if (!agreement.investor_signed_at) throw new Error('Investor signature timestamp is required to regenerate the executed copy');
+
+  const investor = await getInvestorById(agreement.investor_id);
+  if (!investor) {
+    throw new Error('Investor not found');
+  }
+
+  const renderContext = await getAgreementRenderContext(agreement);
+  const resolvedEconomics = await resolveRegenerationEconomics(agreement, renderContext);
+  const companyCountersignedAt = agreement.executed_at || agreement.updated_at || new Date().toISOString();
+  const payload = buildInvestorAgreementPayload({
+    agreementModelType: renderContext.agreementModelType,
+    sleeveName: renderContext.sleeve?.name || null,
+    investor,
+    commitmentAmount: resolvedEconomics.commitmentAmount,
+    agreementDate: agreement.agreement_date,
+    investorPan: agreement.investor_pan ?? investor.pan_number ?? null,
+    investorAddress: agreement.investor_address ?? investor.address ?? null,
+    companySignatoryName: agreement.company_signatory_name || '',
+    companySignatoryTitle: agreement.company_signatory_title || '',
+    notes: agreement.notes || null,
+    investorSignedName: agreement.investor_signed_name || null,
+    investorSignedAt: agreement.investor_signed_at || null,
+    companyCountersignedAt,
+    fixedCouponRateAnnual: resolvedEconomics.fixedCouponRateAnnual,
+    payoutPriorityRank: renderContext.sleeve?.payout_priority_rank ?? null,
+    almBucket: renderContext.sleeve?.alm_bucket ?? null,
+    liquidityNotes: renderContext.sleeve?.liquidity_notes ?? null,
+  });
+  const rendered = renderAgreementHTML(payload);
+  const executedPdfPath = await uploadAgreementPdf({
+    investor,
+    payload,
+    prefix: 'agreement-executed',
+    templateVersion: rendered.templateVersion,
+  });
+
+  const { data, error } = await (supabaseAdmin as any)
+    .from('investor_agreements')
+    .update({
+      executed_pdf_path: executedPdfPath,
+      commitment_amount: resolvedEconomics.commitmentAmount,
+      payload_snapshot: payload,
+      rendered_html: rendered.html,
+      template_key: rendered.templateKey,
+      template_version: rendered.templateVersion,
+      updated_by: actor.id,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', agreementId)
+    .select('*')
+    .single();
+  if (error) {
+    throw new Error(error.message || 'Failed to regenerate executed agreement');
+  }
+
+  return data as InvestorAgreement;
+}
+
+export async function bulkRegenerateExecutedInvestorAgreements(
+  actor: AdminActor,
+  filters?: {
+    investorId?: string;
+    agreementModelType?: LenderSleeveModelType;
+  }
+): Promise<{
+  total: number;
+  regenerated: number;
+  failed: Array<{ agreementId: string; error: string }>;
+}> {
+  let query = (supabaseAdmin as any)
+    .from('investor_agreements')
+    .select('*')
+    .eq('status', 'executed')
+    .order('created_at', { ascending: false });
+
+  if (filters?.investorId) {
+    query = query.eq('investor_id', filters.investorId);
+  }
+  if (filters?.agreementModelType) {
+    query = query.eq('agreement_model_type', filters.agreementModelType);
+  }
+
+  const { data, error } = await query;
+  if (error) {
+    throw new Error(error.message || 'Failed to load executed investor agreements');
+  }
+
+  const agreements = (data || []) as InvestorAgreement[];
+  const failed: Array<{ agreementId: string; error: string }> = [];
+  let regenerated = 0;
+
+  for (const agreement of agreements) {
+    try {
+      await regenerateExecutedInvestorAgreement(agreement.id, actor);
+      regenerated += 1;
+    } catch (regenerationError) {
+      failed.push({
+        agreementId: agreement.id,
+        error: regenerationError instanceof Error ? regenerationError.message : 'Failed to regenerate executed copy',
+      });
+    }
+  }
+
+  return {
+    total: agreements.length,
+    regenerated,
+    failed,
+  };
 }
 
 export async function voidAgreement(agreementId: string, actor: AdminActor, reason?: string): Promise<InvestorAgreement> {

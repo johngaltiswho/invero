@@ -97,10 +97,10 @@ export async function GET() {
       console.error('❌ Error fetching contractors:', contractorsError);
     }
 
-    const [poolInflowsRes, poolDistributionsRes, poolTransactionsRes, poolRequestsRes] = await Promise.all([
+    const [completedInflowsRes, poolDistributionsRes, poolTransactionsRes, poolRequestsRes, allLenderSleevesRes, capitalAllocationsRes] = await Promise.all([
       supabase
         .from('capital_transactions')
-        .select('investor_id, amount, created_at, status, transaction_type')
+        .select('id, investor_id, amount, created_at, status, transaction_type')
         .eq('transaction_type', 'inflow')
         .eq('status', 'completed'),
       supabase
@@ -117,11 +117,18 @@ export async function GET() {
         .eq('status', 'completed'),
       supabase
         .from('purchase_requests')
-        .select('id, project_id, contractor_id, status')
+        .select('id, project_id, contractor_id, status'),
+      supabase
+        .from('lender_sleeves')
+        .select('id, model_type'),
+      supabase
+        .from('lender_capital_allocations')
+        .select('investor_id, lender_sleeve_id, capital_transaction_id, allocation_amount, created_at')
+        .not('capital_transaction_id', 'is', null)
     ]);
 
-    if (poolInflowsRes.error) {
-      console.error('❌ Error fetching pool inflows:', poolInflowsRes.error);
+    if (completedInflowsRes.error) {
+      console.error('❌ Error fetching completed inflows:', completedInflowsRes.error);
     }
 
     if (poolDistributionsRes.error) {
@@ -136,8 +143,57 @@ export async function GET() {
       console.error('❌ Error fetching purchase requests for pool valuation:', poolRequestsRes.error);
     }
 
+    if (allLenderSleevesRes.error) {
+      console.error('❌ Error fetching lender sleeves for pool valuation:', allLenderSleevesRes.error);
+    }
+
+    if (capitalAllocationsRes.error) {
+      console.error('❌ Error fetching capital allocations for pool valuation:', capitalAllocationsRes.error);
+    }
+
+    const completedInflowsById = new Map(
+      ((completedInflowsRes.data as any[]) || []).map((row) => [row.id, row])
+    );
+    const poolSleeveIds = new Set(
+      ((allLenderSleevesRes.data as any[]) || [])
+        .filter((row) => row.model_type === 'pool_participation')
+        .map((row) => row.id)
+    );
+    const allocationRows = (capitalAllocationsRes.data as any[]) || [];
+
+    const poolInvestorInflows = allocationRows
+      .filter((row) => row.capital_transaction_id && poolSleeveIds.has(row.lender_sleeve_id))
+      .map((row) => {
+        const inflow = completedInflowsById.get(row.capital_transaction_id);
+        if (!inflow) return null;
+        return {
+          investor_id: row.investor_id,
+          amount: Number(row.allocation_amount || 0),
+          created_at: inflow.created_at,
+          status: inflow.status,
+          transaction_type: inflow.transaction_type,
+        };
+      })
+      .filter(Boolean) as Array<{
+        investor_id: string;
+        amount: number;
+        created_at: string;
+        status: string;
+        transaction_type: string;
+      }>;
+
+    const poolInflows = poolInvestorInflows.length > 0
+      ? poolInvestorInflows
+      : (((completedInflowsRes.data as any[]) || []).map((row) => ({
+          investor_id: row.investor_id,
+          amount: Number(row.amount || 0),
+          created_at: row.created_at,
+          status: row.status,
+          transaction_type: row.transaction_type,
+        })));
+
     const poolValuation = calculateSoftPoolValuation({
-      investorInflows: poolInflowsRes.data || [],
+      investorInflows: poolInflows,
       investorDistributions: poolDistributionsRes.data || [],
       poolTransactions: poolTransactionsRes.data || [],
       purchaseRequests: poolRequestsRes.data || [],
@@ -536,15 +592,21 @@ export async function GET() {
           };
         }
 
-        const sleeveUnitsHeld = Number(sleeve.units_held || 0);
+        const sleeveUnitsHeld = Number(poolPosition.unitsHeld || sleeve.units_held || 0);
         const sleeveEntryNavPerUnit =
-          Number(sleeve.entry_nav_per_unit || 0) > 0
-            ? Number(sleeve.entry_nav_per_unit)
-            : poolValuation.netNavPerUnit || 100;
+          Number(poolPosition.entryNavPerUnit || 0) > 0
+            ? Number(poolPosition.entryNavPerUnit)
+            : Number(sleeve.entry_nav_per_unit || 0) > 0
+              ? Number(sleeve.entry_nav_per_unit)
+              : poolValuation.netNavPerUnit || 100;
         const sleeveOwnershipRatio =
-          poolValuation.totalPoolUnits > 0 ? sleeveUnitsHeld / poolValuation.totalPoolUnits : 0;
-        const sleeveGrossValue = sleeveUnitsHeld * poolValuation.grossNavPerUnit;
-        const sleeveNetValue = sleeveUnitsHeld * poolValuation.netNavPerUnit;
+          Number(poolPosition.ownershipPercent || 0) > 0
+            ? Number(poolPosition.ownershipPercent || 0) / 100
+            : poolValuation.totalPoolUnits > 0
+              ? sleeveUnitsHeld / poolValuation.totalPoolUnits
+              : 0;
+        const sleeveGrossValue = Number(poolPosition.grossValue || sleeveUnitsHeld * poolValuation.grossNavPerUnit);
+        const sleeveNetValue = Number(poolPosition.netValue || sleeveUnitsHeld * poolValuation.netNavPerUnit);
 
         return {
           id: sleeve.id,
@@ -560,7 +622,7 @@ export async function GET() {
           summary: {
             unitsHeld: sleeveUnitsHeld,
             entryNavPerUnit: sleeveEntryNavPerUnit,
-            ownershipPercent: sleeveOwnershipRatio * 100,
+            ownershipPercent: Number(poolPosition.ownershipPercent || sleeveOwnershipRatio * 100),
             grossValue: sleeveGrossValue,
             netValue: sleeveNetValue,
             deployedPrincipal: poolValuation.deployedPrincipal * sleeveOwnershipRatio,

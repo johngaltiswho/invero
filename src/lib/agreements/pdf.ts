@@ -237,7 +237,10 @@ export function generateInvestorAgreementPDF(
   }
   y += 6;
   addTextBlock(`For ${payload.companyName}`, { bold: true, spacing: 2 });
-  addTextBlock(`${payload.companySignatoryName}\n${payload.companySignatoryTitle}`, { size: 10, spacing: 6 });
+  addTextBlock(
+    `${payload.companySignatoryName}\n${payload.companySignatoryTitle}${payload.companyCountersignedAtLabel ? `\nCountersigned on ${payload.companyCountersignedAtLabel}` : ''}`,
+    { size: 10, spacing: 6 }
+  );
 
   addTextBlock('Lender', { bold: true, spacing: 2 });
   addTextBlock(

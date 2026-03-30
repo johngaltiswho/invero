@@ -80,6 +80,7 @@ export type AgreementTemplatePayload = {
   investorAddress?: string | null;
   investorSignedName?: string | null;
   investorSignedAtLabel?: string | null;
+  companyCountersignedAtLabel?: string | null;
   commitmentAmount: number;
   commitmentAmountLabel: string;
   companyName: string;
