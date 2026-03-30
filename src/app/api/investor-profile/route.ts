@@ -1,10 +1,10 @@
 import { NextResponse } from 'next/server';
-import { currentUser } from '@clerk/nextjs/server';
 import { createClient } from '@supabase/supabase-js';
 import { calculateSoftPoolValuation } from '@/lib/pool-valuation';
 import { listLenderSleevesForInvestor } from '@/lib/lender-sleeves';
 import { listLenderAllocationIntentsForInvestor, refreshAllocationIntentReadiness } from '@/lib/lender-allocation-intents';
 import { selectCurrentInvestorAgreements } from '@/lib/agreements/service';
+import { getInvestorAuthErrorStatus, resolveActiveInvestor } from '@/lib/investor-auth';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -14,44 +14,8 @@ const supabase = createClient(
 export async function GET() {
   try {
     console.log('🔍 Investor Profile API called');
-    
-    // Get user info from Clerk
-    const user = await currentUser();
-    
-    if (!user) {
-      console.log('❌ No authenticated user found');
-      return NextResponse.json(
-        { error: 'Not authenticated' },
-        { status: 401 }
-      );
-    }
-    
-    const userEmail = user.emailAddresses[0]?.emailAddress;
-    console.log('✅ User authenticated, email:', userEmail);
-    
-    if (!userEmail) {
-      return NextResponse.json(
-        { error: 'No email found for user' },
-        { status: 400 }
-      );
-    }
-
-    // Check if user is registered as an investor
-    const { data: investor, error: investorError } = await supabase
-      .from('investors')
-      .select('*')
-      .eq('email', userEmail.toLowerCase())
-      .eq('status', 'active')
-      .single();
-
-    if (investorError || !investor) {
-      console.log('❌ No active investor found for email:', userEmail);
-      return NextResponse.json({
-        success: false,
-        error: 'Investor profile not found',
-        message: 'Your email is not registered as an active investor in our system. Please contact support to get access.'
-      }, { status: 404 });
-    }
+    const { investor, user } = await resolveActiveInvestor();
+    console.log('✅ User authenticated, email:', user?.emailAddresses?.[0]?.emailAddress);
 
     console.log('✅ Active investor found:', investor.name);
 
@@ -680,12 +644,16 @@ export async function GET() {
 
   } catch (error) {
     console.error('💥 Error in investor profile API:', error);
+    const status = getInvestorAuthErrorStatus(error);
     return NextResponse.json(
       { 
-        error: 'Internal server error', 
+        error: error instanceof Error ? error.message : 'Internal server error', 
         details: error instanceof Error ? error.message : 'Unknown error',
+        message: status === 404
+          ? 'Your email is not registered as an active investor in our system. Please contact support to get access.'
+          : undefined,
       },
-      { status: 500 }
+      { status }
     );
   }
 }

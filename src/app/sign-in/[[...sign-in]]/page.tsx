@@ -4,6 +4,7 @@ import { SignIn, useSignIn } from '@clerk/nextjs';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Suspense, useMemo, useState } from 'react';
+import { normalizeAuthRedirect } from '@/lib/auth-redirect';
 
 export const dynamic = 'force-dynamic';
 
@@ -18,10 +19,10 @@ function SignInComponent() {
   const [mode, setMode] = useState<'otp' | 'password'>('otp');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const redirectUrl =
-    searchParams.get('redirect_url') ||
-    searchParams.get('redirectUrl') ||
-    '/';
+  const redirectUrl = normalizeAuthRedirect(
+    searchParams.get('redirect_url') || searchParams.get('redirectUrl'),
+    '/'
+  );
 
   const isVerifying = signIn?.status === 'needs_first_factor';
   const generalErrors = useMemo(() => (errorMessage ? [errorMessage] : []), [errorMessage]);

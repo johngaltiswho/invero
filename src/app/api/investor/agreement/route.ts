@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { createAgreementSignedUrl, getInvestorAgreementsForCurrentUser, selectCurrentInvestorAgreements } from '@/lib/agreements/service';
+import { getInvestorAuthErrorStatus } from '@/lib/investor-auth';
 
 export async function GET() {
   try {
@@ -31,12 +32,9 @@ export async function GET() {
     });
   } catch (error) {
     console.error('Error loading investor agreement:', error);
-    if (error instanceof Error && error.message === 'Not authenticated') {
-      return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
-    }
     return NextResponse.json(
       { error: error instanceof Error ? error.message : 'Failed to load agreement' },
-      { status: 500 }
+      { status: getInvestorAuthErrorStatus(error) }
     );
   }
 }

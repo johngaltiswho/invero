@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { currentUser } from '@clerk/nextjs/server';
 import { supabaseAdmin } from '@/lib/supabase';
 import { selectCurrentInvestorAgreements } from '@/lib/agreements/service';
+import { getInvestorAuthErrorStatus, resolveActiveInvestor } from '@/lib/investor-auth';
 
 const BUCKET = 'investor-documents';
 
@@ -14,31 +14,6 @@ async function ensureBucket() {
       fileSizeLimit: 50 * 1024 * 1024
     });
   }
-}
-
-async function getActiveInvestor() {
-  const user = await currentUser();
-  if (!user) {
-    throw new Error('Not authenticated');
-  }
-
-  const userEmail = user.emailAddresses[0]?.emailAddress?.toLowerCase();
-  if (!userEmail) {
-    throw new Error('Missing email');
-  }
-
-  const { data: investor, error } = await supabaseAdmin
-    .from('investors')
-    .select('*')
-    .eq('email', userEmail)
-    .eq('status', 'active')
-    .single();
-
-  if (error || !investor) {
-    throw new Error('Investor profile not found');
-  }
-
-  return investor;
 }
 
 function parseDocumentMetadata(fileName: string) {
@@ -79,7 +54,7 @@ function buildAgreementDocumentName(input: {
 
 export async function GET() {
   try {
-    const investor = await getActiveInvestor();
+    const { investor } = await resolveActiveInvestor();
     await ensureBucket();
 
     const { data: agreements, error: agreementsError } = await supabaseAdmin
@@ -219,13 +194,16 @@ export async function GET() {
     return NextResponse.json({ success: true, documents });
   } catch (error) {
     console.error('Error fetching investor documents:', error);
-    return NextResponse.json({ error: 'Failed to fetch documents' }, { status: 500 });
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : 'Failed to fetch documents' },
+      { status: getInvestorAuthErrorStatus(error) }
+    );
   }
 }
 
 export async function POST(request: NextRequest) {
   try {
-    const investor = await getActiveInvestor();
+    const { investor } = await resolveActiveInvestor();
     await ensureBucket();
 
     const formData = await request.formData();
@@ -285,6 +263,9 @@ export async function POST(request: NextRequest) {
     });
   } catch (error) {
     console.error('Error uploading investor document:', error);
-    return NextResponse.json({ error: 'Failed to upload document' }, { status: 500 });
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : 'Failed to upload document' },
+      { status: getInvestorAuthErrorStatus(error) }
+    );
   }
 }

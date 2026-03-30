@@ -1,35 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { currentUser } from '@clerk/nextjs/server';
 import { supabaseAdmin } from '@/lib/supabase';
-
-async function getActiveInvestor() {
-  const user = await currentUser();
-  if (!user) {
-    throw new Error('Not authenticated');
-  }
-
-  const userEmail = user.emailAddresses[0]?.emailAddress?.toLowerCase();
-  if (!userEmail) {
-    throw new Error('Missing email');
-  }
-
-  const { data: investor, error } = await supabaseAdmin
-    .from('investors')
-    .select('*')
-    .eq('email', userEmail)
-    .eq('status', 'active')
-    .single();
-
-  if (error || !investor) {
-    throw new Error('Investor profile not found');
-  }
-
-  return investor;
-}
+import { getInvestorAuthErrorStatus, resolveActiveInvestor } from '@/lib/investor-auth';
 
 export async function GET() {
   try {
-    const investor = await getActiveInvestor();
+    const { investor } = await resolveActiveInvestor();
     return NextResponse.json({
       success: true,
       data: {
@@ -44,13 +19,16 @@ export async function GET() {
     });
   } catch (error) {
     console.error('Error fetching investor bank details:', error);
-    return NextResponse.json({ error: 'Failed to fetch bank details' }, { status: 500 });
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : 'Failed to fetch bank details' },
+      { status: getInvestorAuthErrorStatus(error) }
+    );
   }
 }
 
 export async function POST(request: NextRequest) {
   try {
-    const investor = await getActiveInvestor();
+    const { investor } = await resolveActiveInvestor();
     const body = await request.json();
 
     const updatePayload = {
@@ -78,6 +56,9 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ success: true, data });
   } catch (error) {
     console.error('Error updating investor bank details:', error);
-    return NextResponse.json({ error: 'Failed to update bank details' }, { status: 500 });
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : 'Failed to update bank details' },
+      { status: getInvestorAuthErrorStatus(error) }
+    );
   }
 }

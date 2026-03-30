@@ -1,35 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { currentUser } from '@clerk/nextjs/server';
 import { supabaseAdmin } from '@/lib/supabase';
-
-async function getActiveInvestor() {
-  const user = await currentUser();
-  if (!user) {
-    throw new Error('Not authenticated');
-  }
-
-  const userEmail = user.emailAddresses[0]?.emailAddress?.toLowerCase();
-  if (!userEmail) {
-    throw new Error('Missing email');
-  }
-
-  const { data: investor, error } = await supabaseAdmin
-    .from('investors')
-    .select('id, email, name, status')
-    .eq('email', userEmail)
-    .eq('status', 'active')
-    .single();
-
-  if (error || !investor) {
-    throw new Error('Investor profile not found');
-  }
-
-  return investor;
-}
+import { getInvestorAuthErrorStatus, resolveActiveInvestor } from '@/lib/investor-auth';
 
 export async function GET() {
   try {
-    const investor = await getActiveInvestor();
+    const { investor } = await resolveActiveInvestor('id, email, name, status');
     const { data, error } = await supabaseAdmin
       .from('investor_interest_submissions')
       .select('*')
@@ -43,19 +18,16 @@ export async function GET() {
     return NextResponse.json({ success: true, submissions: data || [] });
   } catch (error) {
     console.error('Error loading investor interest submissions:', error);
-    if (error instanceof Error && error.message === 'Not authenticated') {
-      return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
-    }
     return NextResponse.json(
       { error: error instanceof Error ? error.message : 'Failed to load interest submissions' },
-      { status: 500 }
+      { status: getInvestorAuthErrorStatus(error) }
     );
   }
 }
 
 export async function POST(request: NextRequest) {
   try {
-    const investor = await getActiveInvestor();
+    const { investor } = await resolveActiveInvestor('id, email, name, status');
     const body = await request.json();
 
     const preferredModel = String(body.preferred_model || '').trim() as
@@ -109,12 +81,9 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ success: true, submission: data }, { status: 201 });
   } catch (error) {
     console.error('Error creating investor interest submission:', error);
-    if (error instanceof Error && error.message === 'Not authenticated') {
-      return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
-    }
     return NextResponse.json(
       { error: error instanceof Error ? error.message : 'Failed to submit investor interest' },
-      { status: 500 }
+      { status: getInvestorAuthErrorStatus(error) }
     );
   }
 }

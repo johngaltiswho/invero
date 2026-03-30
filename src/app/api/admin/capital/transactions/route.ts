@@ -135,7 +135,12 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    if (transaction_type !== 'return' && !investor_id) {
+    const normalizedInvestorId = typeof investor_id === 'string' && investor_id.trim().length > 0
+      ? investor_id.trim()
+      : null;
+    const requiresInvestorId = transaction_type === 'inflow' || transaction_type === 'withdrawal';
+
+    if (requiresInvestorId && !normalizedInvestorId) {
       return NextResponse.json(
         { error: 'investor_id is required for this transaction type' },
         { status: 400 }
@@ -147,10 +152,10 @@ export async function POST(request: NextRequest) {
       : null;
 
     // Ensure investor account exists (for legacy investors without auto-created accounts)
-    if (transaction_type !== 'return' && investor_id) {
+    if (requiresInvestorId && normalizedInvestorId) {
       const { error: ensureAccountError } = await supabase
         .from('investor_accounts')
-        .upsert({ investor_id }, { onConflict: 'investor_id' });
+        .upsert({ investor_id: normalizedInvestorId }, { onConflict: 'investor_id' });
 
       if (ensureAccountError) {
         console.error('Failed to ensure investor account exists:', ensureAccountError);
@@ -196,11 +201,11 @@ export async function POST(request: NextRequest) {
     }
 
     // For deployment and withdrawal, check if investor has sufficient balance
-    if ((transaction_type === 'deployment' || transaction_type === 'withdrawal') && investor_id) {
+    if ((transaction_type === 'deployment' || transaction_type === 'withdrawal') && normalizedInvestorId) {
       const { data: account, error: accountError } = await supabase
         .from('investor_accounts')
         .select('available_balance')
-        .eq('investor_id', investor_id)
+        .eq('investor_id', normalizedInvestorId)
         .single();
 
       if (accountError) {
@@ -216,7 +221,7 @@ export async function POST(request: NextRequest) {
           has_account: !!account
         });
         return NextResponse.json(
-          {
+          { 
             error: 'Insufficient available balance for this transaction',
             available_balance: account?.available_balance ?? 0,
             required_amount: numAmount
@@ -613,7 +618,7 @@ export async function POST(request: NextRequest) {
 
     // Create transaction
     const transactionData: Record<string, unknown> = {
-      investor_id,
+      investor_id: normalizedInvestorId,
       transaction_type,
       amount: numAmount,
       description: description.trim(),
@@ -697,7 +702,7 @@ export async function POST(request: NextRequest) {
     // If this is a deployment, create a project deployment record
     if (transaction_type === 'deployment' && project_id?.trim()) {
       const deploymentData = {
-        investor_id,
+        investor_id: normalizedInvestorId,
         project_id: project_id.trim(),
         amount_deployed: numAmount,
         deployment_date: selectedDate,

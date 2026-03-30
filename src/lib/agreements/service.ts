@@ -12,6 +12,7 @@ import {
   type LenderSleeve,
   type LenderSleeveModelType,
 } from '@/lib/lender-sleeves';
+import { resolveActiveInvestor } from '@/lib/investor-auth';
 import type {
   AgreementDeliveryLog,
   AgreementTemplatePayload,
@@ -1057,26 +1058,9 @@ export async function getInvestorAgreementsForCurrentUser(): Promise<{
   investor: InvestorRow | null;
   agreements: InvestorAgreement[];
 }> {
-  const user = await currentUser();
-  if (!user) {
-    throw new Error('Not authenticated');
-  }
-  const email = user.emailAddresses[0]?.emailAddress?.toLowerCase();
-  if (!email) throw new Error('Missing email');
-
-  const agreement = await getLatestInvestorAgreementForEmail(email);
-  if (!agreement) {
-    const { data, error } = await (supabaseAdmin as any)
-      .from('investors')
-      .select('id, email, name, investor_type, phone, pan_number, address, agreement_status, activation_status')
-      .eq('email', email)
-      .eq('status', 'active')
-      .maybeSingle();
-    if (error) throw new Error(error.message || 'Failed to load investor');
-    return { investor: (data || null) as InvestorRow | null, agreements: [] };
-  }
-
-  const investor = await getInvestorById(agreement.investor_id);
-  const agreements = await listInvestorAgreements(agreement.investor_id);
+  const { investor } = await resolveActiveInvestor<InvestorRow>(
+    'id, email, name, investor_type, phone, pan_number, address, agreement_status, activation_status'
+  );
+  const agreements = await listInvestorAgreements(investor.id);
   return { investor, agreements };
 }

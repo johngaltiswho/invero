@@ -1,5 +1,6 @@
 import { clerkMiddleware, createRouteMatcher } from '@clerk/nextjs/server';
 import { NextResponse } from 'next/server';
+import { normalizeAuthRedirect } from '@/lib/auth-redirect';
 
 const isProtectedRoute = createRouteMatcher([
   '/dashboard(.*)',
@@ -13,7 +14,10 @@ export default clerkMiddleware(async (auth, req) => {
   // If accessing a protected route and not authenticated, redirect to sign-in
   if (isProtectedRoute(req) && !userId) {
     const signInUrl = new URL('/sign-in', req.url);
-    signInUrl.searchParams.set('redirect_url', req.url);
+    signInUrl.searchParams.set(
+      'redirect_url',
+      normalizeAuthRedirect(`${req.nextUrl.pathname}${req.nextUrl.search}`, '/')
+    );
     return NextResponse.redirect(signInUrl);
   }
 

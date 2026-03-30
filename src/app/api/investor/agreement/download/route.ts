@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createAgreementSignedUrl, getInvestorAgreementsForCurrentUser, selectCurrentInvestorAgreements } from '@/lib/agreements/service';
+import { getInvestorAuthErrorStatus } from '@/lib/investor-auth';
 
 export async function GET(request: NextRequest) {
   try {
@@ -31,7 +32,7 @@ export async function GET(request: NextRequest) {
     console.error('Error downloading investor agreement:', error);
     return NextResponse.json(
       { error: error instanceof Error ? error.message : 'Failed to download agreement' },
-      { status: 500 }
+      { status: getInvestorAuthErrorStatus(error) }
     );
   }
 }

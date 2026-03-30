@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { currentUser } from '@clerk/nextjs/server';
 import { supabaseAdmin } from '@/lib/supabase';
+import { getInvestorAuthErrorStatus, resolveActiveInvestor } from '@/lib/investor-auth';
 
 type InvestorProfilePayload = {
   name?: string;
@@ -15,44 +15,9 @@ function sanitizeOptionalString(value: unknown): string | null {
   return trimmed.length > 0 ? trimmed : null;
 }
 
-async function resolveInvestor() {
-  const user = await currentUser();
-  if (!user) {
-    return { error: 'Not authenticated', status: 401 as const };
-  }
-
-  const email = user.emailAddresses[0]?.emailAddress?.toLowerCase();
-  if (!email) {
-    return { error: 'Missing email', status: 400 as const };
-  }
-
-  const { data, error } = await supabaseAdmin
-    .from('investors')
-    .select('*')
-    .eq('email', email)
-    .eq('status', 'active')
-    .maybeSingle();
-
-  if (error) {
-    console.error('Error loading investor profile:', error);
-    return { error: 'Failed to load investor profile', status: 500 as const };
-  }
-
-  if (!data) {
-    return { error: 'Investor profile not found', status: 404 as const };
-  }
-
-  return { investor: data };
-}
-
 export async function GET() {
   try {
-    const resolved = await resolveInvestor();
-    if ('error' in resolved) {
-      return NextResponse.json({ error: resolved.error }, { status: resolved.status });
-    }
-
-    const investor = resolved.investor;
+    const { investor } = await resolveActiveInvestor();
     return NextResponse.json({
       success: true,
       data: {
@@ -69,18 +34,16 @@ export async function GET() {
     });
   } catch (error) {
     console.error('Error in GET /api/investor/profile:', error);
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : 'Internal server error' },
+      { status: getInvestorAuthErrorStatus(error) }
+    );
   }
 }
 
 export async function PATCH(request: NextRequest) {
   try {
-    const resolved = await resolveInvestor();
-    if ('error' in resolved) {
-      return NextResponse.json({ error: resolved.error }, { status: resolved.status });
-    }
-
-    const investor = resolved.investor;
+    const { investor } = await resolveActiveInvestor();
     const body = (await request.json()) as InvestorProfilePayload;
 
     const name = sanitizeOptionalString(body.name);
@@ -126,6 +89,9 @@ export async function PATCH(request: NextRequest) {
     });
   } catch (error) {
     console.error('Error in PATCH /api/investor/profile:', error);
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : 'Internal server error' },
+      { status: getInvestorAuthErrorStatus(error) }
+    );
   }
 }

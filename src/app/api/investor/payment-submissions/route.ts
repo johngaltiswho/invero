@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { currentUser } from '@clerk/nextjs/server';
 import { supabaseAdmin } from '@/lib/supabase';
 import {
   calculateTrancheAllocations,
@@ -7,33 +6,9 @@ import {
   getLenderAllocationIntentById,
   markAllocationIntentFundingSubmitted,
 } from '@/lib/lender-allocation-intents';
+import { getInvestorAuthErrorStatus, resolveActiveInvestor } from '@/lib/investor-auth';
 
 const DOC_BUCKET = 'investor-documents';
-
-async function getActiveInvestor() {
-  const user = await currentUser();
-  if (!user) {
-    throw new Error('Not authenticated');
-  }
-
-  const userEmail = user.emailAddresses[0]?.emailAddress?.toLowerCase();
-  if (!userEmail) {
-    throw new Error('Missing email');
-  }
-
-  const { data: investor, error } = await supabaseAdmin
-    .from('investors')
-    .select('id, email, name, status')
-    .eq('email', userEmail)
-    .eq('status', 'active')
-    .single();
-
-  if (error || !investor) {
-    throw new Error('Investor profile not found');
-  }
-
-  return investor;
-}
 
 async function ensureBucket() {
   const { data: buckets } = await supabaseAdmin.storage.listBuckets();
@@ -58,7 +33,7 @@ async function createProofSignedUrl(path: string | null) {
 
 export async function GET() {
   try {
-    const investor = await getActiveInvestor();
+    const { investor } = await resolveActiveInvestor('id, email, name, status');
 
     const { data, error } = await supabaseAdmin
       .from('investor_payment_submissions')
@@ -81,13 +56,16 @@ export async function GET() {
     return NextResponse.json({ success: true, submissions });
   } catch (error) {
     console.error('Error loading investor payment submissions:', error);
-    return NextResponse.json({ error: 'Failed to load payment submissions' }, { status: 500 });
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : 'Failed to load payment submissions' },
+      { status: getInvestorAuthErrorStatus(error) }
+    );
   }
 }
 
 export async function POST(request: NextRequest) {
   try {
-    const investor = await getActiveInvestor();
+    const { investor } = await resolveActiveInvestor('id, email, name, status');
 
     const contentType = request.headers.get('content-type') || '';
 
@@ -216,6 +194,9 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ success: true, submission: data }, { status: 201 });
   } catch (error) {
     console.error('Error creating investor payment submission:', error);
-    return NextResponse.json({ error: 'Failed to submit payment confirmation' }, { status: 500 });
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : 'Failed to submit payment confirmation' },
+      { status: getInvestorAuthErrorStatus(error) }
+    );
   }
 }
