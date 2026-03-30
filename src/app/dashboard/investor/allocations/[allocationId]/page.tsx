@@ -14,11 +14,12 @@ const formatCurrency = (amount: number) =>
     maximumFractionDigits: 0,
   }).format(amount);
 
-export default function InvestorSleeveDetailPage(): React.ReactElement {
-  const { sleeveId } = useParams<{ sleeveId: string }>();
+export default function InvestorAllocationDetailPage(): React.ReactElement {
+  const { allocationId } = useParams<{ allocationId: string }>();
   const { investor, loading, error } = useInvestor();
 
-  const sleeve = (investor?.sleeves || []).find((candidate) => candidate.id === sleeveId);
+  const sleeve = (investor?.sleeves || []).find((candidate) => candidate.id === allocationId);
+  const allocationLabel = sleeve?.modelType === 'fixed_debt' ? 'Fixed Income Allocation' : 'Pool Participation Allocation';
 
   return (
     <DashboardLayout activeTab="overview">
@@ -30,12 +31,12 @@ export default function InvestorSleeveDetailPage(): React.ReactElement {
         </div>
 
         {loading ? (
-          <div className="text-secondary">Loading sleeve details...</div>
+          <div className="text-secondary">Loading allocation details...</div>
         ) : error ? (
           <div className="rounded-lg border border-error/20 bg-error/10 px-4 py-3 text-sm text-error">{error}</div>
         ) : !sleeve ? (
           <div className="rounded-lg border border-neutral-medium bg-neutral-dark p-6 text-secondary">
-            Sleeve not found for this lender profile.
+            Allocation not found for this investor profile.
           </div>
         ) : (
           <div className="space-y-6">
@@ -43,7 +44,7 @@ export default function InvestorSleeveDetailPage(): React.ReactElement {
               <div className="mb-2 text-sm uppercase tracking-wide text-accent-amber">
                 {String(sleeve.modelType || '').replace(/_/g, ' ')}
               </div>
-              <h1 className="text-3xl font-bold text-primary">{sleeve.name}</h1>
+              <h1 className="text-3xl font-bold text-primary">{allocationLabel}</h1>
               <p className="mt-2 text-secondary">
                 Agreement status: {sleeve.latestAgreementStatus || sleeve.agreementStatus || sleeve.status}
               </p>
@@ -86,7 +87,7 @@ export default function InvestorSleeveDetailPage(): React.ReactElement {
             </div>
 
             <div className="rounded-lg border border-neutral-medium bg-neutral-dark p-6">
-              <h2 className="mb-4 text-xl font-semibold text-primary">Sleeve Metrics</h2>
+              <h2 className="mb-4 text-xl font-semibold text-primary">Allocation Metrics</h2>
               {sleeve.modelType === 'fixed_debt' ? (
                 <div className="grid gap-4 md:grid-cols-2">
                   <div className="rounded bg-neutral-medium/20 p-4">
@@ -125,7 +126,7 @@ export default function InvestorSleeveDetailPage(): React.ReactElement {
                   <div className="rounded bg-neutral-medium/20 p-4 md:col-span-2">
                     <div className="text-sm text-secondary">Look-through Pool Exposure</div>
                     <div className="mt-2 text-primary">
-                      This sleeve follows the existing pool / NAV model. Use the main portfolio view for current pool exposure and projected pooled returns.
+                      This allocation follows the pool / NAV model. Use the main portfolio view for current pool exposure and projected pooled returns.
                     </div>
                   </div>
                 </div>

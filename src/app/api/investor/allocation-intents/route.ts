@@ -5,6 +5,7 @@ import {
   getAllocationIntentFundingSnapshot,
   listLenderAllocationIntentsForInvestor,
   refreshAllocationIntentReadiness,
+  syncAllocationIntentFundingStatus,
 } from '@/lib/lender-allocation-intents';
 import { listInvestorAgreements, selectCurrentInvestorAgreements } from '@/lib/agreements/service';
 
@@ -40,9 +41,13 @@ export async function GET() {
 
     const refreshed = await Promise.all(
       intents.map(async (intent) => {
-        const nextIntent = ['draft', 'agreements_pending', 'ready_for_funding'].includes(intent.status)
-          ? await refreshAllocationIntentReadiness(intent.id)
-          : intent;
+        let nextIntent = intent;
+        if (['draft', 'agreements_pending', 'ready_for_funding'].includes(intent.status)) {
+          nextIntent = await refreshAllocationIntentReadiness(intent.id);
+        }
+        if (['funding_submitted', 'completed'].includes(nextIntent.status)) {
+          nextIntent = await syncAllocationIntentFundingStatus(nextIntent.id);
+        }
         const funding = await getAllocationIntentFundingSnapshot(
           nextIntent.id,
           Number(nextIntent.total_amount || 0)

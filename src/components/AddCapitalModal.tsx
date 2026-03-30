@@ -440,7 +440,7 @@ export function AddCapitalModal({ isOpen, onClose }: AddCapitalModalProps) {
             <div className="flex items-center justify-between border-b border-neutral-medium p-6">
               <div>
                 <h3 className="text-xl font-semibold text-primary">Proposal History</h3>
-                <p className="text-sm text-secondary">These are the allocations Finverno has prepared for your review across pool participation and fixed debt sleeves.</p>
+                <p className="text-sm text-secondary">These are the allocations Finverno has prepared for your review across Pool Participation and Fixed Income.</p>
               </div>
               <div className="text-sm text-secondary">{allocationIntents.length} intents</div>
             </div>

@@ -31,11 +31,11 @@ const MODEL_OPTIONS = [
   {
     id: 'fixed_debt',
     title: 'Fixed Income',
-    subtitle: 'Private fixed-income sleeve',
+    subtitle: 'Private fixed-income allocation',
     points: [
       'Annualized coupon is set on funded and outstanding principal.',
       'Repayment timing depends on receivable realization, ALM, and payout sequencing rather than a hard maturity date.',
-      'Designed for investors who want clearer fixed-income economics with separate sleeve reporting.',
+      'Designed for investors who want clearer fixed-income economics with separate reporting.',
     ],
     idealFor: 'Investors prioritizing income visibility over pool-style variable return participation.',
   },
@@ -278,7 +278,7 @@ export default function InvestorOptionsPage(): React.ReactElement {
               </div>
               <div>
                 <div className="text-primary font-medium">2. Proposed Allocation</div>
-                <div>We discuss and finalize the proposed allocation offline, then configure the sleeve allocation in your account.</div>
+                <div>We discuss and finalize the proposed allocation offline, then configure it in your account.</div>
               </div>
               <div>
                 <div className="text-primary font-medium">3. Agreements</div>

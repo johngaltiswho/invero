@@ -159,6 +159,7 @@ export async function applyLenderCapitalAllocations(input: {
   capitalTransactionId?: string | null;
   paymentSubmissionId?: string | null;
   allocations: LenderCapitalAllocation[];
+  poolNavPerUnit?: number | null;
 }): Promise<LenderSleeve[]> {
   const updatedSleeves: LenderSleeve[] = [];
 
@@ -184,9 +185,17 @@ export async function applyLenderCapitalAllocations(input: {
       updatePayload.principal_outstanding = Number(sleeve.principal_outstanding || 0) + allocation.amount;
       updatePayload.fixed_coupon_rate_annual = sleeve.fixed_coupon_rate_annual ?? 0.14;
     } else {
-      const entryNav = Number(sleeve.entry_nav_per_unit || 100) || 100;
-      updatePayload.entry_nav_per_unit = entryNav;
-      updatePayload.units_held = Number(sleeve.units_held || 0) + allocation.amount / entryNav;
+      const liveNav = Number(input.poolNavPerUnit || 0) > 0 ? Number(input.poolNavPerUnit) : 100;
+      const existingUnits = Number(sleeve.units_held || 0);
+      const existingEntryNav = Number(sleeve.entry_nav_per_unit || 0) > 0 ? Number(sleeve.entry_nav_per_unit) : liveNav;
+      const trancheUnits = allocation.amount / liveNav;
+      const nextUnits = existingUnits + trancheUnits;
+      const weightedEntryNav = nextUnits > 0
+        ? ((existingUnits * existingEntryNav) + allocation.amount) / nextUnits
+        : liveNav;
+
+      updatePayload.entry_nav_per_unit = weightedEntryNav;
+      updatePayload.units_held = nextUnits;
     }
 
     const { data: updatedSleeve, error: sleeveError } = await supabaseAdmin

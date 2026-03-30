@@ -536,6 +536,16 @@ export async function GET() {
           };
         }
 
+        const sleeveUnitsHeld = Number(sleeve.units_held || 0);
+        const sleeveEntryNavPerUnit =
+          Number(sleeve.entry_nav_per_unit || 0) > 0
+            ? Number(sleeve.entry_nav_per_unit)
+            : poolValuation.netNavPerUnit || 100;
+        const sleeveOwnershipRatio =
+          poolValuation.totalPoolUnits > 0 ? sleeveUnitsHeld / poolValuation.totalPoolUnits : 0;
+        const sleeveGrossValue = sleeveUnitsHeld * poolValuation.grossNavPerUnit;
+        const sleeveNetValue = sleeveUnitsHeld * poolValuation.netNavPerUnit;
+
         return {
           id: sleeve.id,
           name: sleeve.name,
@@ -548,12 +558,16 @@ export async function GET() {
           commitmentAmount: Number(sleeve.commitment_amount || 0),
           fundedAmount: Number(sleeve.funded_amount || 0),
           summary: {
-            unitsHeld: Number(sleeve.units_held || poolPosition.unitsHeld || 0),
-            entryNavPerUnit: Number(sleeve.entry_nav_per_unit || poolPosition.entryNavPerUnit || 100),
-            ownershipPercent: Number(sleeve.ownership_percent_snapshot || poolPosition.ownershipPercent || 0),
-            grossValue: poolPosition.grossValue,
-            netValue: poolPosition.netValue,
-            deployedPrincipal: poolValuation.deployedPrincipal * ownershipRatio,
+            unitsHeld: sleeveUnitsHeld,
+            entryNavPerUnit: sleeveEntryNavPerUnit,
+            ownershipPercent: sleeveOwnershipRatio * 100,
+            grossValue: sleeveGrossValue,
+            netValue: sleeveNetValue,
+            deployedPrincipal: poolValuation.deployedPrincipal * sleeveOwnershipRatio,
+            poolCashShare: poolValuation.poolCash * sleeveOwnershipRatio,
+            managementFeeAccrued: poolValuation.managementFeeAccrued * sleeveOwnershipRatio,
+            realizedCarry: poolValuation.realizedCarryAccrued * sleeveOwnershipRatio,
+            potentialCarry: poolValuation.potentialCarry * sleeveOwnershipRatio,
           },
         };
       }),

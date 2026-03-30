@@ -115,13 +115,14 @@ export default function InvestorDashboard(): React.ReactElement {
   const totalPoolExposure = investor?.totalPoolExposure || 0;
   const poolSleeve = sleeves.find((sleeve: any) => sleeve.modelType === 'pool_participation') || null;
   const fixedDebtSleeve = sleeves.find((sleeve: any) => sleeve.modelType === 'fixed_debt') || null;
+  const poolSleeveSummary = poolSleeve?.summary || {};
   const totalCommittedAcrossSleeves = sleeves.reduce((sum: number, sleeve: any) => sum + Number(sleeve.commitmentAmount || 0), 0);
   const totalFundedAcrossSleeves = sleeves.reduce((sum: number, sleeve: any) => sum + Number(sleeve.fundedAmount || 0), 0);
   const fixedIncomeCurrentValue =
     Number(fixedDebtSleeve?.summary?.principalOutstanding || 0) + Number(fixedDebtSleeve?.summary?.couponAccrued || 0);
-  const combinedCurrentValue = Number(poolSleeve?.summary?.netValue || 0) + fixedIncomeCurrentValue;
+  const combinedCurrentValue = Number(poolSleeveSummary?.netValue || 0) + fixedIncomeCurrentValue;
   const combinedAccruedIncome =
-    Math.max(Number(poolSleeve?.summary?.netValue || 0) - Number(poolSleeve?.commitmentAmount || 0), 0) +
+    Math.max(Number(poolSleeveSummary?.netValue || 0) - Number(poolSleeve?.fundedAmount || poolSleeve?.commitmentAmount || 0), 0) +
     Number(fixedDebtSleeve?.summary?.couponAccrued || 0);
   const poolAgreementState =
     poolSleeve?.canFund ? 'Ready to fund' : poolSleeve?.agreementComplete ? 'Executed' : 'Agreement pending';
@@ -329,8 +330,8 @@ export default function InvestorDashboard(): React.ReactElement {
           <div className="mb-8">
             <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
               <div>
-                <h2 className="text-xl font-semibold text-primary">Lender Sleeves</h2>
-                <p className="text-sm text-secondary">Your capital can sit in separate pool participation and fixed debt sleeves under one lender profile.</p>
+                <h2 className="text-xl font-semibold text-primary">Investment Allocations</h2>
+                <p className="text-sm text-secondary">Your portfolio can include both Pool Participation and Fixed Income under one investor account.</p>
               </div>
               <div className="text-sm text-secondary">
                 <div>Pool Exposure: {formatCurrency(totalPoolExposure)}</div>
@@ -342,7 +343,7 @@ export default function InvestorDashboard(): React.ReactElement {
                 <button
                   key={sleeve.id}
                   type="button"
-                  onClick={() => router.push(`/dashboard/investor/sleeves/${sleeve.id}`)}
+                  onClick={() => router.push(`/dashboard/investor/allocations/${sleeve.id}`)}
                   className="rounded-lg border border-neutral-medium bg-neutral-dark p-5 text-left transition-colors hover:border-accent-amber/40"
                 >
                   <div className="mb-3 flex items-start justify-between gap-3">
@@ -358,7 +359,7 @@ export default function InvestorDashboard(): React.ReactElement {
                     {sleeve.canFund
                       ? 'Ready to submit capital'
                       : sleeve.agreementComplete
-                        ? 'Agreement executed. Await Finverno funding instructions for this sleeve.'
+                        ? 'Agreement executed. Await Finverno funding instructions for this allocation.'
                         : 'Agreement required before funding'}
                   </div>
                   <div className="grid grid-cols-2 gap-3 text-sm">
@@ -472,13 +473,13 @@ export default function InvestorDashboard(): React.ReactElement {
                 <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
                   <div className="rounded-lg bg-neutral-medium/20 p-4">
                     <div className="text-xs font-mono text-accent-amber mb-2">CAPITAL COMMITTED</div>
-                    <div className="text-2xl font-bold text-primary">{formatCurrency(Number(poolSleeve?.commitmentAmount || poolPosition.contributedCapital || 0))}</div>
-                    <div className="text-xs text-secondary">Pool ownership: {poolPosition.ownershipPercent.toFixed(2)}%</div>
+                    <div className="text-2xl font-bold text-primary">{formatCurrency(Number(poolSleeve?.commitmentAmount || 0))}</div>
+                    <div className="text-xs text-secondary">Pool ownership: {Number(poolSleeveSummary.ownershipPercent || 0).toFixed(2)}%</div>
                   </div>
                   <div className="rounded-lg bg-neutral-medium/20 p-4">
                     <div className="text-xs font-mono text-accent-amber mb-2">POOL UNITS HELD</div>
-                    <div className="text-2xl font-bold text-primary">{poolPosition.unitsHeld.toFixed(4)}</div>
-                    <div className="text-xs text-secondary">Entry NAV: ₹{poolPosition.entryNavPerUnit.toFixed(4)}</div>
+                    <div className="text-2xl font-bold text-primary">{Number(poolSleeveSummary.unitsHeld || 0).toFixed(4)}</div>
+                    <div className="text-xs text-secondary">Entry NAV: ₹{Number(poolSleeveSummary.entryNavPerUnit || 0).toFixed(4)}</div>
                   </div>
                   <div className="rounded-lg bg-neutral-medium/20 p-4">
                     <div className="text-xs font-mono text-accent-amber mb-2">CURRENT NET NAV</div>
@@ -487,8 +488,8 @@ export default function InvestorDashboard(): React.ReactElement {
                   </div>
                   <div className="rounded-lg bg-neutral-medium/20 p-4">
                     <div className="text-xs font-mono text-accent-amber mb-2">CURRENT NET VALUE</div>
-                    <div className="text-2xl font-bold text-primary">{formatCurrency(poolPosition.netValue)}</div>
-                    <div className="text-xs text-success">Gross value: {formatCurrency(poolPosition.grossValue)}</div>
+                    <div className="text-2xl font-bold text-primary">{formatCurrency(Number(poolSleeveSummary.netValue || 0))}</div>
+                    <div className="text-xs text-success">Gross value: {formatCurrency(Number(poolSleeveSummary.grossValue || 0))}</div>
                   </div>
                   <div className="rounded-lg bg-neutral-medium/20 p-4">
                     <div className="text-xs font-mono text-accent-amber mb-2">PROJECTED GROSS XIRR</div>
@@ -506,14 +507,14 @@ export default function InvestorDashboard(): React.ReactElement {
                   </div>
                   <div className="rounded-lg bg-neutral-medium/20 p-4">
                     <div className="text-xs font-mono text-accent-amber mb-2">DEPLOYED POOL SHARE</div>
-                    <div className="text-2xl font-bold text-primary">{formatCurrency(poolPosition.shareOfDeployedPrincipal)}</div>
-                    <div className="text-xs text-secondary">Cash awaiting deployment: {formatCurrency(poolPosition.shareOfPoolCash)}</div>
+                    <div className="text-2xl font-bold text-primary">{formatCurrency(Number(poolSleeveSummary.deployedPrincipal || 0))}</div>
+                    <div className="text-xs text-secondary">Cash awaiting deployment: {formatCurrency(Number(poolSleeveSummary.poolCashShare || 0))}</div>
                   </div>
                   <div className="rounded-lg bg-neutral-medium/20 p-4">
                     <div className="text-xs font-mono text-accent-amber mb-2">FEE / CARRY IMPACT</div>
-                    <div className="text-2xl font-bold text-primary">{formatCurrency(poolPosition.shareOfManagementFeeAccrued + poolPosition.shareOfRealizedCarry)}</div>
+                    <div className="text-2xl font-bold text-primary">{formatCurrency(Number(poolSleeveSummary.managementFeeAccrued || 0) + Number(poolSleeveSummary.realizedCarry || 0))}</div>
                     <div className="text-xs text-secondary">
-                      Mgmt accrued: {formatCurrency(poolPosition.shareOfManagementFeeAccrued)} • Realized carry: {formatCurrency(poolPosition.shareOfRealizedCarry)}
+                      Mgmt accrued: {formatCurrency(Number(poolSleeveSummary.managementFeeAccrued || 0))} • Realized carry: {formatCurrency(Number(poolSleeveSummary.realizedCarry || 0))}
                     </div>
                   </div>
                 </div>

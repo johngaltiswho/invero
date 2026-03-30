@@ -5,9 +5,11 @@ import {
   applyLenderCapitalAllocations,
   normalizeLenderCapitalAllocations,
 } from '@/lib/lender-sleeves';
+import { calculateSoftPoolValuation } from '@/lib/pool-valuation';
 import {
   getLenderAllocationIntentById,
   syncAllocationIntentFundingStatus,
+  refreshAllocationIntentReadiness,
 } from '@/lib/lender-allocation-intents';
 
 const supabase = createClient(
@@ -107,18 +109,6 @@ export async function PATCH(request: NextRequest) {
     }
 
     if (action === 'reject') {
-      if (submission.allocation_intent_id) {
-        await supabase
-          .from('lender_allocation_intents')
-          .update({
-            status: 'ready_for_funding',
-            funding_submitted_at: null,
-            updated_at: new Date().toISOString(),
-          })
-          .eq('id', submission.allocation_intent_id)
-          .eq('status', 'funding_submitted');
-      }
-
       const { data: rejected, error: rejectError } = await supabase
         .from('investor_payment_submissions')
         .update({
@@ -134,6 +124,11 @@ export async function PATCH(request: NextRequest) {
       if (rejectError) {
         console.error('Failed to reject payment submission:', rejectError);
         return NextResponse.json({ error: 'Failed to reject submission' }, { status: 500 });
+      }
+
+      if (submission.allocation_intent_id) {
+        await refreshAllocationIntentReadiness(submission.allocation_intent_id);
+        await syncAllocationIntentFundingStatus(submission.allocation_intent_id);
       }
 
       return NextResponse.json({ success: true, submission: rejected });
@@ -203,6 +198,58 @@ export async function PATCH(request: NextRequest) {
       return NextResponse.json({ error: 'Invalid lender sleeve allocation payload' }, { status: 400 });
     }
 
+    let poolNavPerUnit: number | null = null;
+    if (normalizedAllocations.some((allocation) => allocation.modelType === 'pool_participation')) {
+      const [
+        poolInflowsRes,
+        poolDistributionsRes,
+        poolTransactionsRes,
+        poolRequestsRes,
+        contractorsRes,
+        projectsRes,
+      ] = await Promise.all([
+        supabase
+          .from('capital_transactions')
+          .select('investor_id, amount, created_at, status, transaction_type')
+          .eq('transaction_type', 'inflow')
+          .eq('status', 'completed'),
+        supabase
+          .from('capital_transactions')
+          .select('investor_id, amount, created_at, status, transaction_type')
+          .eq('transaction_type', 'return')
+          .not('investor_id', 'is', null)
+          .eq('status', 'completed'),
+        supabase
+          .from('capital_transactions')
+          .select('purchase_request_id, amount, created_at, status, transaction_type')
+          .in('transaction_type', ['deployment', 'return'])
+          .not('purchase_request_id', 'is', null)
+          .eq('status', 'completed'),
+        supabase
+          .from('purchase_requests')
+          .select('id, project_id, contractor_id, status'),
+        supabase
+          .from('contractors')
+          .select('id, company_name, participation_fee_rate_daily'),
+        supabase
+          .from('projects')
+          .select('id, project_name'),
+      ]);
+
+      const poolValuation = calculateSoftPoolValuation({
+        investorInflows: poolInflowsRes.data || [],
+        investorDistributions: poolDistributionsRes.data || [],
+        poolTransactions: poolTransactionsRes.data || [],
+        purchaseRequests: poolRequestsRes.data || [],
+        contractors: contractorsRes.data || [],
+        projects: projectsRes.data || [],
+      });
+
+      poolNavPerUnit = Number(poolValuation.netNavPerUnit || 0) > 0
+        ? Number(poolValuation.netNavPerUnit)
+        : 100;
+    }
+
     let sleeves;
     try {
       sleeves = await applyLenderCapitalAllocations({
@@ -211,6 +258,7 @@ export async function PATCH(request: NextRequest) {
         capitalTransactionId: transaction.id,
         paymentSubmissionId: submissionId,
         allocations: normalizedAllocations,
+        poolNavPerUnit,
       });
     } catch (allocationError) {
       console.error('Failed to apply lender allocations:', allocationError);

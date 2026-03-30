@@ -54,7 +54,7 @@ export default function InvestorAgreementStatusCard({ agreement, files, onSigned
   const amount = `Rs ${(Number(agreement.commitment_amount) || 0).toLocaleString('en-IN')}`;
   const canSign = agreement.status === 'issued' && !!files.draft_url;
   const canViewDraft = ['issued', 'investor_signed', 'executed'].includes(agreement.status) && !!files.draft_url;
-  const modelLabel = agreement.agreement_model_type === 'fixed_debt' ? 'Fixed Debt Sleeve' : 'Pool Participation Sleeve';
+  const modelLabel = agreement.agreement_model_type === 'fixed_debt' ? 'Fixed Income Allocation' : 'Pool Participation Allocation';
 
   const handleSign = async () => {
     try {
@@ -103,7 +103,7 @@ export default function InvestorAgreementStatusCard({ agreement, files, onSigned
 
       <div className="grid md:grid-cols-6 gap-4 mb-6 text-sm">
         <div className="rounded-lg bg-neutral-medium/30 p-4">
-          <div className="text-secondary mb-1">Sleeve</div>
+          <div className="text-secondary mb-1">Allocation</div>
           <div className="text-primary font-semibold">{agreement.sleeveName || modelLabel}</div>
         </div>
         <div className="rounded-lg bg-neutral-medium/30 p-4">
@@ -138,8 +138,8 @@ export default function InvestorAgreementStatusCard({ agreement, files, onSigned
           </div>
           <div className="mt-2 text-secondary">
             {agreement.funding_unlocked
-              ? 'This sleeve is eligible for capital submission.'
-              : 'Capital submission stays locked until the current sleeve agreement is fully executed.'}
+              ? 'This allocation is eligible for capital submission.'
+              : 'Capital submission stays locked until the current agreement is fully executed.'}
           </div>
         </div>
       )}
@@ -170,7 +170,7 @@ export default function InvestorAgreementStatusCard({ agreement, files, onSigned
 
       {!canSign && agreement.status === 'issued' && (
         <div className="mt-6 rounded-lg border border-neutral-medium p-5 text-sm text-secondary">
-          This agreement is visible in the portal, but signing will only appear once Finverno has formally released the signable version for this sleeve.
+          This agreement is visible in the portal, but signing will only appear once Finverno has formally released the signable version for this allocation.
         </div>
       )}
 
