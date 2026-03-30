@@ -362,15 +362,15 @@ export default function ContractorApplyPage(): React.ReactElement {
   return (
     <Layout>
       {/* Header */}
-      <section className="container mx-auto px-4 py-16 md:py-20">
+      <section className="public-page public-section container mx-auto px-4 py-16 md:py-20">
         <div className="text-center max-w-4xl mx-auto">
-          <div className="text-accent-orange text-sm font-semibold uppercase tracking-wide mb-4">
-            MATERIAL SUPPLY APPLICATION
+          <div className="public-kicker mb-4">
+            SME ONBOARDING
           </div>
-          <h1 className="text-4xl md:text-5xl font-bold text-primary mb-8 leading-tight">
-            Apply for <span className="accent-orange">Contract-Backed Material Supply</span>
+          <h1 className="font-public-display text-4xl md:text-5xl text-primary mb-8 leading-tight">
+            Apply for <span className="public-accent italic">SME onboarding</span>
           </h1>
-          <p className="text-lg text-secondary mb-8 leading-relaxed">
+          <p className="text-lg public-body mb-8 leading-relaxed">
             Complete a light onboarding flow to access the portal and begin procurement review.
             We start with GST verification and the contact details already seeded by the admin team.
           </p>
@@ -378,7 +378,7 @@ export default function ContractorApplyPage(): React.ReactElement {
       </section>
 
       {/* Progress Indicator */}
-      <section className="bg-neutral-dark py-8">
+      <section className="public-page public-section py-8">
         <div className="container mx-auto px-4">
           <div className="max-w-4xl mx-auto">
             <div className="flex items-center justify-between mb-8">
@@ -408,12 +408,12 @@ export default function ContractorApplyPage(): React.ReactElement {
       </section>
 
       {/* Application Form */}
-      <section className="py-16 md:py-20">
+      <section className="public-page py-16 md:py-20">
         <div className="container mx-auto px-4">
           <div className="max-w-4xl mx-auto">
-            <div className="bg-neutral-dark p-8 rounded-lg border border-neutral-medium">
+            <div className="public-panel p-8 rounded-lg">
               <h2 className="text-2xl font-bold text-primary mb-8">
-                {steps[currentStep - 1]?.title || 'Application Step'}
+                {steps[currentStep - 1]?.title || 'Onboarding Step'}
               </h2>
               {isLoadingProfile && (
                 <p className="text-sm text-secondary mb-6">Loading your admin-invited profile...</p>
@@ -452,10 +452,10 @@ export default function ContractorApplyPage(): React.ReactElement {
       </section>
 
       {/* Requirements */}
-      <section className="bg-neutral-dark py-16">
+      <section className="public-page public-section py-16">
         <div className="container mx-auto px-4">
           <div className="max-w-4xl mx-auto text-center">
-            <h2 className="text-2xl font-bold text-primary mb-8">What Happens Next?</h2>
+            <h2 className="font-public-display text-2xl md:text-3xl text-primary mb-8">What Happens Next?</h2>
             <div className="grid md:grid-cols-3 gap-8">
               <div>
                 <div className="text-3xl accent-orange mb-4">📋</div>
@@ -478,7 +478,7 @@ export default function ContractorApplyPage(): React.ReactElement {
       </section>
 
       {/* Back Link */}
-      <section className="py-16">
+      <section className="public-page py-16">
         <div className="container mx-auto px-4 text-center">
           <Link href="/contractors" className="inline-block">
             <Button variant="outline" size="md">

@@ -887,6 +887,7 @@ export interface Database {
         Row: {
           id: string
           pump_name: string
+          oem_name: string | null
           address: string | null
           city: string | null
           state: string | null
@@ -901,6 +902,7 @@ export interface Database {
         Insert: {
           id?: string
           pump_name: string
+          oem_name?: string | null
           address?: string | null
           city?: string | null
           state?: string | null
@@ -915,6 +917,7 @@ export interface Database {
         Update: {
           id?: string
           pump_name?: string
+          oem_name?: string | null
           address?: string | null
           city?: string | null
           state?: string | null

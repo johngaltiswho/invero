@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Cormorant+Garamond:wght@400;500;600;700&display=swap');
 
 @tailwind base;
 @tailwind components;
@@ -21,6 +21,17 @@
   /* Legacy variables for compatibility */
   --background: var(--color-primary-background);
   --foreground: var(--color-text-primary);
+
+  /* Public editorial theme */
+  --public-bg: #0b0b0a;
+  --public-panel: #121210;
+  --public-panel-soft: #171714;
+  --public-border: rgba(255, 255, 255, 0.1);
+  --public-text: #f4efe6;
+  --public-text-muted: #9a9488;
+  --public-text-dim: #7f7a71;
+  --public-accent: #c79a36;
+  --public-accent-soft: #d2aa4d;
 }
 
 html,
@@ -185,4 +196,62 @@ p {
 
 .bg-accent-orange {
   background-color: var(--color-accent-amber);
+}
+
+.font-public-display {
+  font-family: 'Cormorant Garamond', 'Iowan Old Style', 'Palatino Linotype', 'Book Antiqua', Georgia, serif;
+}
+
+.public-page {
+  background: var(--public-bg);
+  color: var(--public-text);
+}
+
+.public-section {
+  border-bottom: 1px solid var(--public-border);
+}
+
+.public-panel {
+  background: var(--public-panel);
+  border: 1px solid var(--public-border);
+}
+
+.public-panel-soft {
+  background: var(--public-panel-soft);
+  border: 1px solid var(--public-border);
+}
+
+.public-kicker {
+  color: var(--public-accent);
+  text-transform: uppercase;
+  letter-spacing: 0.32em;
+  font-size: 0.75rem;
+}
+
+.public-heading {
+  color: var(--public-text);
+}
+
+.public-body {
+  color: var(--public-text-muted);
+}
+
+.public-dim {
+  color: var(--public-text-dim);
+}
+
+.public-accent {
+  color: var(--public-accent-soft);
+}
+
+.public-button {
+  background: var(--public-accent);
+  color: #171410;
+  border: 1px solid rgba(199, 154, 54, 0.7);
+}
+
+.public-button-outline {
+  border: 1px solid rgba(199, 154, 54, 0.7);
+  color: var(--public-accent-soft);
+  background: transparent;
 }

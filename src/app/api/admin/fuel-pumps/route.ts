@@ -7,6 +7,7 @@ import { z } from 'zod';
  */
 const createPumpSchema = z.object({
   pump_name: z.string().min(1).max(200),
+  oem_name: z.string().max(120).optional(),
   address: z.string().max(500).optional(),
   city: z.string().max(100).optional(),
   state: z.string().max(50).optional(),

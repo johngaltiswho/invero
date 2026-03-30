@@ -23,6 +23,7 @@ export async function GET(
         fuel_pumps (
           id,
           pump_name,
+          oem_name,
           address,
           city,
           state,

@@ -266,6 +266,7 @@ export default function AdminVerificationDashboard(): React.ReactElement {
   const [editingGstReview, setEditingGstReview] = useState(false);
   const [addPumpForm, setAddPumpForm] = useState({
     pump_name: '',
+    oem_name: '',
     address: '',
     city: '',
     state: '',
@@ -274,6 +275,15 @@ export default function AdminVerificationDashboard(): React.ReactElement {
     contact_phone: ''
   });
   const [addPumpLoading, setAddPumpLoading] = useState(false);
+  const fuelOemOptions = [
+    'Indian Oil',
+    'Bharat Petroleum',
+    'Hindustan Petroleum',
+    'Shell',
+    'Nayara Energy',
+    'Reliance',
+    'Other / Independent',
+  ];
 
   const formatDate = (dateString?: string | null) => {
     if (!dateString) return 'N/A';
@@ -701,6 +711,7 @@ export default function AdminVerificationDashboard(): React.ReactElement {
 
       setAddPumpForm({
         pump_name: '',
+        oem_name: '',
         address: '',
         city: '',
         state: '',
@@ -2815,6 +2826,9 @@ export default function AdminVerificationDashboard(): React.ReactElement {
                       <tr key={pump.id} className="hover:bg-neutral-darker/50 transition-colors">
                         <td className="px-6 py-4">
                           <div className="font-medium text-primary">{pump.pump_name}</div>
+                          {pump.oem_name && (
+                            <div className="text-xs text-secondary mt-1">{pump.oem_name}</div>
+                          )}
                         </td>
                         <td className="px-6 py-4">
                           <div className="text-sm text-secondary">
@@ -3166,6 +3180,24 @@ export default function AdminVerificationDashboard(): React.ReactElement {
                 />
               </div>
               <div>
+                <label className="block text-sm font-medium text-primary mb-1">Fuel OEM / Network</label>
+                <select
+                  value={addPumpForm.oem_name}
+                  onChange={(e) => setAddPumpForm({ ...addPumpForm, oem_name: e.target.value })}
+                  className="w-full px-3 py-2 border border-neutral-medium rounded-md bg-neutral-darker text-primary placeholder-secondary focus:outline-none focus:ring-2 focus:ring-accent-orange"
+                >
+                  <option value="">Select OEM / Network</option>
+                  {fuelOemOptions.map((option) => (
+                    <option key={option} value={option}>
+                      {option}
+                    </option>
+                  ))}
+                </select>
+                <p className="mt-1 text-xs text-secondary">
+                  Helps group pumps under one OEM for future network and bulk pricing discussions.
+                </p>
+              </div>
+              <div>
                 <label className="block text-sm font-medium text-primary mb-1">Address</label>
                 <textarea
                   value={addPumpForm.address}
@@ -3242,6 +3274,7 @@ export default function AdminVerificationDashboard(): React.ReactElement {
                     setShowAddPump(false);
                     setAddPumpForm({
                       pump_name: '',
+                      oem_name: '',
                       address: '',
                       city: '',
                       state: '',

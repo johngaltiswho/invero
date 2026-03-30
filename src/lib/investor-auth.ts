@@ -1,4 +1,4 @@
-import { auth, currentUser } from '@clerk/nextjs/server';
+import { auth } from '@clerk/nextjs/server';
 import { supabaseAdmin } from '@/lib/supabase';
 
 export class InvestorAuthError extends Error {
@@ -16,18 +16,30 @@ function isMissingColumnError(message?: string | null) {
 }
 
 export async function resolveActiveInvestor<T = any>(select = '*'): Promise<{
-  user: Awaited<ReturnType<typeof currentUser>>;
+  user: {
+    id: string;
+    emailAddresses: Array<{ emailAddress: string }>;
+  };
   investor: T;
 }> {
-  const { userId } = await auth();
+  const authState = await auth();
+  const { userId } = authState;
   if (!userId) {
     throw new InvestorAuthError('Not authenticated', 401);
   }
 
-  let user = await currentUser();
-  if (!user) {
-    throw new InvestorAuthError('Not authenticated', 401);
-  }
+  const sessionClaims = (authState.sessionClaims || {}) as Record<string, any>;
+  const primaryEmail =
+    sessionClaims.email ||
+    sessionClaims.primary_email_address ||
+    sessionClaims.email_address ||
+    sessionClaims?.external_accounts?.[0]?.email_address ||
+    null;
+
+  const user = {
+    id: userId,
+    emailAddresses: primaryEmail ? [{ emailAddress: String(primaryEmail).toLowerCase() }] : [],
+  };
 
   let byClerkId: T | null = null;
   const byClerkIdResponse = await (supabaseAdmin as any)

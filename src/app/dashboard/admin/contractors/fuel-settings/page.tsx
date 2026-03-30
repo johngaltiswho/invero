@@ -22,6 +22,7 @@ interface FuelSettings {
 interface FuelPump {
   id: string;
   pump_name: string;
+  oem_name?: string | null;
   city: string;
   state: string;
 }
@@ -436,6 +437,7 @@ export default function AdminFuelSettingsPage() {
                         <div>
                           <div className="text-sm text-primary font-medium">{pump.pump_name}</div>
                           <div className="text-xs text-secondary">
+                            {pump.oem_name ? `${pump.oem_name} · ` : ''}
                             {pump.city}, {pump.state}
                           </div>
                         </div>

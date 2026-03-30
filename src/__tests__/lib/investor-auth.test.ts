@@ -6,13 +6,12 @@ jest.mock('@/lib/supabase', () => ({
 
 jest.mock('@clerk/nextjs/server', () => ({
   auth: jest.fn(),
-  currentUser: jest.fn(),
 }));
 
 import { supabaseAdmin } from '@/lib/supabase';
-import { auth, currentUser } from '@clerk/nextjs/server';
+import { auth } from '@clerk/nextjs/server';
 import { InvestorAuthError, resolveActiveInvestor } from '@/lib/investor-auth';
-import { createMaybeSingleChain, createMockClerkUser } from '@/__tests__/utils/auth-test-helpers';
+import { createMaybeSingleChain } from '@/__tests__/utils/auth-test-helpers';
 
 describe('resolveActiveInvestor', () => {
   beforeEach(() => {
@@ -20,8 +19,7 @@ describe('resolveActiveInvestor', () => {
   });
 
   it('resolves by clerk_user_id when linked', async () => {
-    (auth as jest.Mock).mockResolvedValue({ userId: 'user_123' });
-    (currentUser as jest.Mock).mockResolvedValue(createMockClerkUser());
+    (auth as jest.Mock).mockResolvedValue({ userId: 'user_123', sessionClaims: { email: 'investor@example.com' } });
 
     const byClerkId = createMaybeSingleChain({
       data: { id: 'inv_123', email: 'investor@example.com', name: 'Investor' },
@@ -39,8 +37,7 @@ describe('resolveActiveInvestor', () => {
   });
 
   it('falls back to email and heals clerk_user_id', async () => {
-    (auth as jest.Mock).mockResolvedValue({ userId: 'user_123' });
-    (currentUser as jest.Mock).mockResolvedValue(createMockClerkUser());
+    (auth as jest.Mock).mockResolvedValue({ userId: 'user_123', sessionClaims: { email: 'investor@example.com' } });
 
     const byClerkId = createMaybeSingleChain({ data: null, error: null });
     const byEmail = createMaybeSingleChain({
@@ -63,8 +60,7 @@ describe('resolveActiveInvestor', () => {
   });
 
   it('falls back cleanly when clerk_user_id column is missing', async () => {
-    (auth as jest.Mock).mockResolvedValue({ userId: 'user_123' });
-    (currentUser as jest.Mock).mockResolvedValue(createMockClerkUser());
+    (auth as jest.Mock).mockResolvedValue({ userId: 'user_123', sessionClaims: { email: 'investor@example.com' } });
 
     const byEmail = createMaybeSingleChain({
       data: { id: 'inv_789', email: 'investor@example.com', name: 'Investor' },
@@ -104,8 +100,7 @@ describe('resolveActiveInvestor', () => {
   });
 
   it('throws 404 when no active investor exists', async () => {
-    (auth as jest.Mock).mockResolvedValue({ userId: 'user_123' });
-    (currentUser as jest.Mock).mockResolvedValue(createMockClerkUser());
+    (auth as jest.Mock).mockResolvedValue({ userId: 'user_123', sessionClaims: { email: 'investor@example.com' } });
 
     const byClerkId = createMaybeSingleChain({ data: null, error: null });
     const byEmail = createMaybeSingleChain({ data: null, error: null });

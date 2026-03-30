@@ -190,19 +190,21 @@ export function InvestorProvider({ children }: InvestorProviderProps) {
   const [investor, setInvestor] = useState<InvestorWithData | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [lastFetchedUserId, setLastFetchedUserId] = useState<string | null>(null);
 
-  const fetchInvestorData = useCallback(async () => {
+  const fetchInvestorData = useCallback(async (force = false) => {
     if (!user || !isLoaded) {
       setInvestor(null);
+      setError(null);
+      setLastFetchedUserId(null);
       return;
     }
 
-    // Don't fetch if we already have investor data and no error
-    if (investor && !error) {
-      console.log('📦 InvestorContext: Using existing investor data');
+    if (!force && lastFetchedUserId === user.id) {
       return;
     }
 
+    setLastFetchedUserId(user.id);
     setLoading(true);
     setError(null);
 
@@ -213,6 +215,12 @@ export function InvestorProvider({ children }: InvestorProviderProps) {
       if (!response.ok) {
         if (response.status === 404) {
           throw new Error('Investor profile not found. Please contact support to get access.');
+        }
+        if (response.status === 401) {
+          throw new Error('Your session has expired. Please sign in again.');
+        }
+        if (response.status === 429) {
+          throw new Error('Too many authentication requests. Please wait a few seconds and retry.');
         }
         throw new Error(`Failed to fetch investor data: ${response.status}`);
       }
@@ -234,11 +242,12 @@ export function InvestorProvider({ children }: InvestorProviderProps) {
     } finally {
       setLoading(false);
     }
-  }, [user, isLoaded, investor, error]);
+  }, [user, isLoaded, lastFetchedUserId]);
 
   const refetch = async () => {
-    setInvestor(null); // Clear existing data to force refetch
-    await fetchInvestorData();
+    setInvestor(null);
+    setLastFetchedUserId(null);
+    await fetchInvestorData(true);
   };
 
   useEffect(() => {

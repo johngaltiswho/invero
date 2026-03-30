@@ -156,7 +156,7 @@ export async function POST(request: NextRequest) {
 
     const { data: pump } = await supabaseAdmin
       .from('fuel_pumps')
-      .select('pump_name, address, city, contact_person, contact_phone')
+      .select('pump_name, oem_name, address, city, contact_person, contact_phone')
       .eq('id', pump_id)
       .single();
 

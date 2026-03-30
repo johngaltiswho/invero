@@ -47,7 +47,7 @@ export default function RegistrationBanner({ registrationStep, message, canRetry
       : '/contractors/status';
 
   const ctaLabel =
-    registrationStep === 'not_applied' ? 'Start Application' :
+    registrationStep === 'not_applied' ? 'Start SME Onboarding' :
     registrationStep === 'applied' || registrationStep === 'docs_pending' ? 'Complete Basic KYC' :
     registrationStep === 'agreement_pending' ? 'View Agreement Status' :
     registrationStep === 'commercial_review' || registrationStep === 'active' ? 'View Status' :
@@ -59,13 +59,13 @@ export default function RegistrationBanner({ registrationStep, message, canRetry
       className={`mb-6 rounded-lg border p-4 ${
         isRejected
           ? 'bg-red-900/10 border-red-500/30'
-          : 'bg-accent-amber/10 border-accent-amber/30'
+          : 'bg-[#171410] border-[#c79a36]/30'
       }`}
     >
       <div className="flex items-start justify-between gap-4 flex-wrap">
         <div className="flex-1 min-w-0">
-          <p className={`text-sm font-semibold mb-1 ${isRejected ? 'text-red-400' : 'text-accent-amber'}`}>
-            {isRejected ? 'Action Required' : 'Complete onboarding to unlock procurement and financing'}
+          <p className={`text-sm font-semibold mb-1 ${isRejected ? 'text-red-400' : 'text-[#d2aa4d]'}`}>
+            {isRejected ? 'Action Required' : 'Complete SME onboarding to unlock procurement and financing'}
           </p>
           {message && (
             <p className="text-xs text-secondary">{message}</p>

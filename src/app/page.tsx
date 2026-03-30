@@ -5,53 +5,53 @@ export default function Home(): React.ReactElement {
   return (
     <Layout>
       {/* Hero Section - Palantir-inspired */}
-      <section className="relative overflow-hidden">
-        <div className="absolute inset-0 bg-gradient-to-br from-primary via-neutral-dark to-primary opacity-50"></div>
+      <section className="public-page public-section relative overflow-hidden">
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(199,154,54,0.10),transparent_35%),radial-gradient(circle_at_bottom_right,rgba(199,154,54,0.08),transparent_28%)]"></div>
         <div className="relative container mx-auto px-4 py-24 md:py-32">
           <div className="max-w-6xl mx-auto">
             <div className="grid lg:grid-cols-2 gap-12 items-center">
               <div>
-                <div className="text-accent-orange text-sm font-semibold uppercase tracking-wide mb-4">
+                <div className="public-kicker mb-4">
                   PROJECT SUPPLY ENABLEMENT PLATFORM
                 </div>
-                <h1 className="text-5xl md:text-7xl font-bold text-primary mb-6 leading-tight tracking-tight">
-                  Contract-Backed Project Supply for 
-                  <span className="block accent-amber">Infrastructure Execution</span>
+                <h1 className="font-public-display public-heading text-5xl md:text-7xl mb-6 leading-[0.95] tracking-[-0.04em]">
+                  Capital and procurement infrastructure for
+                  <span className="block public-accent italic">SME execution</span>
                 </h1>
-                <p className="text-xl text-secondary mb-8 leading-relaxed max-w-lg">
-                  Streamlining project execution through verified work order-backed supply of materials, equipment, fuel, 
-                  and other project essentials with ESG-compliant delivery solutions.
+                <p className="public-body text-xl mb-8 leading-relaxed max-w-lg">
+                  Finverno helps SMEs execute confirmed orders by enabling material procurement, vendor coordination,
+                  and short-duration working-capital movement around real project demand.
                 </p>
                 <div className="flex flex-col sm:flex-row gap-4">
                   <Link href="/dashboard/contractor">
-                    <Button variant="primary" size="lg" className="min-w-[200px]">
-                      Contractor Portal
+                    <Button variant="primary" size="lg" className="min-w-[200px] public-button hover:bg-[#d7ad58]">
+                      SME Portal
                     </Button>
                   </Link>
                   <Link href="/dashboard/investor">
-                    <Button variant="outline" size="lg" className="min-w-[200px]">
-                      Partner Portal
+                    <Button variant="outline" size="lg" className="min-w-[200px] public-button-outline hover:bg-[#c79a36]/10">
+                      Investor Portal
                     </Button>
                   </Link>
                 </div>
               </div>
               <div className="hidden lg:block">
-                <div className="relative h-96 bg-gradient-to-br from-neutral-dark to-neutral-medium rounded-lg border border-neutral-medium">
-                  <div className="absolute inset-0 bg-gradient-to-t from-accent-amber/20 to-transparent rounded-lg"></div>
+                <div className="public-panel relative h-96 rounded-lg">
+                  <div className="absolute inset-0 bg-gradient-to-t from-[#c79a36]/10 to-transparent rounded-lg"></div>
                   <div className="absolute top-6 left-6 right-6">
-                    <div className="text-accent-amber text-sm font-mono mb-2">LIVE METRICS</div>
+                    <div className="public-kicker mb-2 font-mono">LIVE METRICS</div>
                     <div className="space-y-4">
                       <div className="flex justify-between">
-                        <span className="text-secondary">Active Projects</span>
-                        <span className="text-primary font-bold">127</span>
+                        <span className="public-body">Active Projects</span>
+                        <span className="public-heading font-bold">127</span>
                       </div>
                       <div className="flex justify-between">
-                        <span className="text-secondary">Materials Supplied</span>
-                        <span className="text-primary font-bold">₹2.4B</span>
+                        <span className="public-body">Materials Enabled</span>
+                        <span className="public-heading font-bold">₹2.4B</span>
                       </div>
                       <div className="flex justify-between">
-                        <span className="text-secondary">On-Time Delivery</span>
-                        <span className="text-accent-amber font-bold">96.8%</span>
+                        <span className="public-body">On-Time Delivery</span>
+                        <span className="public-accent font-bold">96.8%</span>
                       </div>
                     </div>
                   </div>
@@ -63,42 +63,42 @@ export default function Home(): React.ReactElement {
       </section>
 
       {/* Problem Statement - Clean, Direct */}
-      <section className="py-20 md:py-28">
+      <section className="public-page public-section py-20 md:py-28">
         <div className="container mx-auto px-4">
           <div className="max-w-4xl mx-auto">
             <div className="text-center mb-16">
-              <div className="text-accent-orange text-sm font-semibold uppercase tracking-wide mb-4">
+              <div className="public-kicker mb-4">
                 THE CHALLENGE
               </div>
-              <h2 className="text-4xl md:text-5xl font-bold text-primary mb-8 leading-tight">
+              <h2 className="font-public-display public-heading text-4xl md:text-5xl mb-8 leading-tight">
                 The Working Capital Constraint in Project Execution
               </h2>
             </div>
             <div className="grid md:grid-cols-2 gap-12 items-center">
               <div>
-                <p className="text-lg text-secondary leading-relaxed mb-6">
+                <p className="text-lg public-body leading-relaxed mb-6">
                   India's infrastructure boom faces a critical constraint: SME contractors need to procure 
                   materials upfront while waiting 60-90 days for client payments.
                 </p>
-                <p className="text-lg text-secondary leading-relaxed">
-                  This working capital gap forces contractors to delay material procurement, creating project 
+                <p className="text-lg public-body leading-relaxed">
+                  This working capital gap forces SMEs to delay material procurement, creating project 
                   bottlenecks and limiting execution capacity for verified MNC contracts.
                 </p>
               </div>
-              <div className="bg-neutral-dark p-8 rounded-lg border border-neutral-medium">
-                <div className="text-accent-amber text-sm font-mono mb-4">MARKET METRICS</div>
+              <div className="public-panel p-8 rounded-lg">
+                <div className="public-kicker font-mono mb-4">MARKET METRICS</div>
                 <div className="space-y-4">
                   <div>
-                    <div className="text-2xl font-bold text-primary">₹18T</div>
-                    <div className="text-secondary text-sm">Working Capital Gap in SME Sector</div>
+                    <div className="text-2xl font-bold public-heading">₹18T</div>
+                    <div className="public-body text-sm">Working Capital Gap in SME Sector</div>
                   </div>
                   <div>
-                    <div className="text-2xl font-bold text-primary">60%</div>
-                    <div className="text-secondary text-sm">Projects Delayed by Material Procurement</div>
+                    <div className="text-2xl font-bold public-heading">60%</div>
+                    <div className="public-body text-sm">Projects Delayed by Material Procurement</div>
                   </div>
                   <div>
-                    <div className="text-2xl font-bold text-primary">60-90D</div>
-                    <div className="text-secondary text-sm">Client Payment Cycle</div>
+                    <div className="text-2xl font-bold public-heading">60-90D</div>
+                    <div className="public-body text-sm">Client Payment Cycle</div>
                   </div>
                 </div>
               </div>
