@@ -19,7 +19,7 @@ describe('resolveActiveInvestor', () => {
   });
 
   it('resolves by clerk_user_id when linked', async () => {
-    (auth as jest.Mock).mockResolvedValue({ userId: 'user_123', sessionClaims: { email: 'investor@example.com' } });
+    (auth as unknown as jest.Mock).mockResolvedValue({ userId: 'user_123', sessionClaims: { email: 'investor@example.com' } });
 
     const byClerkId = createMaybeSingleChain({
       data: { id: 'inv_123', email: 'investor@example.com', name: 'Investor' },
@@ -37,7 +37,7 @@ describe('resolveActiveInvestor', () => {
   });
 
   it('falls back to email and heals clerk_user_id', async () => {
-    (auth as jest.Mock).mockResolvedValue({ userId: 'user_123', sessionClaims: { email: 'investor@example.com' } });
+    (auth as unknown as jest.Mock).mockResolvedValue({ userId: 'user_123', sessionClaims: { email: 'investor@example.com' } });
 
     const byClerkId = createMaybeSingleChain({ data: null, error: null });
     const byEmail = createMaybeSingleChain({
@@ -60,7 +60,7 @@ describe('resolveActiveInvestor', () => {
   });
 
   it('falls back cleanly when clerk_user_id column is missing', async () => {
-    (auth as jest.Mock).mockResolvedValue({ userId: 'user_123', sessionClaims: { email: 'investor@example.com' } });
+    (auth as unknown as jest.Mock).mockResolvedValue({ userId: 'user_123', sessionClaims: { email: 'investor@example.com' } });
 
     const byEmail = createMaybeSingleChain({
       data: { id: 'inv_789', email: 'investor@example.com', name: 'Investor' },
@@ -91,7 +91,7 @@ describe('resolveActiveInvestor', () => {
   });
 
   it('throws 401 when not authenticated', async () => {
-    (auth as jest.Mock).mockResolvedValue({ userId: null });
+    (auth as unknown as jest.Mock).mockResolvedValue({ userId: null });
 
     await expect(resolveActiveInvestor()).rejects.toEqual(expect.objectContaining<Partial<InvestorAuthError>>({
       message: 'Not authenticated',
@@ -100,7 +100,7 @@ describe('resolveActiveInvestor', () => {
   });
 
   it('throws 404 when no active investor exists', async () => {
-    (auth as jest.Mock).mockResolvedValue({ userId: 'user_123', sessionClaims: { email: 'investor@example.com' } });
+    (auth as unknown as jest.Mock).mockResolvedValue({ userId: 'user_123', sessionClaims: { email: 'investor@example.com' } });
 
     const byClerkId = createMaybeSingleChain({ data: null, error: null });
     const byEmail = createMaybeSingleChain({ data: null, error: null });

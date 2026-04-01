@@ -3,6 +3,7 @@ import { auth, currentUser } from '@clerk/nextjs/server';
 import { supabaseAdmin } from '@/lib/supabase';
 import { fuelRequestSchema } from '@/lib/validations/fuel';
 import { validateFuelRequest } from '@/lib/fuel/auto-approval-service';
+import { getLatestContractorAgreementByType } from '@/lib/contractor-agreements/service';
 
 /**
  * Helper to resolve contractor from Clerk auth
@@ -74,6 +75,22 @@ export async function POST(request: NextRequest) {
     }
 
     const contractor = resolved.contractor;
+
+    const fuelAgreement = await getLatestContractorAgreementByType(
+      contractor.id,
+      'fuel_procurement_declaration'
+    );
+
+    if (fuelAgreement?.status !== 'executed') {
+      return NextResponse.json(
+        {
+          error: fuelAgreement
+            ? 'Fuel access is blocked until the Fuel Procurement & Settlement Declaration is fully executed.'
+            : 'Fuel access is blocked until the Fuel Procurement & Settlement Declaration is issued and executed.',
+        },
+        { status: 403 }
+      );
+    }
 
     // Parse and validate request body
     const body = await request.json();

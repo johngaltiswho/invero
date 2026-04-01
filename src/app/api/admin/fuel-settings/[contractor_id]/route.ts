@@ -1,11 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase';
 import { z } from 'zod';
+import { getSmeFuelAccountSummary } from '@/lib/fuel/finance';
 
 /**
  * Validation schema for fuel settings
  */
 const fuelSettingsSchema = z.object({
+  overdraft_allowed: z.boolean(),
+  overdraft_limit_amount: z.number().min(0).max(10000000),
+  warning_threshold_amount: z.number().min(0).max(10000000),
   monthly_fuel_budget: z.number().positive().max(10000000),
   per_request_max_amount: z.number().positive().max(1000000),
   per_request_max_liters: z.number().positive().max(1000),
@@ -41,9 +45,14 @@ export async function GET(
       );
     }
 
+    const accountSummary = await getSmeFuelAccountSummary(contractorId);
+
     return NextResponse.json({
       success: true,
-      data: settings,
+      data: {
+        settings,
+        account_summary: accountSummary,
+      },
     });
   } catch (error) {
     console.error('Error in GET /api/admin/fuel-settings:', error);
@@ -77,6 +86,14 @@ export async function PUT(
 
     const settingsData = validationResult.data;
 
+    const normalizedSettingsData = {
+      ...settingsData,
+      // Keep legacy columns populated for backward compatibility, but the
+      // unified balance engine now reads overdraft settings instead.
+      account_mode: settingsData.overdraft_allowed ? 'credit' : 'cash_carry',
+      account_limit_amount: settingsData.overdraft_limit_amount,
+    };
+
     // Check if settings exist
     const { data: existing } = await supabaseAdmin
       .from('contractor_fuel_settings')
@@ -90,7 +107,7 @@ export async function PUT(
       // Update existing settings
       const { data, error } = await supabaseAdmin
         .from('contractor_fuel_settings')
-        .update(settingsData)
+        .update(normalizedSettingsData)
         .eq('contractor_id', contractorId)
         .select('*')
         .single();
@@ -103,7 +120,7 @@ export async function PUT(
         .from('contractor_fuel_settings')
         .insert({
           contractor_id: contractorId,
-          ...settingsData,
+          ...normalizedSettingsData,
         })
         .select('*')
         .single();
@@ -112,9 +129,14 @@ export async function PUT(
       result = data;
     }
 
+    const accountSummary = await getSmeFuelAccountSummary(contractorId);
+
     return NextResponse.json({
       success: true,
-      data: result,
+      data: {
+        settings: result,
+        account_summary: accountSummary,
+      },
       message: 'Fuel settings updated successfully',
     });
   } catch (error) {

@@ -8,7 +8,7 @@ export const CONTRACTOR_AGREEMENT_STATUSES = [
   'expired',
 ] as const;
 
-export const CONTRACTOR_AGREEMENT_TYPES = ['master_platform', 'financing_addendum', 'procurement_declaration'] as const;
+export const CONTRACTOR_AGREEMENT_TYPES = ['master_platform', 'financing_addendum', 'procurement_declaration', 'fuel_procurement_declaration'] as const;
 
 export type ContractorAgreementStatus = (typeof CONTRACTOR_AGREEMENT_STATUSES)[number];
 export type ContractorAgreementType = (typeof CONTRACTOR_AGREEMENT_TYPES)[number];

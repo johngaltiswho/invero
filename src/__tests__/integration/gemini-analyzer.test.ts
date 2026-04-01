@@ -8,8 +8,6 @@
  * 4. Error handling is robust
  */
 
-import { describe, it, expect, jest, beforeEach } from '@jest/globals';
-
 // Mock fetch globally
 global.fetch = jest.fn();
 
@@ -149,8 +147,11 @@ FINAL REPORT SUMMARY:
         ],
       };
 
-      const aiContent = mockBlockedResponse.candidates?.[0]?.content?.parts?.[0]?.text;
-      const finishReason = mockBlockedResponse.candidates?.[0]?.finishReason;
+      const candidate = mockBlockedResponse.candidates?.[0] as
+        | { content?: { parts?: Array<{ text?: string }> }; finishReason?: string }
+        | undefined;
+      const aiContent = candidate?.content?.parts?.[0]?.text;
+      const finishReason = candidate?.finishReason;
 
       expect(aiContent).toBeUndefined();
       expect(finishReason).toBe('SAFETY');

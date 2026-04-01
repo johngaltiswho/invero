@@ -6,7 +6,7 @@ import { Button } from '@/components';
 export type ContractorAgreementCardData = {
   id: string;
   status: string;
-  agreement_type: 'master_platform' | 'financing_addendum' | 'procurement_declaration';
+  agreement_type: 'master_platform' | 'financing_addendum' | 'procurement_declaration' | 'fuel_procurement_declaration';
   agreement_date: string;
   company_signatory_name?: string | null;
   company_signatory_title?: string | null;
@@ -32,6 +32,7 @@ const AGREEMENT_LABELS: Record<ContractorAgreementCardData['agreement_type'], st
   master_platform: 'Master SME Platform Agreement',
   financing_addendum: 'Financing / Working Capital Addendum',
   procurement_declaration: 'Procurement / Booking Declaration',
+  fuel_procurement_declaration: 'Fuel Procurement & Settlement Declaration',
 };
 
 export default function ContractorAgreementStatusCard({ agreement, files, onSigned }: Props): React.ReactElement {

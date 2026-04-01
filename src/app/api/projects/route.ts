@@ -4,6 +4,20 @@ import { auth } from '@clerk/nextjs/server';
 import { rateLimit, RateLimitPresets } from '@/lib/rate-limit';
 import { maybeCreateInitialProjectPOReference } from '@/lib/project-po-references';
 
+function getProjectCreationErrorMessage(error: { message?: string | null; details?: string | null; code?: string | null }) {
+  const message = `${error.message || ''} ${error.details || ''}`.toLowerCase();
+
+  if (message.includes('invalid input syntax') || message.includes('numeric')) {
+    return 'Project value must be a valid rupee amount';
+  }
+
+  if (message.includes('project_status')) {
+    return 'Project status is invalid';
+  }
+
+  return 'Failed to create project';
+}
+
 // POST - Create new project
 export async function POST(request: NextRequest) {
   // Apply rate limiting for project creation
@@ -61,6 +75,11 @@ export async function POST(request: NextRequest) {
       };
     }
 
+    const hasValidEstimatedValue =
+      typeof projectData.estimated_value === 'number' &&
+      Number.isFinite(projectData.estimated_value) &&
+      projectData.estimated_value > 0;
+
     // Validate required fields
     if (!projectData.contractor_id || !projectData.project_name || !projectData.client_name) {
       return NextResponse.json({
@@ -70,10 +89,10 @@ export async function POST(request: NextRequest) {
     }
     
     // For FormData requests, estimated_value is required
-    if (!isJsonRequest && !projectData.estimated_value) {
+    if (!isJsonRequest && !hasValidEstimatedValue) {
       return NextResponse.json({
         success: false,
-        error: 'Missing required field: estimated_value for awarded projects'
+        error: 'Project value must be greater than 0'
       }, { status: 400 });
     }
 
@@ -165,7 +184,7 @@ export async function POST(request: NextRequest) {
       console.error('Project creation error:', projectError);
       return NextResponse.json({
         success: false,
-        error: 'Failed to create project'
+        error: getProjectCreationErrorMessage(projectError)
       }, { status: 500 });
     }
 

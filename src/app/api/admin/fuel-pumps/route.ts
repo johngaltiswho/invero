@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase';
 import { z } from 'zod';
+import { getProviderSettlementSummary } from '@/lib/fuel/finance';
 
 /**
  * Validation schema for creating a fuel pump
@@ -28,7 +29,25 @@ export async function GET(request: NextRequest) {
 
     let query = supabaseAdmin
       .from('fuel_pumps')
-      .select('*')
+      .select(`
+        id,
+        pump_name,
+        oem_name,
+        address,
+        city,
+        state,
+        pincode,
+        contact_person,
+        contact_phone,
+        contact_email,
+        is_active,
+        dashboard_access_label,
+        dashboard_access_active,
+        dashboard_access_version,
+        last_accessed_at,
+        created_at,
+        updated_at
+      `)
       .order('pump_name', { ascending: true });
 
     if (isActive !== null) {
@@ -45,9 +64,16 @@ export async function GET(request: NextRequest) {
       );
     }
 
+    const pumpsWithFinance = await Promise.all(
+      (pumps || []).map(async (pump) => ({
+        ...pump,
+        settlement_summary: await getProviderSettlementSummary(pump.id),
+      }))
+    );
+
     return NextResponse.json({
       success: true,
-      data: pumps || [],
+      data: pumpsWithFinance,
     });
   } catch (error) {
     console.error('Error in GET /api/admin/fuel-pumps:', error);

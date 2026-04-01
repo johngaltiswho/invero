@@ -5,12 +5,13 @@ import type { Vehicle } from '@/types/supabase';
 
 interface VehicleTableProps {
   vehicles: Vehicle[];
+  onEdit: (vehicle: Vehicle) => void;
 }
 
 type SortField = 'vehicle_number' | 'vehicle_type' | 'created_at';
 type SortDirection = 'asc' | 'desc';
 
-export function VehicleTable({ vehicles }: VehicleTableProps) {
+export function VehicleTable({ vehicles, onEdit }: VehicleTableProps) {
   const [sortField, setSortField] = useState<SortField>('created_at');
   const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
 
@@ -107,6 +108,9 @@ export function VehicleTable({ vehicles }: VehicleTableProps) {
             <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide">
               Status
             </th>
+            <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide">
+              Action
+            </th>
           </tr>
         </thead>
         <tbody>
@@ -136,6 +140,15 @@ export function VehicleTable({ vehicles }: VehicleTableProps) {
                     Inactive
                   </span>
                 )}
+              </td>
+              <td className="px-4 py-4 text-sm">
+                <button
+                  type="button"
+                  onClick={() => onEdit(vehicle)}
+                  className="text-accent-orange hover:text-accent-orange/80 transition-colors font-medium"
+                >
+                  Edit
+                </button>
               </td>
             </tr>
           ))}

@@ -7,8 +7,6 @@
  * 3. File serving API works correctly
  */
 
-import { describe, it, expect } from '@jest/globals';
-
 describe('PDF Viewer Integration', () => {
   describe('Security Headers Configuration', () => {
     it('should allow same-origin iframe embedding', () => {

@@ -48,6 +48,8 @@ export function generateContractorAgreementPDF(
       ? 'FINANCING / WORKING CAPITAL ADDENDUM'
       : payload.agreementType === 'procurement_declaration'
         ? 'PROCUREMENT / BOOKING DECLARATION'
+        : payload.agreementType === 'fuel_procurement_declaration'
+          ? 'FUEL PROCUREMENT & SETTLEMENT DECLARATION'
         : 'MASTER SME PLATFORM AGREEMENT',
     pageWidth / 2,
     y,
@@ -114,6 +116,18 @@ export function generateContractorAgreementPDF(
       'The SME accepts the quantity, quality, dispatch pricing, applicable taxes, and subsequent debit or credit adjustments communicated through the procurement channel on a back-to-back basis.',
       'The SME confirms that materials procured through the booking will be used for declared project or manufacturing purposes and not unlawfully diverted or traded contrary to declared use.',
     ]);
+  } else if (payload.agreementType === 'fuel_procurement_declaration') {
+    addSection('1. Scope of Fuel Procurement Workflow', 'The SME agrees that fuel disbursement, routing to approved pump partners, approval generation, platform logging, and settlement tracking may be facilitated through the Finverno platform and associated operational controls.');
+    addSection('2. Approved Use and Vehicle Validity', 'Only duly registered vehicles and authorized project-related operational usage may be routed through this workflow. The SME shall ensure that vehicle details, operator details, and usage intent provided on the platform are accurate and current.');
+    addSection('3. Actual Fill and Operative Amount', 'Fuel approvals are indicative operational ceilings only. The financially operative amount shall be the actual dispensed litres and value recorded by the approved fuel provider through the Finverno workflow, subject to Finverno review, correction rights, and audit logs.');
+    addSection('4. Platform Fee and Charges', [
+      'Finverno may levy platform charges, service fees, and other approved charges on actual filled fuel transactions.',
+      'Where the SME is using approved credit or deferred settlement, daily charges or similar financing-linked charges may also accrue in accordance with the applicable commercial terms approved for the SME.',
+    ]);
+    addSection('5. Cash & Carry or Credit Mode', 'Fuel access may operate in cash-and-carry mode, prepaid balance mode, or approved credit mode, as determined by Finverno. Finverno may suspend, restrict, or reset the available balance, account limit, or mode of operation based on risk, repayment behaviour, or operational concerns.');
+    addSection('6. Settlement, Repayment, and Recovery', 'The SME undertakes to settle all fuel dues, charges, and related fees payable to Finverno within the applicable agreed timeline. Finverno may recover outstanding dues through direct payment request, set-off, suspension of future approvals, or any other available contractual or lawful means.');
+    addSection('7. Pump Validation and Records', 'Pump-side validation, approval codes, fill logs, quantity records, amount records, timestamps, and related system entries will be treated as business records and may be relied upon by Finverno for reconciliation, settlement, and dispute handling.');
+    addSection('8. Misuse, Fraud, and Suspension', 'The SME shall not create duplicate requests, misstate vehicle usage, collude with fuel providers, inflate quantities, or misuse the workflow for non-project or unauthorized use. Finverno may immediately suspend access and pursue recovery or other action where misuse, fraud, or discrepancy is detected.');
   } else {
     addSection('1. Purpose and Scope', 'This agreement governs the SME\'s use of the Finverno platform for procurement enablement, onboarding, document workflows, audit support, and related operational services.');
     addSection('2. Representations and Platform Use', [

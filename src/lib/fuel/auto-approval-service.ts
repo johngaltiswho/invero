@@ -7,6 +7,7 @@
 
 import { createClient } from '@supabase/supabase-js';
 import type { Database } from '@/types/supabase';
+import { getSmeFuelAccountSummary } from '@/lib/fuel/finance';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
@@ -77,6 +78,9 @@ export async function validateFuelRequest(
 
     const settings = settingsData as {
       monthly_fuel_budget: number;
+      overdraft_allowed?: boolean;
+      overdraft_limit_amount?: number;
+      warning_threshold_amount?: number;
       per_request_max_amount: number;
       per_request_max_liters: number;
       max_fills_per_vehicle_per_day: number;
@@ -157,7 +161,8 @@ export async function validateFuelRequest(
       0
     );
 
-    const remainingBudget = settings.monthly_fuel_budget - monthlySpend;
+    const effectiveBudget = Number(settings.monthly_fuel_budget ?? 0);
+    const remainingBudget = effectiveBudget - monthlySpend;
 
     if (estimatedAmount > remainingBudget) {
       return {
@@ -167,7 +172,33 @@ export async function validateFuelRequest(
       };
     }
 
-    // 9. Check daily frequency limit for this vehicle
+    // 9. Check unified balance / overdraft headroom
+    const accountSummary = await getSmeFuelAccountSummary(contractorId);
+
+    if (accountSummary) {
+      const projectedPlatformFee = estimatedAmount * accountSummary.platformFeeRate;
+      const projectedCharge = estimatedAmount + projectedPlatformFee;
+      const projectedBalance = accountSummary.availableBalance - projectedCharge;
+
+      if (!accountSummary.overdraftAllowed && projectedBalance < 0) {
+        return {
+          isApproved: false,
+          reason: `Insufficient available balance. Current balance: Rs ${accountSummary.availableBalance.toFixed(0)}, required: Rs ${projectedCharge.toFixed(0)}`,
+          estimatedAmount,
+        };
+      }
+
+      if (accountSummary.overdraftAllowed && projectedBalance < -accountSummary.overdraftLimitAmount) {
+        const remainingHeadroom = accountSummary.availableBalance + accountSummary.overdraftLimitAmount;
+        return {
+          isApproved: false,
+          reason: `Overdraft limit exceeded. Remaining headroom: Rs ${Math.max(remainingHeadroom, 0).toFixed(0)}, required: Rs ${projectedCharge.toFixed(0)}`,
+          estimatedAmount,
+        };
+      }
+    }
+
+    // 10. Check daily frequency limit for this vehicle
     const todayStart = new Date();
     todayStart.setHours(0, 0, 0, 0);
 
@@ -193,7 +224,7 @@ export async function validateFuelRequest(
       };
     }
 
-    // 10. Check minimum time between fills
+    // 11. Check minimum time between fills
     const minHoursAgo = new Date();
     minHoursAgo.setHours(minHoursAgo.getHours() - settings.min_hours_between_fills);
 
@@ -256,7 +287,7 @@ export async function getMonthlyBudgetStatus(contractorId: string) {
   try {
     const { data: settingsData } = await supabase
       .from('contractor_fuel_settings')
-      .select('monthly_fuel_budget')
+      .select('monthly_fuel_budget, account_limit_amount')
       .eq('contractor_id', contractorId)
       .maybeSingle();
 
@@ -264,7 +295,8 @@ export async function getMonthlyBudgetStatus(contractorId: string) {
       return { budget: 0, spent: 0, remaining: 0 };
     }
 
-    const settings = settingsData as { monthly_fuel_budget: number };
+    const settings = settingsData as { monthly_fuel_budget: number; account_limit_amount?: number | null };
+    const effectiveBudget = Number((settingsData as any).account_limit_amount ?? settings.monthly_fuel_budget ?? 0);
 
     const currentMonthStart = new Date();
     currentMonthStart.setDate(1);
@@ -285,9 +317,9 @@ export async function getMonthlyBudgetStatus(contractorId: string) {
     );
 
     return {
-      budget: settings.monthly_fuel_budget,
+      budget: effectiveBudget,
       spent,
-      remaining: settings.monthly_fuel_budget - spent,
+      remaining: effectiveBudget - spent,
     };
   } catch (error) {
     console.error('Error fetching budget status:', error);

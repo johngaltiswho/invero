@@ -126,15 +126,15 @@ function SignInComponent() {
   }
 
   if (!isLoaded || !signIn) {
-    return <div className="text-sm text-secondary">Loading sign-in...</div>;
+    return <div className="text-sm public-body">Loading sign-in...</div>;
   }
 
   if (mode === 'password') {
     return (
-      <div className="w-full max-w-md rounded-lg border border-neutral-medium bg-neutral-dark p-8">
+      <div className="w-full max-w-md rounded-lg border border-white/10 bg-[#121210] p-8">
         <div className="mb-6 text-center">
-          <h1 className="text-2xl font-semibold text-primary">Sign in</h1>
-          <p className="mt-2 text-sm text-secondary">
+          <h1 className="font-public-display text-3xl text-primary">Sign in</h1>
+          <p className="mt-2 text-sm public-body">
             Password sign-in is available if you prefer not to use a one-time code.
           </p>
         </div>
@@ -182,7 +182,7 @@ function SignInComponent() {
         <button
           type="button"
           onClick={() => setMode('otp')}
-          className="mt-6 w-full text-sm font-medium text-accent-orange transition hover:text-accent-orange/80"
+          className="public-accent mt-6 w-full text-sm font-medium transition hover:opacity-80"
         >
           Use one-time code instead
         </button>
@@ -191,12 +191,12 @@ function SignInComponent() {
   }
 
   return (
-    <div className="w-full max-w-md rounded-lg border border-neutral-medium bg-neutral-dark p-8">
+    <div className="w-full max-w-md rounded-lg border border-white/10 bg-[#121210] p-8">
       <div className="mb-8 text-center">
-        <h1 className="text-2xl font-semibold text-primary">
+        <h1 className="font-public-display text-3xl text-primary">
           {isVerifying ? 'Enter your code' : 'Sign in with email OTP'}
         </h1>
-        <p className="mt-2 text-sm text-secondary">
+        <p className="mt-2 text-sm public-body">
           {isVerifying
             ? `We sent a one-time code to ${submittedEmail || 'your email address'}.`
             : 'Use a one-time code instead of a password.'}
@@ -214,7 +214,7 @@ function SignInComponent() {
       {isVerifying ? (
         <form className="space-y-4" onSubmit={handleVerifyCode}>
           <div>
-            <label htmlFor="code" className="mb-1 block text-sm font-medium text-secondary">
+            <label htmlFor="code" className="mb-1 block text-sm font-medium public-body">
               Verification code
             </label>
             <input
@@ -225,7 +225,7 @@ function SignInComponent() {
               autoComplete="one-time-code"
               value={code}
               onChange={(event) => setCode(event.target.value)}
-              className="w-full rounded-lg border border-neutral-medium bg-neutral-medium px-3 py-2 text-primary outline-none transition focus:border-accent-orange focus:ring-2 focus:ring-accent-orange/20"
+              className="w-full rounded-lg border border-white/10 bg-[#151514] px-3 py-2 text-primary outline-none transition focus:border-[#c79a36] focus:ring-2 focus:ring-[#c79a36]/20"
               placeholder="Enter the code"
             />
           </div>
@@ -233,7 +233,7 @@ function SignInComponent() {
           <button
             type="submit"
             disabled={isSubmitting}
-            className="w-full rounded-lg bg-accent-orange px-4 py-2.5 font-medium text-white transition hover:bg-orange-600 disabled:cursor-not-allowed disabled:opacity-60"
+            className="public-button w-full rounded-lg px-4 py-2.5 font-medium transition hover:bg-[#d7ad58] disabled:cursor-not-allowed disabled:opacity-60"
           >
             {isSubmitting ? 'Verifying...' : 'Verify and continue'}
           </button>
@@ -242,7 +242,7 @@ function SignInComponent() {
             type="button"
             onClick={handleResendCode}
             disabled={isSubmitting}
-            className="w-full rounded-lg border border-neutral-medium px-4 py-2.5 font-medium text-secondary transition hover:bg-neutral-medium/30 hover:text-primary disabled:cursor-not-allowed disabled:opacity-60"
+            className="w-full rounded-lg border border-white/10 px-4 py-2.5 font-medium public-body transition hover:bg-white/5 hover:text-primary disabled:cursor-not-allowed disabled:opacity-60"
           >
             Resend code
           </button>
@@ -251,7 +251,7 @@ function SignInComponent() {
             type="button"
             onClick={handleStartOver}
             disabled={isSubmitting}
-            className="w-full text-sm text-secondary transition hover:text-primary disabled:cursor-not-allowed disabled:opacity-60"
+            className="w-full text-sm public-body transition hover:text-primary disabled:cursor-not-allowed disabled:opacity-60"
           >
             Use a different email
           </button>
@@ -259,7 +259,7 @@ function SignInComponent() {
       ) : (
         <form className="space-y-4" onSubmit={handleRequestCode}>
           <div>
-            <label htmlFor="emailAddress" className="mb-1 block text-sm font-medium text-secondary">
+            <label htmlFor="emailAddress" className="mb-1 block text-sm font-medium public-body">
               Email address
             </label>
             <input
@@ -269,7 +269,7 @@ function SignInComponent() {
               autoComplete="email"
               value={emailAddress}
               onChange={(event) => setEmailAddress(event.target.value)}
-              className="w-full rounded-lg border border-neutral-medium bg-neutral-medium px-3 py-2 text-primary outline-none transition focus:border-accent-orange focus:ring-2 focus:ring-accent-orange/20"
+              className="w-full rounded-lg border border-white/10 bg-[#151514] px-3 py-2 text-primary outline-none transition focus:border-[#c79a36] focus:ring-2 focus:ring-[#c79a36]/20"
               placeholder="you@company.com"
             />
           </div>
@@ -277,16 +277,16 @@ function SignInComponent() {
           <button
             type="submit"
             disabled={isSubmitting}
-            className="w-full rounded-lg bg-accent-orange px-4 py-2.5 font-medium text-white transition hover:bg-orange-600 disabled:cursor-not-allowed disabled:opacity-60"
+            className="public-button w-full rounded-lg px-4 py-2.5 font-medium transition hover:bg-[#d7ad58] disabled:cursor-not-allowed disabled:opacity-60"
           >
             {isSubmitting ? 'Sending code...' : 'Send login code'}
           </button>
         </form>
       )}
 
-      <p className="mt-6 text-center text-sm text-secondary">
+      <p className="mt-6 text-center text-sm public-body">
         Need an account?{' '}
-        <Link href="/sign-up" className="font-medium text-accent-orange hover:text-accent-orange/80">
+        <Link href="/sign-up" className="public-accent font-medium hover:opacity-80">
           Sign up
         </Link>
       </p>
@@ -295,7 +295,7 @@ function SignInComponent() {
         <button
           type="button"
           onClick={() => setMode('password')}
-          className="mt-3 w-full text-sm font-medium text-secondary transition hover:text-primary"
+          className="mt-3 w-full text-sm font-medium public-body transition hover:text-primary"
         >
           Use password instead
         </button>
@@ -306,7 +306,7 @@ function SignInComponent() {
 
 export default function SignInPage() {
   return (
-    <div className="min-h-screen bg-neutral-darker flex items-center justify-center py-12 px-4 sm:px-6 lg:px-8">
+    <div className="public-page min-h-screen flex items-center justify-center py-12 px-4 sm:px-6 lg:px-8">
       <Suspense fallback={<div>Loading...</div>}>
         <SignInComponent />
       </Suspense>

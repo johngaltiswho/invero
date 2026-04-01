@@ -139,7 +139,7 @@ export function contractorFundsDeployedEmail(input: {
 
 export function contractorAgreementReadyEmail(input: {
   contractorName: string;
-  agreementType: 'master_platform' | 'financing_addendum' | 'procurement_declaration';
+  agreementType: 'master_platform' | 'financing_addendum' | 'procurement_declaration' | 'fuel_procurement_declaration';
   draftUrl: string;
   portalUrl: string;
 }): EmailTemplateResult {
@@ -148,6 +148,8 @@ export function contractorAgreementReadyEmail(input: {
       ? 'Master SME Platform Agreement'
       : input.agreementType === 'financing_addendum'
         ? 'Financing / Working Capital Addendum'
+        : input.agreementType === 'fuel_procurement_declaration'
+          ? 'Fuel Procurement & Settlement Declaration'
         : 'Procurement / Booking Declaration';
 
   return {
@@ -166,13 +168,15 @@ export function contractorAgreementReadyEmail(input: {
 
 export function contractorAgreementExecutedEmail(input: {
   contractorName: string;
-  agreementType: 'master_platform' | 'financing_addendum' | 'procurement_declaration';
+  agreementType: 'master_platform' | 'financing_addendum' | 'procurement_declaration' | 'fuel_procurement_declaration';
 }): EmailTemplateResult {
   const agreementLabel =
     input.agreementType === 'master_platform'
       ? 'Master SME Platform Agreement'
       : input.agreementType === 'financing_addendum'
         ? 'Financing / Working Capital Addendum'
+        : input.agreementType === 'fuel_procurement_declaration'
+          ? 'Fuel Procurement & Settlement Declaration'
         : 'Procurement / Booking Declaration';
 
   return {

@@ -22,12 +22,38 @@ interface FuelPump {
 }
 
 interface FuelSettings {
+  overdraft_allowed: boolean;
+  overdraft_limit_amount: number;
+  warning_threshold_amount: number;
   monthly_fuel_budget: number;
   per_request_max_amount: number;
   per_request_max_liters: number;
   max_fills_per_vehicle_per_day: number;
   min_hours_between_fills: number;
   auto_approve_enabled: boolean;
+}
+
+interface FuelAgreementStatus {
+  id: string;
+  status: string;
+  agreement_date: string;
+  issued_at?: string | null;
+  executed_at?: string | null;
+}
+
+interface FuelAccountSummary {
+  overdraftAllowed: boolean;
+  overdraftLimitAmount: number;
+  warningThresholdAmount: number;
+  availableBalance: number;
+  outstandingAmount: number;
+  fuelConsumedAmount: number;
+  platformFeeCharged: number;
+  dailyFeeAccrued: number;
+  pendingApprovalAmount: number;
+  pendingApprovalCount: number;
+  platformFeeRate: number;
+  dailyFeeRate: number;
 }
 
 interface BudgetStatus {
@@ -60,6 +86,9 @@ export default function RequestFuelPage() {
   const [pumps, setPumps] = useState<FuelPump[]>([]);
   const [settings, setSettings] = useState<FuelSettings | null>(null);
   const [budgetStatus, setBudgetStatus] = useState<BudgetStatus | null>(null);
+  const [accountSummary, setAccountSummary] = useState<FuelAccountSummary | null>(null);
+  const [fuelAgreement, setFuelAgreement] = useState<FuelAgreementStatus | null>(null);
+  const [fuelAccessEnabled, setFuelAccessEnabled] = useState(false);
 
   const [selectedVehicleId, setSelectedVehicleId] = useState('');
   const [selectedPumpId, setSelectedPumpId] = useState('');
@@ -98,6 +127,9 @@ export default function RequestFuelPage() {
       setPumps(pumpsData.data || []);
       setSettings(settingsData.data.settings);
       setBudgetStatus(settingsData.data.budget_status);
+      setAccountSummary(settingsData.data.account_summary || null);
+      setFuelAgreement(settingsData.data.fuel_agreement || null);
+      setFuelAccessEnabled(Boolean(settingsData.data.fuel_access_enabled));
 
       // Auto-select if only one option
       if (vehiclesData.data?.length === 1) {
@@ -177,6 +209,7 @@ export default function RequestFuelPage() {
   };
 
   const estimatedAmount = requestedLiters ? parseFloat(requestedLiters) * 100 : 0;
+  const isFuelBlocked = Boolean(settings) && !fuelAccessEnabled;
 
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat('en-IN', {
@@ -258,28 +291,59 @@ export default function RequestFuelPage() {
           <div className="grid lg:grid-cols-3 gap-6">
             {/* Left Column: Budget & Settings */}
             <div className="lg:col-span-1 space-y-6">
+              {isFuelBlocked && (
+                <div className="bg-neutral-dark rounded-lg border border-accent-amber/30 p-6">
+                  <h3 className="text-sm font-semibold text-primary uppercase tracking-wide mb-3">
+                    Fuel Agreement Required
+                  </h3>
+                  <div className="space-y-2 text-sm text-secondary">
+                    <p>
+                      Fuel access is enabled only after the Fuel Procurement &amp; Settlement Declaration
+                      is fully executed by your SME and Finverno.
+                    </p>
+                    <p>
+                      Current status:{' '}
+                      <span className="text-primary font-medium">
+                        {fuelAgreement?.status ? fuelAgreement.status.replace(/_/g, ' ') : 'not issued'}
+                      </span>
+                    </p>
+                  </div>
+                  <div className="mt-4">
+                    <Link href="/dashboard/contractor/agreement">
+                      <Button variant="outline" size="sm">Open Agreements</Button>
+                    </Link>
+                  </div>
+                </div>
+              )}
+
               {/* Budget Status Card */}
               <div className="bg-neutral-dark rounded-lg border border-neutral-medium p-6">
                 <h3 className="text-sm font-semibold text-primary uppercase tracking-wide mb-4">
-                  Monthly Budget
+                  Fuel Account
                 </h3>
                 <div className="space-y-3">
                   <div>
-                    <div className="text-xs text-gray-500">Total Budget</div>
+                    <div className="text-xs text-gray-500">Available Balance</div>
                     <div className="text-lg font-semibold text-primary">
-                      {formatCurrency(budgetStatus?.budget || 0)}
+                      {formatCurrency(accountSummary?.availableBalance || 0)}
                     </div>
                   </div>
                   <div>
-                    <div className="text-xs text-gray-500">Spent This Month</div>
+                    <div className="text-xs text-gray-500">Outstanding Due</div>
                     <div className="text-lg font-semibold text-orange-400">
-                      {formatCurrency(budgetStatus?.spent || 0)}
+                      {formatCurrency(accountSummary?.outstandingAmount || 0)}
                     </div>
                   </div>
                   <div>
-                    <div className="text-xs text-gray-500">Remaining</div>
+                    <div className="text-xs text-gray-500">Overdraft</div>
                     <div className="text-lg font-semibold text-green-400">
-                      {formatCurrency(budgetStatus?.remaining || 0)}
+                      {accountSummary?.overdraftAllowed ? 'Enabled' : 'Blocked'}
+                    </div>
+                  </div>
+                  <div>
+                    <div className="text-xs text-gray-500">Pending Approvals</div>
+                    <div className="text-lg font-semibold text-primary">
+                      {formatCurrency(accountSummary?.pendingApprovalAmount || 0)}
                     </div>
                   </div>
 
@@ -290,12 +354,18 @@ export default function RequestFuelPage() {
                         className="bg-amber-500 h-2 rounded-full transition-all duration-300"
                         style={{
                           width: `${Math.min(
-                            ((budgetStatus?.spent || 0) / (budgetStatus?.budget || 1)) * 100,
+                            (((Math.max(accountSummary?.availableBalance || 0, 0)) /
+                              Math.max((accountSummary?.overdraftAllowed ? accountSummary?.overdraftLimitAmount || 0 : budgetStatus?.budget || 0) || 1, 1))) *
+                              100,
                             100
                           )}%`,
                         }}
                       />
                     </div>
+                  </div>
+                  <div className="text-xs text-secondary">
+                    Overdraft limit {formatCurrency(accountSummary?.overdraftLimitAmount || 0)} ·
+                    Fuel consumed {formatCurrency(accountSummary?.fuelConsumedAmount || 0)}
                   </div>
                 </div>
               </div>
@@ -325,9 +395,55 @@ export default function RequestFuelPage() {
                     </span>
                   </div>
                   <div className="flex justify-between">
+                    <span className="text-gray-500">Platform Fee</span>
+                    <span className="text-primary font-medium">
+                      {((accountSummary?.platformFeeRate ?? 0.0025) * 100).toFixed(2)}%
+                    </span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-gray-500">Overdraft Daily Fee</span>
+                    <span className="text-primary font-medium">
+                      {settings.overdraft_allowed
+                        ? `${((accountSummary?.dailyFeeRate ?? 0.001) * 100).toFixed(2)}% / day`
+                        : 'Not applicable'}
+                    </span>
+                  </div>
+                  <div className="flex justify-between">
                     <span className="text-gray-500">Auto-Approval</span>
                     <span className={`font-medium ${settings.auto_approve_enabled ? 'text-green-400' : 'text-red-400'}`}>
                       {settings.auto_approve_enabled ? 'Enabled' : 'Disabled'}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="bg-neutral-dark rounded-lg border border-neutral-medium p-6">
+                <h3 className="text-sm font-semibold text-primary uppercase tracking-wide mb-4">
+                  Fees & Usage
+                </h3>
+                <div className="space-y-3 text-sm">
+                  <div className="flex justify-between">
+                    <span className="text-gray-500">Fuel Consumed</span>
+                    <span className="text-primary font-medium">
+                      {formatCurrency(accountSummary?.fuelConsumedAmount || 0)}
+                    </span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-gray-500">Platform Fee Charged</span>
+                    <span className="text-primary font-medium">
+                      {formatCurrency(accountSummary?.platformFeeCharged || 0)}
+                    </span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-gray-500">Overdraft Fee Accrued</span>
+                    <span className="text-primary font-medium">
+                      {formatCurrency(accountSummary?.dailyFeeAccrued || 0)}
+                    </span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-gray-500">Monthly Approval Reserve</span>
+                    <span className="text-primary font-medium">
+                      {formatCurrency(budgetStatus?.spent || 0)}
                     </span>
                   </div>
                 </div>
@@ -360,6 +476,12 @@ export default function RequestFuelPage() {
                   </div>
                 ) : (
                   <form onSubmit={handleSubmit} className="space-y-6">
+                    {isFuelBlocked && (
+                      <div className="rounded-lg border border-accent-amber/20 bg-accent-amber/5 p-4 text-sm text-secondary">
+                        You can review your vehicles, approved pumps, and balance here, but new fuel requests remain disabled until the fuel agreement is executed.
+                      </div>
+                    )}
+
                     {/* Vehicle Selection */}
                     <div>
                       <label className="block text-sm font-medium text-primary mb-2">
@@ -368,6 +490,7 @@ export default function RequestFuelPage() {
                       <select
                         value={selectedVehicleId}
                         onChange={(e) => setSelectedVehicleId(e.target.value)}
+                        disabled={isFuelBlocked}
                         className="w-full px-4 py-3 rounded-lg border bg-neutral-dark text-primary focus:outline-none focus:ring-2 focus:ring-accent-orange focus:border-transparent transition-all duration-200 border-neutral-medium hover:border-neutral-dark"
                       >
                         <option value="">Select a vehicle</option>
@@ -387,6 +510,7 @@ export default function RequestFuelPage() {
                       <select
                         value={selectedPumpId}
                         onChange={(e) => setSelectedPumpId(e.target.value)}
+                        disabled={isFuelBlocked}
                         className="w-full px-4 py-3 rounded-lg border bg-neutral-dark text-primary focus:outline-none focus:ring-2 focus:ring-accent-orange focus:border-transparent transition-all duration-200 border-neutral-medium hover:border-neutral-dark"
                       >
                         <option value="">Select a fuel pump</option>
@@ -418,6 +542,7 @@ export default function RequestFuelPage() {
                         max={settings.per_request_max_liters}
                         value={requestedLiters}
                         onChange={(e) => setRequestedLiters(e.target.value)}
+                        disabled={isFuelBlocked}
                         placeholder={`Max ${settings.per_request_max_liters}L per request`}
                         className="w-full px-4 py-3 rounded-lg border bg-neutral-dark text-primary focus:outline-none focus:ring-2 focus:ring-accent-orange focus:border-transparent transition-all duration-200 border-neutral-medium hover:border-neutral-dark"
                       />
@@ -438,6 +563,7 @@ export default function RequestFuelPage() {
                         onChange={(e) => setRequestedNotes(e.target.value)}
                         maxLength={500}
                         rows={3}
+                        disabled={isFuelBlocked}
                         placeholder="e.g., Urgent delivery project"
                         className="w-full px-4 py-3 rounded-lg border bg-neutral-dark text-primary focus:outline-none focus:ring-2 focus:ring-accent-orange focus:border-transparent transition-all duration-200 border-neutral-medium hover:border-neutral-dark resize-none"
                       />
@@ -545,17 +671,27 @@ export default function RequestFuelPage() {
 
                     {/* Submit Button */}
                     {!approval && (
-                      <Button
-                        type="submit"
-                        disabled={isSubmitting || !selectedVehicleId || !selectedPumpId || !requestedLiters}
-                        className="w-full"
-                      >
-                        {isSubmitting ? 'Processing...' : 'Request Fuel Approval'}
-                      </Button>
+                      isFuelBlocked ? (
+                        <Link href="/dashboard/contractor/agreement" className="block">
+                          <Button type="button" className="w-full">
+                            Complete Fuel Agreement
+                          </Button>
+                        </Link>
+                      ) : (
+                        <Button
+                          type="submit"
+                          disabled={isSubmitting || !selectedVehicleId || !selectedPumpId || !requestedLiters}
+                          className="w-full"
+                        >
+                          {isSubmitting ? 'Processing...' : 'Request Fuel Approval'}
+                        </Button>
+                      )
                     )}
 
                     <p className="text-xs text-secondary text-center">
-                      Auto-approval based on your budget, limits, and frequency rules
+                      {isFuelBlocked
+                        ? 'Fuel requests unlock once the fuel agreement is fully executed.'
+                        : 'Auto-approval based on your budget, limits, and frequency rules'}
                     </p>
                   </form>
                 )}

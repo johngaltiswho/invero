@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase';
 import { z } from 'zod';
+import { PumpAuthError, requirePumpSession } from '@/lib/pump-auth';
+import { recordFuelFillLedgerEntries } from '@/lib/fuel/finance';
 
 /**
  * Validation schema for logging a fill
@@ -22,10 +24,11 @@ const logFillSchema = z.object({
 /**
  * POST /api/pump/log-fill
  * Log a filled fuel transaction
- * Public endpoint - pump owners log fills without authentication
+ * Pump-scoped endpoint - requires pump dashboard session
  */
 export async function POST(request: NextRequest) {
   try {
+    const { pumpId } = await requirePumpSession(request);
     const body = await request.json();
     const validationResult = logFillSchema.safeParse(body);
 
@@ -44,6 +47,7 @@ export async function POST(request: NextRequest) {
       .from('fuel_approvals')
       .select('id, status, max_liters, max_amount, vehicle_id, contractor_id')
       .eq('approval_code', approval_code.trim().toUpperCase())
+      .eq('pump_id', pumpId)
       .single();
 
     if (fetchError || !approval) {
@@ -81,12 +85,14 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    const filledAt = new Date().toISOString();
+
     // Update approval to filled
     const { data: updatedApproval, error: updateError } = await supabaseAdmin
       .from('fuel_approvals')
       .update({
         status: 'filled',
-        filled_at: new Date().toISOString(),
+        filled_at: filledAt,
         filled_quantity,
         filled_amount,
         pump_notes: pump_notes || null,
@@ -103,16 +109,52 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    return NextResponse.json({
-      success: true,
-      message: 'Fuel fill logged successfully',
-      approval: {
-        approval_code: updatedApproval.approval_code,
-        status: updatedApproval.status,
-        filled_at: updatedApproval.filled_at,
-      },
-    });
+    try {
+      const ledgerResult = await recordFuelFillLedgerEntries({
+        approvalId: approval.id,
+        contractorId: approval.contractor_id,
+        pumpId,
+        filledAmount: filled_amount,
+        filledAt,
+      });
+
+      return NextResponse.json({
+        success: true,
+        message: 'Fuel fill logged successfully',
+        approval: {
+          approval_code: updatedApproval.approval_code,
+          status: updatedApproval.status,
+          filled_at: updatedApproval.filled_at,
+        },
+        finance: {
+          platform_fee_amount: ledgerResult.platformFeeAmount,
+          gross_sme_charge: ledgerResult.grossSmeCharge,
+          provider_payable_amount: ledgerResult.providerPayableAmount,
+        },
+      });
+    } catch (ledgerError) {
+      console.error('Failed to record fuel ledger entries:', ledgerError);
+      await supabaseAdmin
+        .from('fuel_approvals')
+        .update({
+          status: 'pending',
+          filled_at: null,
+          filled_quantity: null,
+          filled_amount: null,
+          pump_notes: null,
+        })
+        .eq('id', approval.id);
+
+      return NextResponse.json(
+        { error: 'Failed to post fuel finance entries. Please retry.' },
+        { status: 500 }
+      );
+    }
+
   } catch (error) {
+    if (error instanceof PumpAuthError) {
+      return NextResponse.json({ error: error.message }, { status: error.status });
+    }
     console.error('Error in POST /api/pump/log-fill:', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }

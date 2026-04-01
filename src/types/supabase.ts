@@ -888,6 +888,11 @@ export interface Database {
           id: string
           pump_name: string
           oem_name: string | null
+          dashboard_access_code_hash: string | null
+          dashboard_access_label: string | null
+          dashboard_access_active: boolean
+          dashboard_access_version: number
+          last_accessed_at: string | null
           address: string | null
           city: string | null
           state: string | null
@@ -903,6 +908,11 @@ export interface Database {
           id?: string
           pump_name: string
           oem_name?: string | null
+          dashboard_access_code_hash?: string | null
+          dashboard_access_label?: string | null
+          dashboard_access_active?: boolean
+          dashboard_access_version?: number
+          last_accessed_at?: string | null
           address?: string | null
           city?: string | null
           state?: string | null
@@ -918,6 +928,11 @@ export interface Database {
           id?: string
           pump_name?: string
           oem_name?: string | null
+          dashboard_access_code_hash?: string | null
+          dashboard_access_label?: string | null
+          dashboard_access_active?: boolean
+          dashboard_access_version?: number
+          last_accessed_at?: string | null
           address?: string | null
           city?: string | null
           state?: string | null
@@ -933,6 +948,11 @@ export interface Database {
         Row: {
           id: string
           contractor_id: string
+          account_mode: 'cash_carry' | 'credit'
+          account_limit_amount: number
+          overdraft_allowed: boolean
+          overdraft_limit_amount: number
+          warning_threshold_amount: number
           monthly_fuel_budget: number
           per_request_max_amount: number
           per_request_max_liters: number
@@ -945,6 +965,11 @@ export interface Database {
         Insert: {
           id?: string
           contractor_id: string
+          account_mode?: 'cash_carry' | 'credit'
+          account_limit_amount?: number
+          overdraft_allowed?: boolean
+          overdraft_limit_amount?: number
+          warning_threshold_amount?: number
           monthly_fuel_budget?: number
           per_request_max_amount?: number
           per_request_max_liters?: number
@@ -957,6 +982,11 @@ export interface Database {
         Update: {
           id?: string
           contractor_id?: string
+          account_mode?: 'cash_carry' | 'credit'
+          account_limit_amount?: number
+          overdraft_allowed?: boolean
+          overdraft_limit_amount?: number
+          warning_threshold_amount?: number
           monthly_fuel_budget?: number
           per_request_max_amount?: number
           per_request_max_liters?: number
@@ -989,6 +1019,129 @@ export interface Database {
           pump_id?: string
           is_active?: boolean
           updated_at?: string
+        }
+      }
+      fuel_accounts: {
+        Row: {
+          id: string
+          owner_type: 'contractor' | 'fuel_pump'
+          owner_id: string
+          account_kind: 'sme_fuel' | 'provider_settlement'
+          mode: 'cash_carry' | 'credit' | 'settlement'
+          status: 'active' | 'suspended' | 'closed'
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          owner_type: 'contractor' | 'fuel_pump'
+          owner_id: string
+          account_kind: 'sme_fuel' | 'provider_settlement'
+          mode: 'cash_carry' | 'credit' | 'settlement'
+          status?: 'active' | 'suspended' | 'closed'
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          owner_type?: 'contractor' | 'fuel_pump'
+          owner_id?: string
+          account_kind?: 'sme_fuel' | 'provider_settlement'
+          mode?: 'cash_carry' | 'credit' | 'settlement'
+          status?: 'active' | 'suspended' | 'closed'
+          updated_at?: string
+        }
+      }
+      fuel_ledger_entries: {
+        Row: {
+          id: string
+          account_id: string
+          entry_type: 'fuel_fill_charge' | 'platform_fee_charge' | 'daily_fee_accrual' | 'sme_payment' | 'provider_payable' | 'provider_settlement' | 'adjustment'
+          direction: 'debit' | 'credit'
+          amount: number
+          reference_type: 'fuel_approval' | 'sme_payment' | 'provider_settlement_batch' | 'manual_adjustment'
+          reference_id: string | null
+          metadata: Record<string, unknown>
+          notes: string | null
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          account_id: string
+          entry_type: 'fuel_fill_charge' | 'platform_fee_charge' | 'daily_fee_accrual' | 'sme_payment' | 'provider_payable' | 'provider_settlement' | 'adjustment'
+          direction: 'debit' | 'credit'
+          amount: number
+          reference_type: 'fuel_approval' | 'sme_payment' | 'provider_settlement_batch' | 'manual_adjustment'
+          reference_id?: string | null
+          metadata?: Record<string, unknown>
+          notes?: string | null
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          account_id?: string
+          entry_type?: 'fuel_fill_charge' | 'platform_fee_charge' | 'daily_fee_accrual' | 'sme_payment' | 'provider_payable' | 'provider_settlement' | 'adjustment'
+          direction?: 'debit' | 'credit'
+          amount?: number
+          reference_type?: 'fuel_approval' | 'sme_payment' | 'provider_settlement_batch' | 'manual_adjustment'
+          reference_id?: string | null
+          metadata?: Record<string, unknown>
+          notes?: string | null
+          created_at?: string
+        }
+      }
+      fuel_settlement_batches: {
+        Row: {
+          id: string
+          pump_id: string
+          batch_code: string
+          total_amount: number
+          status: 'draft' | 'paid' | 'cancelled'
+          settled_at: string
+          notes: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          pump_id: string
+          batch_code: string
+          total_amount: number
+          status?: 'draft' | 'paid' | 'cancelled'
+          settled_at?: string
+          notes?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          pump_id?: string
+          batch_code?: string
+          total_amount?: number
+          status?: 'draft' | 'paid' | 'cancelled'
+          settled_at?: string
+          notes?: string | null
+          updated_at?: string
+        }
+      }
+      fuel_settlement_batch_items: {
+        Row: {
+          id: string
+          batch_id: string
+          ledger_entry_id: string
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          batch_id: string
+          ledger_entry_id: string
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          batch_id?: string
+          ledger_entry_id?: string
+          created_at?: string
         }
       }
       fuel_approvals: {
@@ -1118,6 +1271,18 @@ export type ContractorFuelSettingsUpdate = Database['public']['Tables']['contrac
 export type ContractorApprovedPump = Database['public']['Tables']['contractor_approved_pumps']['Row']
 export type ContractorApprovedPumpInsert = Database['public']['Tables']['contractor_approved_pumps']['Insert']
 export type ContractorApprovedPumpUpdate = Database['public']['Tables']['contractor_approved_pumps']['Update']
+
+export type FuelAccount = Database['public']['Tables']['fuel_accounts']['Row']
+export type FuelAccountInsert = Database['public']['Tables']['fuel_accounts']['Insert']
+export type FuelAccountUpdate = Database['public']['Tables']['fuel_accounts']['Update']
+
+export type FuelLedgerEntry = Database['public']['Tables']['fuel_ledger_entries']['Row']
+export type FuelLedgerEntryInsert = Database['public']['Tables']['fuel_ledger_entries']['Insert']
+export type FuelLedgerEntryUpdate = Database['public']['Tables']['fuel_ledger_entries']['Update']
+
+export type FuelSettlementBatch = Database['public']['Tables']['fuel_settlement_batches']['Row']
+export type FuelSettlementBatchInsert = Database['public']['Tables']['fuel_settlement_batches']['Insert']
+export type FuelSettlementBatchUpdate = Database['public']['Tables']['fuel_settlement_batches']['Update']
 
 export type FuelApproval = Database['public']['Tables']['fuel_approvals']['Row']
 export type FuelApprovalInsert = Database['public']['Tables']['fuel_approvals']['Insert']

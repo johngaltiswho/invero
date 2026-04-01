@@ -7,8 +7,6 @@
  * 3. Credential validation is robust
  */
 
-import { describe, it, expect } from '@jest/globals';
-
 describe('Google Drive Authentication Integration', () => {
   describe('Base64 Credentials (Primary Method)', () => {
     it('should decode base64 credentials correctly', () => {

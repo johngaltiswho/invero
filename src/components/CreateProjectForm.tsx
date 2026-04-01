@@ -138,6 +138,8 @@ export default function CreateProjectForm({ onSuccess, onCancel }: CreateProject
               value={formData.project_value}
               onChange={handleInputChange}
               required
+              min="0.01"
+              step="0.01"
               className="w-full bg-neutral-darker border border-neutral-medium rounded-lg px-4 py-3 text-primary focus:border-accent-amber focus:outline-none"
               placeholder="Enter project value"
             />

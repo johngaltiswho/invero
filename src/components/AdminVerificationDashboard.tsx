@@ -1,12 +1,14 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { Button } from '@/components';
 import { type DocumentType } from '@/lib/document-service';
 import type { Contractor } from '@/types/supabase';
 import SimplePDFViewer from './SimplePDFViewer';
 import ContractorAgreementPanel from '@/components/admin/ContractorAgreementPanel';
 import ContractorUnderwritingPanel from '@/components/admin/ContractorUnderwritingPanel';
+import FuelProviderAgreementPanel from '@/components/admin/FuelProviderAgreementPanel';
 
 interface ContractorWithDocuments extends Contractor {
   uploadProgress: number;
@@ -114,6 +116,46 @@ interface BOQTakeoff {
   };
 }
 
+interface FuelAccountSummary {
+  overdraftAllowed: boolean;
+  overdraftLimitAmount: number;
+  warningThresholdAmount: number;
+  availableBalance: number;
+  outstandingAmount: number;
+  fuelConsumedAmount: number;
+  platformFeeCharged: number;
+  dailyFeeAccrued: number;
+  pendingApprovalAmount: number;
+  pendingApprovalCount: number;
+  platformFeeRate: number;
+  dailyFeeRate: number;
+}
+
+interface FuelFinanceOverview {
+  smeReceivables: number;
+  providerPayables: number;
+  platformFeeEarned: number;
+  dailyFeeAccrued: number;
+  netExposure: number;
+}
+
+interface FuelLedgerRow {
+  id: string;
+  created_at: string;
+  ownerType: 'contractor' | 'fuel_pump';
+  ownerId: string;
+  ownerLabel: string;
+  accountKind: 'sme_fuel' | 'provider_settlement';
+  mode: 'cash_carry' | 'credit' | 'settlement';
+  entryType: string;
+  direction: 'debit' | 'credit';
+  amount: number;
+  referenceType: string;
+  referenceId: string | null;
+  notes: string | null;
+  metadata: Record<string, unknown>;
+}
+
 interface PurchaseRequestItemUI {
   id: string;
   project_material_id: string;
@@ -194,8 +236,22 @@ interface PurchaseSummary {
   rejected: number;
 }
 
+interface ApprovedPump {
+  id: string;
+  pump_id: string;
+  is_active: boolean;
+  fuel_pumps: {
+    id: string;
+    pump_name: string;
+    oem_name?: string | null;
+    city: string;
+    state: string;
+  };
+}
+
 export default function AdminVerificationDashboard(): React.ReactElement {
-  const [activeTab, setActiveTab] = useState<'contractors' | 'materials' | 'takeoffs' | 'purchases' | 'fuel' | 'fuel-providers'>('contractors');
+  const searchParams = useSearchParams();
+  const [activeTab, setActiveTab] = useState<'contractors' | 'agreements' | 'materials' | 'takeoffs' | 'purchases' | 'fuel' | 'fuel-providers'>('contractors');
   const [contractors, setContractors] = useState<ContractorWithDocuments[]>([]);
   const [materialRequests, setMaterialRequests] = useState<MaterialRequest[]>([]);
   const [takeoffItems, setTakeoffItems] = useState<BOQTakeoff[]>([]);
@@ -224,6 +280,9 @@ export default function AdminVerificationDashboard(): React.ReactElement {
   const [termsSaving, setTermsSaving] = useState(false);
   const [editingTerms, setEditingTerms] = useState(false);
   const [fuelSettingsForm, setFuelSettingsForm] = useState({
+    overdraftAllowed: true,
+    overdraftLimitAmount: '50000',
+    warningThresholdAmount: '5000',
     monthlyFuelBudget: '50000',
     perRequestMaxAmount: '10000',
     perRequestMaxLiters: '100',
@@ -231,6 +290,14 @@ export default function AdminVerificationDashboard(): React.ReactElement {
     minHoursBetweenFills: '12',
     autoApproveEnabled: true
   });
+  const [fuelAccountSummary, setFuelAccountSummary] = useState<FuelAccountSummary | null>(null);
+  const [fuelFinanceOverview, setFuelFinanceOverview] = useState<FuelFinanceOverview | null>(null);
+  const [fuelReceiptForm, setFuelReceiptForm] = useState({ amount: '', notes: '' });
+  const [fuelReceiptSaving, setFuelReceiptSaving] = useState(false);
+  const [providerSettlementForm, setProviderSettlementForm] = useState<Record<string, { amount: string; notes: string }>>({});
+  const [providerSettlementSavingId, setProviderSettlementSavingId] = useState<string | null>(null);
+  const [selectedContractorFuelLedger, setSelectedContractorFuelLedger] = useState<FuelLedgerRow[]>([]);
+  const [providerFuelLedger, setProviderFuelLedger] = useState<FuelLedgerRow[]>([]);
   const [fuelSettingsSaving, setFuelSettingsSaving] = useState(false);
   const [editingFuelSettings, setEditingFuelSettings] = useState(false);
   const [selectedMaterialRequest, setSelectedMaterialRequest] = useState<MaterialRequest | null>(null);
@@ -257,6 +324,7 @@ export default function AdminVerificationDashboard(): React.ReactElement {
   const [showPurchaseModal, setShowPurchaseModal] = useState(false);
   const [purchaseAdminNotes, setPurchaseAdminNotes] = useState('');
   const [fuelPumps, setFuelPumps] = useState<any[]>([]);
+  const [approvedPumps, setApprovedPumps] = useState<ApprovedPump[]>([]);
   const [showAddPump, setShowAddPump] = useState(false);
   const [emailForm, setEmailForm] = useState({ value: '' });
   const [emailSaving, setEmailSaving] = useState(false);
@@ -275,6 +343,8 @@ export default function AdminVerificationDashboard(): React.ReactElement {
     contact_phone: ''
   });
   const [addPumpLoading, setAddPumpLoading] = useState(false);
+  const [generatingPumpAccessId, setGeneratingPumpAccessId] = useState<string | null>(null);
+  const [selectedFuelProviderPumpId, setSelectedFuelProviderPumpId] = useState<string | null>(null);
   const fuelOemOptions = [
     'Indian Oil',
     'Bharat Petroleum',
@@ -294,13 +364,109 @@ export default function AdminVerificationDashboard(): React.ReactElement {
     }
   };
 
+  const formatLedgerEntryType = (entryType: string) =>
+    entryType.replace(/_/g, ' ').replace(/\b\w/g, (char) => char.toUpperCase());
+
+  const renderContractorSelector = ({
+    title,
+    description,
+    showAddButton = false,
+  }: {
+    title: string;
+    description: string;
+    showAddButton?: boolean;
+  }) => (
+    <div className="bg-neutral-dark rounded-lg border border-neutral-medium p-5">
+      <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-4">
+        <div>
+          <h2 className="text-lg font-semibold text-primary">{title}</h2>
+          <p className="text-sm text-secondary">{description}</p>
+        </div>
+        {selectedContractor ? (
+          <div className="rounded-lg border border-neutral-medium bg-neutral-darker px-4 py-3 min-w-[280px]">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <div className="text-sm font-semibold text-primary">{selectedContractor.company_name}</div>
+                <div className="text-xs text-secondary">{selectedContractor.email}</div>
+              </div>
+              <span className={`text-xs px-2 py-1 rounded border whitespace-nowrap ${getStatusColor(selectedContractor.verification_status)}`}>
+                {selectedContractor.verification_status.replace(/_/g, ' ').toUpperCase()}
+              </span>
+            </div>
+            <div className="grid grid-cols-2 gap-3 mt-3 text-xs text-secondary">
+              <div>
+                Uploaded
+                <div className="text-primary font-medium mt-1">{selectedContractor.uploadProgress}%</div>
+              </div>
+              <div>
+                Verified
+                <div className="text-primary font-medium mt-1">{selectedContractor.verificationProgress}%</div>
+              </div>
+            </div>
+          </div>
+        ) : null}
+      </div>
+
+      <div className="grid lg:grid-cols-[minmax(0,1fr),auto] gap-4 mt-5">
+        <label className="block">
+          <span className="text-sm text-secondary">Select SME</span>
+          <select
+            value={selectedContractor?.id || ''}
+            onChange={(event) => {
+              const contractor = contractors.find((item) => item.id === event.target.value) || null;
+              setSelectedContractor(contractor);
+            }}
+            className="mt-2 w-full px-3 py-2 rounded-lg border border-neutral-medium bg-neutral-darker text-primary focus:outline-none focus:ring-2 focus:ring-accent-orange"
+          >
+            <option value="">Select an SME</option>
+            {contractors.map((contractor) => (
+              <option key={contractor.id} value={contractor.id}>
+                {contractor.company_name} · {contractor.verification_status.replace(/_/g, ' ')}
+              </option>
+            ))}
+          </select>
+        </label>
+
+        {showAddButton ? (
+          <div className="flex items-end">
+            <button
+              onClick={() => setShowAddContractor(true)}
+              className="px-4 py-2 rounded-lg bg-accent-orange text-white hover:bg-accent-orange/80 transition-colors whitespace-nowrap"
+            >
+              + Add SME
+            </button>
+          </div>
+        ) : null}
+      </div>
+    </div>
+  );
+
   const refreshContractors = async () => {
     await loadContractors();
   };
 
   useEffect(() => {
-    if (activeTab === 'contractors') {
+    const tab = searchParams.get('tab');
+    if (
+      tab === 'contractors' ||
+      tab === 'agreements' ||
+      tab === 'materials' ||
+      tab === 'takeoffs' ||
+      tab === 'purchases' ||
+      tab === 'fuel' ||
+      tab === 'fuel-providers'
+    ) {
+      setActiveTab(tab);
+    }
+  }, [searchParams]);
+
+  useEffect(() => {
+    if (activeTab === 'contractors' || activeTab === 'agreements') {
       loadContractors();
+    } else if (activeTab === 'fuel') {
+      loadContractors();
+      loadFuelPumps();
+      loadFuelFinanceOverview();
     } else if (activeTab === 'materials') {
       loadMaterialRequests();
       loadMasterMaterials();
@@ -310,6 +476,8 @@ export default function AdminVerificationDashboard(): React.ReactElement {
       loadPurchaseRequests(prStatusFilter);
     } else if (activeTab === 'fuel-providers') {
       loadFuelPumps();
+      loadFuelFinanceOverview();
+      loadProviderFuelLedger();
     }
   }, [activeTab, prStatusFilter]);
 
@@ -348,7 +516,15 @@ export default function AdminVerificationDashboard(): React.ReactElement {
   useEffect(() => {
     if (!selectedContractor) return;
     loadFuelSettings(selectedContractor.id);
+    if (activeTab === 'fuel') {
+      loadSelectedContractorFuelLedger(selectedContractor.id);
+    }
   }, [selectedContractor]);
+
+  useEffect(() => {
+    if (activeTab !== 'fuel' || !selectedContractor) return;
+    fetchApprovedPumps(selectedContractor.id);
+  }, [activeTab, selectedContractor?.id]);
 
   useEffect(() => {
     setEmailForm({ value: selectedContractor?.email ?? '' });
@@ -545,9 +721,12 @@ export default function AdminVerificationDashboard(): React.ReactElement {
       const response = await fetch(`/api/admin/fuel-settings/${contractorId}`);
       const result = await response.json();
 
-      if (result.success && result.data) {
-        const settings = result.data;
+      if (result.success && result.data?.settings) {
+        const settings = result.data.settings;
         setFuelSettingsForm({
+          overdraftAllowed: Boolean(settings.overdraft_allowed),
+          overdraftLimitAmount: settings.overdraft_limit_amount?.toString() || '50000',
+          warningThresholdAmount: settings.warning_threshold_amount?.toString() || '5000',
           monthlyFuelBudget: settings.monthly_fuel_budget?.toString() || '50000',
           perRequestMaxAmount: settings.per_request_max_amount?.toString() || '10000',
           perRequestMaxLiters: settings.per_request_max_liters?.toString() || '100',
@@ -555,9 +734,13 @@ export default function AdminVerificationDashboard(): React.ReactElement {
           minHoursBetweenFills: settings.min_hours_between_fills?.toString() || '12',
           autoApproveEnabled: settings.auto_approve_enabled ?? true
         });
+        setFuelAccountSummary(result.data.account_summary || null);
       } else {
         // Set defaults if no settings exist
         setFuelSettingsForm({
+          overdraftAllowed: true,
+          overdraftLimitAmount: '50000',
+          warningThresholdAmount: '5000',
           monthlyFuelBudget: '50000',
           perRequestMaxAmount: '10000',
           perRequestMaxLiters: '100',
@@ -565,11 +748,15 @@ export default function AdminVerificationDashboard(): React.ReactElement {
           minHoursBetweenFills: '12',
           autoApproveEnabled: true
         });
+        setFuelAccountSummary(null);
       }
     } catch (error) {
       console.error('Failed to load fuel settings:', error);
       // Set defaults on error
       setFuelSettingsForm({
+        overdraftAllowed: true,
+        overdraftLimitAmount: '50000',
+        warningThresholdAmount: '5000',
         monthlyFuelBudget: '50000',
         perRequestMaxAmount: '10000',
         perRequestMaxLiters: '100',
@@ -577,19 +764,22 @@ export default function AdminVerificationDashboard(): React.ReactElement {
         minHoursBetweenFills: '12',
         autoApproveEnabled: true
       });
+      setFuelAccountSummary(null);
     }
   };
 
   const handleSaveFuelSettings = async () => {
     if (!selectedContractor) return;
 
+    const overdraftLimitAmount = parseFloat(fuelSettingsForm.overdraftLimitAmount);
+    const warningThresholdAmount = parseFloat(fuelSettingsForm.warningThresholdAmount);
     const monthlyBudget = parseFloat(fuelSettingsForm.monthlyFuelBudget);
     const perRequestAmount = parseFloat(fuelSettingsForm.perRequestMaxAmount);
     const perRequestLiters = parseFloat(fuelSettingsForm.perRequestMaxLiters);
     const maxFillsPerDay = parseInt(fuelSettingsForm.maxFillsPerVehiclePerDay);
     const minHours = parseFloat(fuelSettingsForm.minHoursBetweenFills);
 
-    if (Number.isNaN(monthlyBudget) || Number.isNaN(perRequestAmount) || Number.isNaN(perRequestLiters) || Number.isNaN(maxFillsPerDay) || Number.isNaN(minHours)) {
+    if (Number.isNaN(overdraftLimitAmount) || Number.isNaN(warningThresholdAmount) || Number.isNaN(monthlyBudget) || Number.isNaN(perRequestAmount) || Number.isNaN(perRequestLiters) || Number.isNaN(maxFillsPerDay) || Number.isNaN(minHours)) {
       alert('Please enter valid numbers for all fuel settings.');
       return;
     }
@@ -600,6 +790,9 @@ export default function AdminVerificationDashboard(): React.ReactElement {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          overdraft_allowed: fuelSettingsForm.overdraftAllowed,
+          overdraft_limit_amount: overdraftLimitAmount,
+          warning_threshold_amount: warningThresholdAmount,
           monthly_fuel_budget: monthlyBudget,
           per_request_max_amount: perRequestAmount,
           per_request_max_liters: perRequestLiters,
@@ -614,6 +807,7 @@ export default function AdminVerificationDashboard(): React.ReactElement {
         throw new Error(result.error || 'Failed to update fuel settings');
       }
 
+      setFuelAccountSummary(result.data?.account_summary || null);
       alert('Fuel settings updated successfully');
       setEditingFuelSettings(false);
     } catch (error) {
@@ -632,6 +826,11 @@ export default function AdminVerificationDashboard(): React.ReactElement {
 
       if (result.success) {
         setFuelPumps(result.data || []);
+        setSelectedFuelProviderPumpId((prev) => {
+          if (!result.data?.length) return null;
+          if (prev && result.data.some((pump: any) => pump.id === prev)) return prev;
+          return result.data[0].id;
+        });
       } else {
         console.error('Failed to load fuel pumps:', result.error);
         alert('Failed to load fuel pumps');
@@ -641,6 +840,194 @@ export default function AdminVerificationDashboard(): React.ReactElement {
       alert('Error loading fuel pumps');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const loadFuelFinanceOverview = async () => {
+    try {
+      const response = await fetch('/api/admin/fuel-finance/overview');
+      const result = await response.json();
+      if (response.ok && result.success) {
+        setFuelFinanceOverview(result.data?.summary || null);
+      }
+    } catch (error) {
+      console.error('Failed to load fuel finance overview:', error);
+    }
+  };
+
+  const loadSelectedContractorFuelLedger = async (contractorId: string) => {
+    try {
+      const response = await fetch(`/api/admin/fuel-finance/ledger?contractor_id=${contractorId}&limit=20`);
+      const result = await response.json();
+      if (response.ok && result.success) {
+        setSelectedContractorFuelLedger(result.data || []);
+      }
+    } catch (error) {
+      console.error('Failed to load SME fuel ledger:', error);
+    }
+  };
+
+  const loadProviderFuelLedger = async () => {
+    try {
+      const response = await fetch('/api/admin/fuel-finance/ledger?limit=30');
+      const result = await response.json();
+      if (response.ok && result.success) {
+        setProviderFuelLedger((result.data || []).filter((row: FuelLedgerRow) => row.ownerType === 'fuel_pump'));
+      }
+    } catch (error) {
+      console.error('Failed to load provider fuel ledger:', error);
+    }
+  };
+
+  const fetchApprovedPumps = async (contractorId: string) => {
+    try {
+      const response = await fetch(`/api/admin/contractor-pumps/${contractorId}`);
+      const result = await response.json();
+
+      if (response.ok && result.success) {
+        setApprovedPumps(result.data || []);
+      } else {
+        setApprovedPumps([]);
+      }
+    } catch (error) {
+      console.error('Failed to fetch approved pumps:', error);
+      setApprovedPumps([]);
+    }
+  };
+
+  const handleApprovePump = async (pumpId: string) => {
+    if (!selectedContractor) return;
+
+    try {
+      const response = await fetch(`/api/admin/contractor-pumps/${selectedContractor.id}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pump_id: pumpId }),
+      });
+
+      const result = await response.json();
+      if (!response.ok || !result.success) {
+        throw new Error(result.error || 'Failed to approve pump');
+      }
+
+      await fetchApprovedPumps(selectedContractor.id);
+      alert('Pump approved successfully');
+    } catch (error) {
+      console.error('Failed to approve pump:', error);
+      alert(error instanceof Error ? error.message : 'Failed to approve pump');
+    }
+  };
+
+  const handleRemovePump = async (pumpId: string) => {
+    if (!selectedContractor) return;
+
+    try {
+      const response = await fetch(
+        `/api/admin/contractor-pumps/${selectedContractor.id}?pump_id=${pumpId}`,
+        { method: 'DELETE' }
+      );
+
+      const result = await response.json();
+      if (!response.ok || !result.success) {
+        throw new Error(result.error || 'Failed to remove pump');
+      }
+
+      await fetchApprovedPumps(selectedContractor.id);
+      alert('Pump removed successfully');
+    } catch (error) {
+      console.error('Failed to remove pump:', error);
+      alert(error instanceof Error ? error.message : 'Failed to remove pump');
+    }
+  };
+
+  const handleRecordFuelReceipt = async () => {
+    if (!selectedContractor) return;
+
+    const amount = parseFloat(fuelReceiptForm.amount);
+    if (Number.isNaN(amount) || amount <= 0) {
+      alert('Enter a valid receipt amount.');
+      return;
+    }
+
+    setFuelReceiptSaving(true);
+    try {
+      const response = await fetch('/api/admin/fuel-finance/sme-payments', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contractor_id: selectedContractor.id,
+          amount,
+          notes: fuelReceiptForm.notes.trim() || undefined,
+        }),
+      });
+
+      const result = await response.json();
+      if (!response.ok || !result.success) {
+        throw new Error(result.error || 'Failed to record SME receipt');
+      }
+
+      setFuelReceiptForm({ amount: '', notes: '' });
+      await loadFuelSettings(selectedContractor.id);
+      await loadFuelFinanceOverview();
+      await loadSelectedContractorFuelLedger(selectedContractor.id);
+      alert('SME receipt recorded successfully');
+    } catch (error) {
+      console.error('Failed to record SME receipt:', error);
+      alert(error instanceof Error ? error.message : 'Failed to record SME receipt');
+    } finally {
+      setFuelReceiptSaving(false);
+    }
+  };
+
+  const handleProviderSettlementChange = (pumpId: string, field: 'amount' | 'notes', value: string) => {
+    setProviderSettlementForm((prev) => ({
+      ...prev,
+      [pumpId]: {
+        amount: prev[pumpId]?.amount || '',
+        notes: prev[pumpId]?.notes || '',
+        [field]: value,
+      },
+    }));
+  };
+
+  const handleRecordProviderSettlement = async (pumpId: string) => {
+    const form = providerSettlementForm[pumpId] || { amount: '', notes: '' };
+    const amount = parseFloat(form.amount);
+    if (Number.isNaN(amount) || amount <= 0) {
+      alert('Enter a valid settlement amount.');
+      return;
+    }
+
+    setProviderSettlementSavingId(pumpId);
+    try {
+      const response = await fetch('/api/admin/fuel-finance/provider-settlements', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          pump_id: pumpId,
+          amount,
+          notes: form.notes.trim() || undefined,
+        }),
+      });
+
+      const result = await response.json();
+      if (!response.ok || !result.success) {
+        throw new Error(result.error || 'Failed to record provider settlement');
+      }
+
+      setProviderSettlementForm((prev) => ({
+        ...prev,
+        [pumpId]: { amount: '', notes: '' },
+      }));
+      await loadFuelPumps();
+      await loadFuelFinanceOverview();
+      await loadProviderFuelLedger();
+      alert('Provider settlement recorded successfully');
+    } catch (error) {
+      console.error('Failed to record provider settlement:', error);
+      alert(error instanceof Error ? error.message : 'Failed to record provider settlement');
+    } finally {
+      setProviderSettlementSavingId(null);
     }
   };
 
@@ -727,6 +1114,29 @@ export default function AdminVerificationDashboard(): React.ReactElement {
       alert(error instanceof Error ? error.message : 'Failed to add fuel pump');
     } finally {
       setAddPumpLoading(false);
+    }
+  };
+
+  const handleGeneratePumpAccess = async (pumpId: string) => {
+    setGeneratingPumpAccessId(pumpId);
+    try {
+      const response = await fetch(`/api/admin/fuel-pumps/${pumpId}/access-code`, {
+        method: 'POST',
+      });
+      const result = await response.json();
+      if (!response.ok || !result.success) {
+        throw new Error(result.error || 'Failed to generate dashboard access code');
+      }
+
+      await loadFuelPumps();
+      alert(
+        `Dashboard access code for ${result.data.pump_name}:\n\n${result.data.access_code}\n\nShare this securely with the pump operator.`
+      );
+    } catch (error) {
+      console.error('Failed to generate pump access:', error);
+      alert(error instanceof Error ? error.message : 'Failed to generate dashboard access code');
+    } finally {
+      setGeneratingPumpAccessId(null);
     }
   };
 
@@ -1455,6 +1865,16 @@ export default function AdminVerificationDashboard(): React.ReactElement {
               Fuel Settings
             </button>
             <button
+              onClick={() => setActiveTab('agreements')}
+              className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+                activeTab === 'agreements'
+                  ? 'bg-neutral-dark text-primary'
+                  : 'text-secondary hover:text-primary'
+              }`}
+            >
+              Agreements
+            </button>
+            <button
               onClick={() => setActiveTab('fuel-providers')}
               className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
                 activeTab === 'fuel-providers'
@@ -1470,70 +1890,12 @@ export default function AdminVerificationDashboard(): React.ReactElement {
 
       {/* Conditional Content Based on Active Tab */}
       {activeTab === 'contractors' ? (
-        <div className="grid lg:grid-cols-3 gap-8">
-          {/* SMEs List */}
-          <div className="lg:col-span-1">
-            <div className="bg-neutral-dark rounded-lg border border-neutral-medium">
-            <div className="p-4 border-b border-neutral-medium flex items-start justify-between">
-              <div>
-                <h2 className="text-lg font-semibold text-primary">SMEs</h2>
-                <p className="text-sm text-secondary">Manage SME registrations</p>
-              </div>
-              <button
-                onClick={() => setShowAddContractor(true)}
-                className="px-3 py-1.5 text-sm rounded-lg bg-accent-orange text-white hover:bg-accent-orange/80 transition-colors whitespace-nowrap"
-              >
-                + Add
-              </button>
-            </div>
-            <div className="divide-y divide-neutral-medium max-h-96 overflow-y-auto">
-              {contractors.length === 0 ? (
-                <div className="p-6 text-center">
-                  <div className="text-4xl mb-4">📋</div>
-                  <h3 className="text-lg font-semibold text-primary mb-2">No Pending Applications</h3>
-                  <p className="text-secondary text-sm">All SME applications have been processed.</p>
-                </div>
-              ) : (
-                contractors.map((contractor) => (
-                  <div
-                    key={contractor.id}
-                    className={`p-4 cursor-pointer hover:bg-neutral-medium/50 transition-colors ${
-                      selectedContractor?.id === contractor.id ? 'bg-neutral-medium/50 border-l-4 border-l-accent-orange' : ''
-                    }`}
-                    onClick={() => setSelectedContractor(contractor)}
-                  >
-                    <div className="flex justify-between items-start mb-2">
-                      <div>
-                        <h3 className="font-semibold text-primary text-sm">{contractor.company_name}</h3>
-                        <p className="text-xs text-secondary">{contractor.email}</p>
-                      </div>
-                      <span className={`text-xs px-2 py-1 rounded border ${getStatusColor(contractor.verification_status)}`}>
-                        {contractor.verification_status.replace(/_/g, ' ').toUpperCase()}
-                      </span>
-                    </div>
-                    <div className="flex justify-between items-center">
-                      <span className="text-xs text-secondary">
-                        {contractor.uploadProgress}% uploaded
-                      </span>
-                      <span className="text-xs text-secondary">
-                        {contractor.verificationProgress}% verified
-                      </span>
-                    </div>
-                    <div className="w-full bg-neutral-medium rounded-full h-1 mt-2">
-                      <div 
-                        className="bg-accent-orange h-1 rounded-full transition-all duration-300" 
-                        style={{ width: `${contractor.verificationProgress}%` }}
-                      ></div>
-                    </div>
-                  </div>
-                ))
-              )}
-            </div>
-            </div>
-          </div>
-
-          {/* Document Verification Panel */}
-          <div className="lg:col-span-2">
+        <div className="space-y-6">
+          {renderContractorSelector({
+            title: 'SME Verification',
+            description: 'Manage SME registrations, KYC, commercial terms, and onboarding readiness.',
+            showAddButton: true,
+          })}
           {selectedContractor ? (
             <div className="bg-neutral-dark rounded-lg border border-neutral-medium">
               <div className="p-6 border-b border-neutral-medium">
@@ -1788,164 +2150,8 @@ export default function AdminVerificationDashboard(): React.ReactElement {
                   </div>
                 </div>
 
-                {/* Fuel Settings Section */}
-                <div className="bg-neutral-darker/60 border border-neutral-medium rounded-lg p-4 mb-6">
-                  <div className="flex items-center justify-between mb-4">
-                    <div>
-                      <h3 className="text-lg font-semibold text-primary">Fuel Settings</h3>
-                      <p className="text-xs text-secondary">Configure fuel budget, limits, and auto-approval settings for this SME</p>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      {editingFuelSettings && (
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => {
-                            if (!selectedContractor) return;
-                            loadFuelSettings(selectedContractor.id);
-                            setEditingFuelSettings(false);
-                          }}
-                          disabled={fuelSettingsSaving}
-                        >
-                          Cancel
-                        </Button>
-                      )}
-                      <Button
-                        variant="primary"
-                        size="sm"
-                        onClick={editingFuelSettings ? handleSaveFuelSettings : () => setEditingFuelSettings(true)}
-                        disabled={fuelSettingsSaving}
-                      >
-                        {fuelSettingsSaving ? 'Saving...' : editingFuelSettings ? 'Save Settings' : 'Edit Settings'}
-                      </Button>
-                    </div>
-                  </div>
-                  <div className="grid md:grid-cols-3 gap-4 text-sm">
-                    <label className="block">
-                      <span className="text-secondary">Monthly Fuel Budget (Rs)</span>
-                      <input
-                        type="number"
-                        step="1000"
-                        min="1000"
-                        max="10000000"
-                        value={fuelSettingsForm.monthlyFuelBudget}
-                        onChange={(event) =>
-                          setFuelSettingsForm((prev) => ({ ...prev, monthlyFuelBudget: event.target.value }))
-                        }
-                        disabled={!editingFuelSettings}
-                        className="mt-2 w-full px-3 py-2 rounded-lg border border-neutral-medium bg-neutral-dark text-primary focus:outline-none focus:ring-2 focus:ring-accent-orange"
-                      />
-                    </label>
-                    <label className="block">
-                      <span className="text-secondary">Per Request Max Amount (Rs)</span>
-                      <input
-                        type="number"
-                        step="100"
-                        min="100"
-                        max="1000000"
-                        value={fuelSettingsForm.perRequestMaxAmount}
-                        onChange={(event) =>
-                          setFuelSettingsForm((prev) => ({ ...prev, perRequestMaxAmount: event.target.value }))
-                        }
-                        disabled={!editingFuelSettings}
-                        className="mt-2 w-full px-3 py-2 rounded-lg border border-neutral-medium bg-neutral-dark text-primary focus:outline-none focus:ring-2 focus:ring-accent-orange"
-                      />
-                    </label>
-                    <label className="block">
-                      <span className="text-secondary">Per Request Max Liters</span>
-                      <input
-                        type="number"
-                        step="1"
-                        min="1"
-                        max="1000"
-                        value={fuelSettingsForm.perRequestMaxLiters}
-                        onChange={(event) =>
-                          setFuelSettingsForm((prev) => ({ ...prev, perRequestMaxLiters: event.target.value }))
-                        }
-                        disabled={!editingFuelSettings}
-                        className="mt-2 w-full px-3 py-2 rounded-lg border border-neutral-medium bg-neutral-dark text-primary focus:outline-none focus:ring-2 focus:ring-accent-orange"
-                      />
-                    </label>
-                    <label className="block">
-                      <span className="text-secondary">Max Fills Per Vehicle Per Day</span>
-                      <input
-                        type="number"
-                        step="1"
-                        min="1"
-                        max="10"
-                        value={fuelSettingsForm.maxFillsPerVehiclePerDay}
-                        onChange={(event) =>
-                          setFuelSettingsForm((prev) => ({ ...prev, maxFillsPerVehiclePerDay: event.target.value }))
-                        }
-                        disabled={!editingFuelSettings}
-                        className="mt-2 w-full px-3 py-2 rounded-lg border border-neutral-medium bg-neutral-dark text-primary focus:outline-none focus:ring-2 focus:ring-accent-orange"
-                      />
-                    </label>
-                    <label className="block">
-                      <span className="text-secondary">Min Hours Between Fills</span>
-                      <input
-                        type="number"
-                        step="1"
-                        min="1"
-                        max="168"
-                        value={fuelSettingsForm.minHoursBetweenFills}
-                        onChange={(event) =>
-                          setFuelSettingsForm((prev) => ({ ...prev, minHoursBetweenFills: event.target.value }))
-                        }
-                        disabled={!editingFuelSettings}
-                        className="mt-2 w-full px-3 py-2 rounded-lg border border-neutral-medium bg-neutral-dark text-primary focus:outline-none focus:ring-2 focus:ring-accent-orange"
-                      />
-                    </label>
-                    <label className="block">
-                      <span className="text-secondary">Auto-Approve</span>
-                      <div className="mt-2 flex items-center space-x-3">
-                        <input
-                          type="checkbox"
-                          id="auto-approve"
-                          checked={fuelSettingsForm.autoApproveEnabled}
-                          onChange={(event) =>
-                            setFuelSettingsForm((prev) => ({ ...prev, autoApproveEnabled: event.target.checked }))
-                          }
-                          disabled={!editingFuelSettings}
-                          className="w-4 h-4 rounded border-neutral-medium"
-                        />
-                        <label htmlFor="auto-approve" className="text-sm text-primary cursor-pointer">
-                          Enable auto-approval
-                        </label>
-                      </div>
-                    </label>
-                  </div>
-                </div>
-
                 <ContractorUnderwritingPanel
                   contractorId={selectedContractor.id}
-                  onUpdated={refreshContractors}
-                />
-
-                <ContractorAgreementPanel
-                  contractorId={selectedContractor.id}
-                  contractorEmail={selectedContractor.email}
-                  agreementType="master_platform"
-                  title="Master SME Platform Agreement"
-                  description="Required for every SME before portal procurement access can be activated."
-                  onUpdated={refreshContractors}
-                />
-
-                <ContractorAgreementPanel
-                  contractorId={selectedContractor.id}
-                  contractorEmail={selectedContractor.email}
-                  agreementType="financing_addendum"
-                  title="Financing / Working Capital Addendum"
-                  description="Required only when financing access is intended to be enabled for this SME."
-                  onUpdated={refreshContractors}
-                />
-
-                <ContractorAgreementPanel
-                  contractorId={selectedContractor.id}
-                  contractorEmail={selectedContractor.email}
-                  agreementType="procurement_declaration"
-                  title="Procurement / Booking Declaration"
-                  description="Optional declaration for booking-rate, dispatch, freight, NSIC/back-to-back adjustments, and material-lifting acknowledgements."
                   onUpdated={refreshContractors}
                 />
 
@@ -2060,12 +2266,486 @@ export default function AdminVerificationDashboard(): React.ReactElement {
             <div className="bg-neutral-dark rounded-lg border border-neutral-medium p-8 text-center">
               <div className="text-4xl mb-4">👈</div>
               <h3 className="text-lg font-semibold text-primary mb-2">Select an SME</h3>
-              <p className="text-secondary">Choose an SME from the list to review their documents</p>
+              <p className="text-secondary">Choose an SME from the dropdown above to review their documents</p>
             </div>
           )}
-          </div>
         </div>
-      ) : activeTab === 'materials' ? (
+      ) : activeTab === 'agreements' ? (
+        <div className="space-y-6">
+          {renderContractorSelector({
+            title: 'SME Agreements',
+            description: 'Choose an SME and manage the full agreement lifecycle from draft to execution.',
+          })}
+            {selectedContractor ? (
+              <div className="space-y-6">
+                <div className="bg-neutral-dark rounded-lg border border-neutral-medium p-6">
+                  <div className="flex justify-between items-start gap-4">
+                    <div>
+                      <h2 className="text-xl font-semibold text-primary">{selectedContractor.company_name}</h2>
+                      <p className="text-secondary">{selectedContractor.email}</p>
+                      <p className="text-sm text-secondary mt-1">
+                        Use this tab to issue, send, upload, and execute SME agreements.
+                      </p>
+                    </div>
+                    <Button
+                      variant="outline"
+                      onClick={() => setActiveTab('fuel')}
+                    >
+                      Open Fuel Settings
+                    </Button>
+                  </div>
+                  <div className="grid md:grid-cols-3 gap-4 mt-4 text-sm">
+                    <div className="rounded-lg border border-neutral-medium p-4">
+                      <div className="text-secondary mb-1">Portal Activation</div>
+                      <div className="text-primary font-medium">
+                        {selectedContractor.onboarding?.portalActive ? 'active' : 'pending'}
+                      </div>
+                    </div>
+                    <div className="rounded-lg border border-neutral-medium p-4">
+                      <div className="text-secondary mb-1">Master Agreement</div>
+                      <div className="text-primary font-medium">
+                        {selectedContractor.agreementSummary?.masterAgreement.status?.replace(/_/g, ' ') || 'not started'}
+                      </div>
+                    </div>
+                    <div className="rounded-lg border border-neutral-medium p-4">
+                      <div className="text-secondary mb-1">Financing Addendum</div>
+                      <div className="text-primary font-medium">
+                        {selectedContractor.agreementSummary?.financingAgreement.status?.replace(/_/g, ' ') || 'not started'}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <ContractorAgreementPanel
+                  contractorId={selectedContractor.id}
+                  contractorEmail={selectedContractor.email}
+                  agreementType="master_platform"
+                  title="Master SME Platform Agreement"
+                  description="Required for every SME before portal procurement access can be activated."
+                  onUpdated={refreshContractors}
+                />
+
+                <ContractorAgreementPanel
+                  contractorId={selectedContractor.id}
+                  contractorEmail={selectedContractor.email}
+                  agreementType="financing_addendum"
+                  title="Financing / Working Capital Addendum"
+                  description="Required only when financing access is intended to be enabled for this SME."
+                  onUpdated={refreshContractors}
+                />
+
+                <ContractorAgreementPanel
+                  contractorId={selectedContractor.id}
+                  contractorEmail={selectedContractor.email}
+                  agreementType="procurement_declaration"
+                  title="Procurement / Booking Declaration"
+                  description="Optional declaration for booking-rate, dispatch, freight, NSIC/back-to-back adjustments, and material-lifting acknowledgements."
+                  onUpdated={refreshContractors}
+                />
+
+                <ContractorAgreementPanel
+                  contractorId={selectedContractor.id}
+                  contractorEmail={selectedContractor.email}
+                  agreementType="fuel_procurement_declaration"
+                  title="Fuel Procurement & Settlement Declaration"
+                  description="SME-side declaration for Finverno-routed fuel procurement, provider validation, platform fee charging, and fuel settlement workflows."
+                  onUpdated={refreshContractors}
+                />
+              </div>
+            ) : (
+              <div className="bg-neutral-dark rounded-lg border border-neutral-medium p-8 text-center">
+                <div className="text-4xl mb-4">👈</div>
+                <h3 className="text-lg font-semibold text-primary mb-2">Select an SME</h3>
+                <p className="text-secondary">Choose an SME from the dropdown above to manage agreement workflows.</p>
+              </div>
+            )}
+        </div>
+      ) : null}
+
+      {activeTab === 'fuel' && (
+        <div className="space-y-6">
+          {renderContractorSelector({
+            title: 'Fuel Settings',
+            description: 'Select an SME to configure fuel balances, overdraft rules, approved pumps, and payment posting.',
+          })}
+            {selectedContractor ? (
+              <div className="grid lg:grid-cols-2 gap-6">
+                <div className="bg-neutral-dark rounded-lg border border-neutral-medium p-6">
+                  <div className="flex items-start justify-between gap-4 mb-4">
+                    <div>
+                      <h2 className="text-lg font-semibold text-primary">Fuel Account & Limits</h2>
+                      <p className="text-sm text-secondary">{selectedContractor.company_name}</p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      {editingFuelSettings && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => {
+                            loadFuelSettings(selectedContractor.id);
+                            setEditingFuelSettings(false);
+                          }}
+                          disabled={fuelSettingsSaving}
+                        >
+                          Cancel
+                        </Button>
+                      )}
+                      <Button
+                        variant="primary"
+                        size="sm"
+                        onClick={editingFuelSettings ? handleSaveFuelSettings : () => setEditingFuelSettings(true)}
+                        disabled={fuelSettingsSaving}
+                      >
+                        {fuelSettingsSaving ? 'Saving...' : editingFuelSettings ? 'Save Settings' : 'Edit Settings'}
+                      </Button>
+                    </div>
+                  </div>
+
+                  <div className="grid md:grid-cols-3 gap-4 mb-6">
+                    <div className="rounded-lg bg-neutral-darker p-4">
+                      <div className="text-xs uppercase text-secondary">Available Balance</div>
+                      <div className="text-xl font-semibold text-primary mt-2">
+                        ₹{Math.round(fuelAccountSummary?.availableBalance || 0).toLocaleString('en-IN')}
+                      </div>
+                    </div>
+                    <div className="rounded-lg bg-neutral-darker p-4">
+                      <div className="text-xs uppercase text-secondary">Outstanding</div>
+                      <div className="text-xl font-semibold text-primary mt-2">
+                        ₹{Math.round(fuelAccountSummary?.outstandingAmount || 0).toLocaleString('en-IN')}
+                      </div>
+                    </div>
+                    <div className="rounded-lg bg-neutral-darker p-4">
+                      <div className="text-xs uppercase text-secondary">Pending Reserve</div>
+                      <div className="text-xl font-semibold text-primary mt-2">
+                        ₹{Math.round(fuelAccountSummary?.pendingApprovalAmount || 0).toLocaleString('en-IN')}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="grid md:grid-cols-2 gap-4 text-sm">
+                    <label className="block">
+                      <span className="text-secondary">Allow Overdraft</span>
+                      <div className="mt-3 flex items-center space-x-3">
+                        <input
+                          type="checkbox"
+                          id="fuel-overdraft-allowed"
+                          checked={fuelSettingsForm.overdraftAllowed}
+                          onChange={(event) =>
+                            setFuelSettingsForm((prev) => ({ ...prev, overdraftAllowed: event.target.checked }))
+                          }
+                          disabled={!editingFuelSettings}
+                          className="w-4 h-4 rounded border-neutral-medium"
+                        />
+                        <label htmlFor="fuel-overdraft-allowed" className="text-sm text-primary cursor-pointer">
+                          Allow the balance to go negative
+                        </label>
+                      </div>
+                    </label>
+                    <label className="block">
+                      <span className="text-secondary">Overdraft Limit (Rs)</span>
+                      <input
+                        type="number"
+                        step="1000"
+                        min="0"
+                        max="10000000"
+                        value={fuelSettingsForm.overdraftLimitAmount}
+                        onChange={(event) =>
+                          setFuelSettingsForm((prev) => ({ ...prev, overdraftLimitAmount: event.target.value }))
+                        }
+                        disabled={!editingFuelSettings}
+                        className="mt-2 w-full px-3 py-2 rounded-lg border border-neutral-medium bg-neutral-dark text-primary focus:outline-none focus:ring-2 focus:ring-accent-orange"
+                      />
+                    </label>
+                    <label className="block">
+                      <span className="text-secondary">Warning Threshold (Rs)</span>
+                      <input
+                        type="number"
+                        step="500"
+                        min="0"
+                        max="10000000"
+                        value={fuelSettingsForm.warningThresholdAmount}
+                        onChange={(event) =>
+                          setFuelSettingsForm((prev) => ({ ...prev, warningThresholdAmount: event.target.value }))
+                        }
+                        disabled={!editingFuelSettings}
+                        className="mt-2 w-full px-3 py-2 rounded-lg border border-neutral-medium bg-neutral-dark text-primary focus:outline-none focus:ring-2 focus:ring-accent-orange"
+                      />
+                    </label>
+                    <label className="block">
+                      <span className="text-secondary">Monthly Fuel Budget (Rs)</span>
+                      <input
+                        type="number"
+                        step="1000"
+                        min="1000"
+                        max="10000000"
+                        value={fuelSettingsForm.monthlyFuelBudget}
+                        onChange={(event) =>
+                          setFuelSettingsForm((prev) => ({ ...prev, monthlyFuelBudget: event.target.value }))
+                        }
+                        disabled={!editingFuelSettings}
+                        className="mt-2 w-full px-3 py-2 rounded-lg border border-neutral-medium bg-neutral-dark text-primary focus:outline-none focus:ring-2 focus:ring-accent-orange"
+                      />
+                    </label>
+                    <label className="block">
+                      <span className="text-secondary">Per Request Max Amount (Rs)</span>
+                      <input
+                        type="number"
+                        step="100"
+                        min="100"
+                        max="1000000"
+                        value={fuelSettingsForm.perRequestMaxAmount}
+                        onChange={(event) =>
+                          setFuelSettingsForm((prev) => ({ ...prev, perRequestMaxAmount: event.target.value }))
+                        }
+                        disabled={!editingFuelSettings}
+                        className="mt-2 w-full px-3 py-2 rounded-lg border border-neutral-medium bg-neutral-dark text-primary focus:outline-none focus:ring-2 focus:ring-accent-orange"
+                      />
+                    </label>
+                    <label className="block">
+                      <span className="text-secondary">Per Request Max Liters</span>
+                      <input
+                        type="number"
+                        step="1"
+                        min="1"
+                        max="1000"
+                        value={fuelSettingsForm.perRequestMaxLiters}
+                        onChange={(event) =>
+                          setFuelSettingsForm((prev) => ({ ...prev, perRequestMaxLiters: event.target.value }))
+                        }
+                        disabled={!editingFuelSettings}
+                        className="mt-2 w-full px-3 py-2 rounded-lg border border-neutral-medium bg-neutral-dark text-primary focus:outline-none focus:ring-2 focus:ring-accent-orange"
+                      />
+                    </label>
+                    <label className="block">
+                      <span className="text-secondary">Max Fills / Vehicle / Day</span>
+                      <input
+                        type="number"
+                        step="1"
+                        min="1"
+                        max="10"
+                        value={fuelSettingsForm.maxFillsPerVehiclePerDay}
+                        onChange={(event) =>
+                          setFuelSettingsForm((prev) => ({ ...prev, maxFillsPerVehiclePerDay: event.target.value }))
+                        }
+                        disabled={!editingFuelSettings}
+                        className="mt-2 w-full px-3 py-2 rounded-lg border border-neutral-medium bg-neutral-dark text-primary focus:outline-none focus:ring-2 focus:ring-accent-orange"
+                      />
+                    </label>
+                    <label className="block">
+                      <span className="text-secondary">Min Hours Between Fills</span>
+                      <input
+                        type="number"
+                        step="1"
+                        min="1"
+                        max="168"
+                        value={fuelSettingsForm.minHoursBetweenFills}
+                        onChange={(event) =>
+                          setFuelSettingsForm((prev) => ({ ...prev, minHoursBetweenFills: event.target.value }))
+                        }
+                        disabled={!editingFuelSettings}
+                        className="mt-2 w-full px-3 py-2 rounded-lg border border-neutral-medium bg-neutral-dark text-primary focus:outline-none focus:ring-2 focus:ring-accent-orange"
+                      />
+                    </label>
+                    <label className="block">
+                      <span className="text-secondary">Auto-Approve</span>
+                      <div className="mt-3 flex items-center space-x-3">
+                        <input
+                          type="checkbox"
+                          id="fuel-auto-approve"
+                          checked={fuelSettingsForm.autoApproveEnabled}
+                          onChange={(event) =>
+                            setFuelSettingsForm((prev) => ({ ...prev, autoApproveEnabled: event.target.checked }))
+                          }
+                          disabled={!editingFuelSettings}
+                          className="w-4 h-4 rounded border-neutral-medium"
+                        />
+                        <label htmlFor="fuel-auto-approve" className="text-sm text-primary cursor-pointer">
+                          Enable auto-approval
+                        </label>
+                      </div>
+                    </label>
+                  </div>
+
+                  <div className="mt-6 grid md:grid-cols-3 gap-4 text-sm">
+                    <div className="rounded-lg bg-neutral-darker p-4">
+                      <div className="text-secondary">Platform Fee</div>
+                      <div className="text-primary font-semibold mt-1">
+                        {((fuelAccountSummary?.platformFeeRate ?? 0.0025) * 100).toFixed(2)}%
+                      </div>
+                    </div>
+                    <div className="rounded-lg bg-neutral-darker p-4">
+                      <div className="text-secondary">Overdraft Daily Fee</div>
+                      <div className="text-primary font-semibold mt-1">
+                        {fuelSettingsForm.overdraftAllowed
+                          ? `${((fuelAccountSummary?.dailyFeeRate ?? 0.001) * 100).toFixed(2)}% / day`
+                          : 'Not applicable'}
+                      </div>
+                    </div>
+                    <div className="rounded-lg bg-neutral-darker p-4">
+                      <div className="text-secondary">Fees Charged</div>
+                      <div className="text-primary font-semibold mt-1">
+                        ₹{Math.round(((fuelAccountSummary?.platformFeeCharged || 0) + (fuelAccountSummary?.dailyFeeAccrued || 0))).toLocaleString('en-IN')}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="mt-6 rounded-lg border border-neutral-medium bg-neutral-darker p-4">
+                    <div className="flex items-center justify-between gap-4 mb-3">
+                      <div>
+                        <h3 className="text-sm font-semibold text-primary">Record SME Payment</h3>
+                        <p className="text-xs text-secondary">Post a top-up or repayment received from this SME into the fuel balance ledger.</p>
+                      </div>
+                    </div>
+                    <div className="grid md:grid-cols-[160px,1fr,auto] gap-3">
+                      <input
+                        type="number"
+                        min="1"
+                        step="0.01"
+                        value={fuelReceiptForm.amount}
+                        onChange={(event) => setFuelReceiptForm((prev) => ({ ...prev, amount: event.target.value }))}
+                        placeholder="Amount"
+                        className="px-3 py-2 rounded-lg border border-neutral-medium bg-neutral-dark text-primary focus:outline-none focus:ring-2 focus:ring-accent-orange"
+                      />
+                      <input
+                        type="text"
+                        value={fuelReceiptForm.notes}
+                        onChange={(event) => setFuelReceiptForm((prev) => ({ ...prev, notes: event.target.value }))}
+                        placeholder="Notes (optional)"
+                        className="px-3 py-2 rounded-lg border border-neutral-medium bg-neutral-dark text-primary focus:outline-none focus:ring-2 focus:ring-accent-orange"
+                      />
+                      <Button onClick={handleRecordFuelReceipt} disabled={fuelReceiptSaving}>
+                        {fuelReceiptSaving ? 'Posting...' : 'Post Payment'}
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="bg-neutral-dark rounded-lg border border-neutral-medium p-6">
+                  <div className="mb-6">
+                    <h2 className="text-lg font-semibold text-primary mb-2">Fuel Finance Overview</h2>
+                    <div className="grid md:grid-cols-2 gap-4 text-sm">
+                      <div className="rounded-lg bg-neutral-darker p-4">
+                        <div className="text-secondary">SME Receivables</div>
+                        <div className="text-primary font-semibold mt-1">
+                          ₹{Math.round(fuelFinanceOverview?.smeReceivables || 0).toLocaleString('en-IN')}
+                        </div>
+                      </div>
+                      <div className="rounded-lg bg-neutral-darker p-4">
+                        <div className="text-secondary">Provider Payables</div>
+                        <div className="text-primary font-semibold mt-1">
+                          ₹{Math.round(fuelFinanceOverview?.providerPayables || 0).toLocaleString('en-IN')}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="mb-6">
+                    <h3 className="text-sm font-medium text-secondary mb-3">Recent SME Ledger</h3>
+                    {selectedContractorFuelLedger.length === 0 ? (
+                      <p className="text-sm text-secondary">No ledger entries yet.</p>
+                    ) : (
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-sm">
+                          <thead className="bg-neutral-darker">
+                            <tr>
+                              <th className="px-3 py-2 text-left text-secondary uppercase text-xs">Date</th>
+                              <th className="px-3 py-2 text-left text-secondary uppercase text-xs">Entry</th>
+                              <th className="px-3 py-2 text-left text-secondary uppercase text-xs">Direction</th>
+                              <th className="px-3 py-2 text-left text-secondary uppercase text-xs">Amount</th>
+                              <th className="px-3 py-2 text-left text-secondary uppercase text-xs">Notes</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-neutral-medium">
+                            {selectedContractorFuelLedger.map((row) => (
+                              <tr key={row.id}>
+                                <td className="px-3 py-2 text-secondary">{formatDate(row.created_at)}</td>
+                                <td className="px-3 py-2 text-primary">{formatLedgerEntryType(row.entryType)}</td>
+                                <td className="px-3 py-2 text-secondary">{row.direction}</td>
+                                <td className="px-3 py-2 text-primary">₹{Math.round(row.amount).toLocaleString('en-IN')}</td>
+                                <td className="px-3 py-2 text-secondary">{row.notes || '—'}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+                  </div>
+
+                  <h2 className="text-lg font-semibold text-primary mb-4">Approved Fuel Pumps</h2>
+                  <div className="mb-6">
+                    <h3 className="text-sm font-medium text-secondary mb-3">Currently Approved</h3>
+                    {approvedPumps.filter((pump) => pump.is_active).length === 0 ? (
+                      <p className="text-sm text-secondary">No pumps approved yet.</p>
+                    ) : (
+                      <div className="space-y-2">
+                        {approvedPumps
+                          .filter((pump) => pump.is_active)
+                          .map((pump) => (
+                            <div
+                              key={pump.id}
+                              className="flex items-center justify-between p-3 bg-neutral-darker rounded-lg"
+                            >
+                              <div>
+                                <div className="text-sm text-primary font-medium">{pump.fuel_pumps.pump_name}</div>
+                                <div className="text-xs text-secondary">
+                                  {pump.fuel_pumps.oem_name ? `${pump.fuel_pumps.oem_name} · ` : ''}
+                                  {pump.fuel_pumps.city}, {pump.fuel_pumps.state}
+                                </div>
+                              </div>
+                              <Button size="sm" variant="outline" onClick={() => handleRemovePump(pump.pump_id)}>
+                                Remove
+                              </Button>
+                            </div>
+                          ))}
+                      </div>
+                    )}
+                  </div>
+
+                  <div>
+                    <h3 className="text-sm font-medium text-secondary mb-3">Available Pumps</h3>
+                    {fuelPumps.filter(
+                      (pump) => !approvedPumps.some((approvedPump) => approvedPump.pump_id === pump.id && approvedPump.is_active)
+                    ).length === 0 ? (
+                      <p className="text-sm text-secondary">No additional pumps available.</p>
+                    ) : (
+                      <div className="space-y-2">
+                        {fuelPumps
+                          .filter(
+                            (pump) => !approvedPumps.some((approvedPump) => approvedPump.pump_id === pump.id && approvedPump.is_active)
+                          )
+                          .map((pump) => (
+                            <div
+                              key={pump.id}
+                              className="flex items-center justify-between p-3 bg-neutral-darker rounded-lg"
+                            >
+                              <div>
+                                <div className="text-sm text-primary font-medium">{pump.pump_name}</div>
+                                <div className="text-xs text-secondary">
+                                  {pump.oem_name ? `${pump.oem_name} · ` : ''}
+                                  {pump.city}, {pump.state}
+                                </div>
+                              </div>
+                              <Button size="sm" onClick={() => handleApprovePump(pump.id)}>
+                                Approve
+                              </Button>
+                            </div>
+                          ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div className="bg-neutral-dark rounded-lg border border-neutral-medium p-8 text-center">
+                <div className="text-4xl mb-4">👈</div>
+                <h3 className="text-lg font-semibold text-primary mb-2">Select an SME</h3>
+                <p className="text-secondary">Choose an SME from the dropdown above to manage fuel settings and approved pumps.</p>
+              </div>
+            )}
+        </div>
+      )}
+
+      {activeTab === 'materials' && (
         /* Material Requests Tab */
         <>
         <div className="grid lg:grid-cols-3 gap-8">
@@ -2323,7 +3003,9 @@ export default function AdminVerificationDashboard(): React.ReactElement {
           </div>
         </div>
         </>
-      ) : activeTab === 'takeoffs' ? (
+      )}
+
+      {activeTab === 'takeoffs' && (
         /* Quantity Takeoffs Tab */
         <div className="grid lg:grid-cols-3 gap-8">
           {/* Takeoff Items List */}
@@ -2674,7 +3356,9 @@ export default function AdminVerificationDashboard(): React.ReactElement {
             )}
           </div>
         </div>
-      ) : activeTab === 'purchases' ? (
+      )}
+
+      {activeTab === 'purchases' && (
         <div className="bg-neutral-dark rounded-lg border border-neutral-medium">
           <div className="p-4 border-b border-neutral-medium">
             <h2 className="text-lg font-semibold text-primary">Procurement</h2>
@@ -2781,9 +3465,9 @@ export default function AdminVerificationDashboard(): React.ReactElement {
             </table>
           </div>
         </div>
-      ) : activeTab === 'fuel-providers' ? (
-        <>
-        {/* Fuel Providers Tab */}
+      )}
+
+      {activeTab === 'fuel-providers' && (
         <div className="space-y-6">
           <div className="flex justify-between items-center">
             <div>
@@ -2793,6 +3477,67 @@ export default function AdminVerificationDashboard(): React.ReactElement {
             <Button variant="primary" onClick={() => setShowAddPump(true)}>
               + Add Fuel Pump
             </Button>
+          </div>
+
+          <div className="grid md:grid-cols-4 gap-4">
+            <div className="bg-neutral-dark rounded-lg border border-neutral-medium p-4">
+              <div className="text-xs uppercase text-secondary">Provider Payables</div>
+              <div className="text-2xl font-semibold text-primary mt-2">
+                ₹{Math.round(fuelFinanceOverview?.providerPayables || 0).toLocaleString('en-IN')}
+              </div>
+            </div>
+            <div className="bg-neutral-dark rounded-lg border border-neutral-medium p-4">
+              <div className="text-xs uppercase text-secondary">SME Receivables</div>
+              <div className="text-2xl font-semibold text-primary mt-2">
+                ₹{Math.round(fuelFinanceOverview?.smeReceivables || 0).toLocaleString('en-IN')}
+              </div>
+            </div>
+            <div className="bg-neutral-dark rounded-lg border border-neutral-medium p-4">
+              <div className="text-xs uppercase text-secondary">Platform + Credit Fee</div>
+              <div className="text-2xl font-semibold text-primary mt-2">
+                ₹{Math.round(((fuelFinanceOverview?.platformFeeEarned || 0) + (fuelFinanceOverview?.dailyFeeAccrued || 0))).toLocaleString('en-IN')}
+              </div>
+            </div>
+            <div className="bg-neutral-dark rounded-lg border border-neutral-medium p-4">
+              <div className="text-xs uppercase text-secondary">Net Exposure</div>
+              <div className="text-2xl font-semibold text-primary mt-2">
+                ₹{Math.round(fuelFinanceOverview?.netExposure || 0).toLocaleString('en-IN')}
+              </div>
+            </div>
+          </div>
+
+          <div className="bg-neutral-dark rounded-lg border border-neutral-medium p-6">
+            <h3 className="text-lg font-semibold text-primary mb-4">Recent Provider Ledger</h3>
+            {providerFuelLedger.length === 0 ? (
+              <p className="text-sm text-secondary">No provider ledger entries yet.</p>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead className="bg-neutral-darker">
+                    <tr>
+                      <th className="px-3 py-2 text-left text-secondary uppercase text-xs">Date</th>
+                      <th className="px-3 py-2 text-left text-secondary uppercase text-xs">Fuel Provider</th>
+                      <th className="px-3 py-2 text-left text-secondary uppercase text-xs">Entry</th>
+                      <th className="px-3 py-2 text-left text-secondary uppercase text-xs">Direction</th>
+                      <th className="px-3 py-2 text-left text-secondary uppercase text-xs">Amount</th>
+                      <th className="px-3 py-2 text-left text-secondary uppercase text-xs">Notes</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-neutral-medium">
+                    {providerFuelLedger.map((row) => (
+                      <tr key={row.id}>
+                        <td className="px-3 py-2 text-secondary">{formatDate(row.created_at)}</td>
+                        <td className="px-3 py-2 text-primary">{row.ownerLabel}</td>
+                        <td className="px-3 py-2 text-primary">{formatLedgerEntryType(row.entryType)}</td>
+                        <td className="px-3 py-2 text-secondary">{row.direction}</td>
+                        <td className="px-3 py-2 text-primary">₹{Math.round(row.amount).toLocaleString('en-IN')}</td>
+                        <td className="px-3 py-2 text-secondary">{row.notes || '—'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </div>
 
           {loading ? (
@@ -2818,6 +3563,10 @@ export default function AdminVerificationDashboard(): React.ReactElement {
                       <th className="px-6 py-3 text-left text-xs font-medium text-secondary uppercase tracking-wider">Location</th>
                       <th className="px-6 py-3 text-left text-xs font-medium text-secondary uppercase tracking-wider">Contact</th>
                       <th className="px-6 py-3 text-left text-xs font-medium text-secondary uppercase tracking-wider">Status</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-secondary uppercase tracking-wider">Outstanding</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-secondary uppercase tracking-wider">Dashboard Access</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-secondary uppercase tracking-wider">Agreement</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-secondary uppercase tracking-wider">Settlement</th>
                       <th className="px-6 py-3 text-left text-xs font-medium text-secondary uppercase tracking-wider">Added</th>
                     </tr>
                   </thead>
@@ -2854,6 +3603,80 @@ export default function AdminVerificationDashboard(): React.ReactElement {
                             {pump.is_active ? 'Active' : 'Inactive'}
                           </span>
                         </td>
+                        <td className="px-6 py-4">
+                          <div className="text-sm text-primary">
+                            ₹{Math.round(pump.settlement_summary?.outstandingPayableAmount || 0).toLocaleString('en-IN')}
+                          </div>
+                          <div className="text-xs text-secondary mt-1">
+                            Settled ₹{Math.round(pump.settlement_summary?.totalSettledAmount || 0).toLocaleString('en-IN')}
+                          </div>
+                        </td>
+                        <td className="px-6 py-4">
+                          <div className="space-y-2">
+                            <div className="text-xs text-secondary">
+                              {pump.dashboard_access_active ? (
+                                <>
+                                  <div className="text-green-500 font-medium">
+                                    Enabled{pump.dashboard_access_label ? ` · ${pump.dashboard_access_label}` : ''}
+                                  </div>
+                                  {pump.last_accessed_at && (
+                                    <div>Last access: {new Date(pump.last_accessed_at).toLocaleString()}</div>
+                                  )}
+                                </>
+                              ) : (
+                                <div>Not generated</div>
+                              )}
+                            </div>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => handleGeneratePumpAccess(pump.id)}
+                              disabled={generatingPumpAccessId === pump.id}
+                            >
+                              {generatingPumpAccessId === pump.id
+                                ? 'Generating...'
+                                : pump.dashboard_access_active
+                                  ? 'Reset Access Code'
+                                  : 'Generate Access Code'}
+                            </Button>
+                          </div>
+                        </td>
+                        <td className="px-6 py-4">
+                          <Button
+                            size="sm"
+                            variant={selectedFuelProviderPumpId === pump.id ? 'primary' : 'outline'}
+                            onClick={() => setSelectedFuelProviderPumpId(pump.id)}
+                          >
+                            {selectedFuelProviderPumpId === pump.id ? 'Managing' : 'Manage Agreement'}
+                          </Button>
+                        </td>
+                        <td className="px-6 py-4">
+                          <div className="space-y-2 min-w-[240px]">
+                            <input
+                              type="number"
+                              min="1"
+                              step="0.01"
+                              value={providerSettlementForm[pump.id]?.amount || ''}
+                              onChange={(event) => handleProviderSettlementChange(pump.id, 'amount', event.target.value)}
+                              placeholder="Settlement amount"
+                              className="w-full px-3 py-2 rounded-lg border border-neutral-medium bg-neutral-dark text-primary focus:outline-none focus:ring-2 focus:ring-accent-orange"
+                            />
+                            <input
+                              type="text"
+                              value={providerSettlementForm[pump.id]?.notes || ''}
+                              onChange={(event) => handleProviderSettlementChange(pump.id, 'notes', event.target.value)}
+                              placeholder="Notes (optional)"
+                              className="w-full px-3 py-2 rounded-lg border border-neutral-medium bg-neutral-dark text-primary focus:outline-none focus:ring-2 focus:ring-accent-orange"
+                            />
+                            <Button
+                              size="sm"
+                              onClick={() => handleRecordProviderSettlement(pump.id)}
+                              disabled={providerSettlementSavingId === pump.id}
+                            >
+                              {providerSettlementSavingId === pump.id ? 'Posting...' : 'Post Settlement'}
+                            </Button>
+                          </div>
+                        </td>
                         <td className="px-6 py-4 text-sm text-secondary">
                           {new Date(pump.created_at).toLocaleDateString()}
                         </td>
@@ -2864,9 +3687,16 @@ export default function AdminVerificationDashboard(): React.ReactElement {
               </div>
             </div>
           )}
+
+          {selectedFuelProviderPumpId ? (
+            <FuelProviderAgreementPanel
+              pumpId={selectedFuelProviderPumpId}
+              pumpName={fuelPumps.find((pump) => pump.id === selectedFuelProviderPumpId)?.pump_name || 'Fuel Provider'}
+              pumpEmail={fuelPumps.find((pump) => pump.id === selectedFuelProviderPumpId)?.contact_email || null}
+            />
+          ) : null}
         </div>
-        </>
-      ) : null}
+      )}
 
       {/* Purchase Request Modal */}
       {showPurchaseModal && selectedPurchaseRequest && (

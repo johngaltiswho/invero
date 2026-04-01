@@ -140,6 +140,103 @@ export async function POST(request: NextRequest) {
 }
 
 /**
+ * PUT /api/contractor/vehicles
+ * Update an existing vehicle for the authenticated contractor
+ */
+export async function PUT(request: NextRequest) {
+  try {
+    const resolved = await resolveContractor();
+    if ('error' in resolved) {
+      return NextResponse.json({ error: resolved.error }, { status: resolved.status });
+    }
+
+    const contractor = resolved.contractor;
+    const body = await request.json();
+    const vehicleId = typeof body?.vehicle_id === 'string' ? body.vehicle_id : '';
+
+    if (!vehicleId) {
+      return NextResponse.json({ error: 'Vehicle ID is required' }, { status: 400 });
+    }
+
+    const validationResult = vehicleSchema.safeParse(body);
+    if (!validationResult.success) {
+      const firstError = validationResult.error.issues[0];
+      return NextResponse.json({ error: firstError.message }, { status: 400 });
+    }
+
+    const { vehicle_number, vehicle_type } = validationResult.data;
+
+    const { data: existingVehicle, error: existingVehicleError } = await supabaseAdmin
+      .from('vehicles')
+      .select('id, contractor_id, is_active')
+      .eq('id', vehicleId)
+      .eq('contractor_id', contractor.id)
+      .eq('is_active', true)
+      .maybeSingle();
+
+    if (existingVehicleError) {
+      console.error('Failed to fetch vehicle for update:', existingVehicleError);
+      return NextResponse.json({ error: 'Failed to load vehicle' }, { status: 500 });
+    }
+
+    if (!existingVehicle) {
+      return NextResponse.json({ error: 'Vehicle not found' }, { status: 404 });
+    }
+
+    const { data: duplicateVehicle, error: duplicateVehicleError } = await supabaseAdmin
+      .from('vehicles')
+      .select('id')
+      .eq('contractor_id', contractor.id)
+      .eq('vehicle_number', vehicle_number)
+      .eq('is_active', true)
+      .neq('id', vehicleId)
+      .maybeSingle();
+
+    if (duplicateVehicleError) {
+      console.error('Failed to check duplicate vehicle during update:', duplicateVehicleError);
+      return NextResponse.json({ error: 'Failed to validate vehicle number' }, { status: 500 });
+    }
+
+    if (duplicateVehicle) {
+      return NextResponse.json(
+        { error: `Vehicle ${vehicle_number} is already registered` },
+        { status: 409 }
+      );
+    }
+
+    const { data: updatedVehicle, error: updateError } = await supabaseAdmin
+      .from('vehicles')
+      .update({
+        vehicle_number,
+        vehicle_type,
+      })
+      .eq('id', vehicleId)
+      .eq('contractor_id', contractor.id)
+      .select('*')
+      .single();
+
+    if (updateError || !updatedVehicle) {
+      console.error('Failed to update vehicle:', updateError);
+      return NextResponse.json({ error: 'Failed to update vehicle' }, { status: 500 });
+    }
+
+    return NextResponse.json({
+      success: true,
+      data: {
+        id: updatedVehicle.id,
+        vehicle_number: updatedVehicle.vehicle_number,
+        vehicle_type: updatedVehicle.vehicle_type,
+        is_active: updatedVehicle.is_active,
+        created_at: updatedVehicle.created_at,
+      },
+    });
+  } catch (error) {
+    console.error('Error in PUT /api/contractor/vehicles:', error);
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+  }
+}
+
+/**
  * GET /api/contractor/vehicles
  * List all vehicles for the authenticated contractor
  */

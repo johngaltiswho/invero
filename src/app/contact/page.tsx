@@ -13,21 +13,20 @@ export default function ContactUs() {
     company: '',
     subject: '',
     message: '',
-    consent: false
+    consent: false,
   });
-  
+
   const [loading, setLoading] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const [error, setError] = useState('');
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
     const { name, value, type } = e.target;
-    setFormData(prev => ({
+    setFormData((prev) => ({
       ...prev,
-      [name]: type === 'checkbox' ? (e.target as HTMLInputElement).checked : value
+      [name]: type === 'checkbox' ? (e.target as HTMLInputElement).checked : value,
     }));
-    
-    // Clear error when user starts typing
+
     if (error) setError('');
   };
 
@@ -52,315 +51,272 @@ export default function ContactUs() {
       } else {
         setError(result.error || 'Failed to submit contact form. Please try again.');
       }
-    } catch (err) {
+    } catch {
       setError('Network error. Please check your connection and try again.');
     } finally {
       setLoading(false);
     }
   };
+
   return (
     <Layout>
-      <div className="container mx-auto px-4 py-12 max-w-6xl">
-        <div className="text-center mb-12">
-          <h1 className="text-4xl font-bold text-primary mb-4">Contact Us</h1>
-          <p className="text-lg text-secondary max-w-2xl mx-auto">
-            Get in touch with our team. We're here to help you with any questions about our financial intelligence platform.
-          </p>
-        </div>
+      <div className="public-page min-h-screen">
+        <section className="public-section">
+          <div className="container mx-auto max-w-6xl px-4 py-16 md:py-24">
+            <div className="max-w-4xl">
+              <div className="public-kicker mb-5">Contact</div>
+              <h1 className="font-public-display text-5xl md:text-7xl leading-[0.92] tracking-[-0.04em] text-primary">
+                Speak with the
+                <span className="block public-accent italic">Finverno team.</span>
+              </h1>
+              <p className="public-body mt-10 max-w-3xl text-xl leading-9">
+                Reach out if you are an SME exploring onboarding, an investor evaluating the current private-access
+                note, or a partner who wants to understand the platform more closely.
+              </p>
+            </div>
+          </div>
+        </section>
 
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-12">
-          {/* Contact Form */}
-          <div className="bg-neutral-dark rounded-lg p-8 border border-neutral-medium">
-            {submitted ? (
-              <div className="text-center py-8">
-                <div className="text-6xl mb-4">✅</div>
-                <h2 className="text-2xl font-semibold text-primary mb-4">Thank You!</h2>
-                <p className="text-secondary mb-6">
-                  Your message has been sent successfully. We'll get back to you within 24 hours.
-                </p>
-                <Button 
-                  onClick={() => {
-                    setSubmitted(false);
-                    setFormData({
-                      firstName: '',
-                      lastName: '',
-                      email: '',
-                      company: '',
-                      subject: '',
-                      message: '',
-                      consent: false
-                    });
-                  }}
-                  variant="outline"
-                >
-                  Send Another Message
-                </Button>
-              </div>
-            ) : (
-              <>
-                <h2 className="text-2xl font-semibold text-primary mb-6">Send us a Message</h2>
-                
-                {error && (
-                  <div className="mb-6 p-4 bg-error/10 border border-error/20 rounded-lg">
-                    <p className="text-error text-sm">{error}</p>
+        <section>
+          <div className="container mx-auto max-w-6xl px-4 py-16 md:py-20">
+            <div className="grid grid-cols-1 gap-12 lg:grid-cols-2">
+              <div className="public-panel rounded-lg p-8">
+                {submitted ? (
+                  <div className="py-8 text-center">
+                    <div className="mb-4 text-6xl">✓</div>
+                    <h2 className="font-public-display text-3xl text-primary mb-4">Thank you.</h2>
+                    <p className="public-body mb-6">
+                      Your message has been sent successfully. We&apos;ll get back to you shortly.
+                    </p>
+                    <Button
+                      onClick={() => {
+                        setSubmitted(false);
+                        setFormData({
+                          firstName: '',
+                          lastName: '',
+                          email: '',
+                          company: '',
+                          subject: '',
+                          message: '',
+                          consent: false,
+                        });
+                      }}
+                      variant="outline"
+                      className="public-button-outline hover:bg-[#c79a36]/10"
+                    >
+                      Send Another Message
+                    </Button>
                   </div>
+                ) : (
+                  <>
+                    <h2 className="font-public-display text-3xl text-primary mb-6">Send us a message</h2>
+
+                    {error && (
+                      <div className="mb-6 rounded-lg border border-red-500/20 bg-red-500/10 p-4">
+                        <p className="text-sm text-red-400">{error}</p>
+                      </div>
+                    )}
+
+                    <form onSubmit={handleSubmit} className="space-y-6">
+                      <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                        <div>
+                          <label htmlFor="firstName" className="mb-2 block text-sm font-medium text-primary">
+                            First Name *
+                          </label>
+                          <Input
+                            id="firstName"
+                            name="firstName"
+                            type="text"
+                            required
+                            placeholder="John"
+                            value={formData.firstName}
+                            onChange={handleInputChange}
+                          />
+                        </div>
+                        <div>
+                          <label htmlFor="lastName" className="mb-2 block text-sm font-medium text-primary">
+                            Last Name *
+                          </label>
+                          <Input
+                            id="lastName"
+                            name="lastName"
+                            type="text"
+                            required
+                            placeholder="Doe"
+                            value={formData.lastName}
+                            onChange={handleInputChange}
+                          />
+                        </div>
+                      </div>
+
+                      <div>
+                        <label htmlFor="email" className="mb-2 block text-sm font-medium text-primary">
+                          Email Address *
+                        </label>
+                        <Input
+                          id="email"
+                          name="email"
+                          type="email"
+                          required
+                          placeholder="john.doe@example.com"
+                          value={formData.email}
+                          onChange={handleInputChange}
+                        />
+                      </div>
+
+                      <div>
+                        <label htmlFor="company" className="mb-2 block text-sm font-medium text-primary">
+                          Company
+                        </label>
+                        <Input
+                          id="company"
+                          name="company"
+                          type="text"
+                          placeholder="Your Company Name"
+                          value={formData.company}
+                          onChange={handleInputChange}
+                        />
+                      </div>
+
+                      <div>
+                        <label htmlFor="subject" className="mb-2 block text-sm font-medium text-primary">
+                          Subject *
+                        </label>
+                        <select
+                          id="subject"
+                          name="subject"
+                          required
+                          value={formData.subject}
+                          onChange={handleInputChange}
+                          className="w-full rounded-lg border border-white/10 bg-[#151514] px-4 py-3 text-primary outline-none transition focus:border-[#c79a36] focus:ring-2 focus:ring-[#c79a36]/20"
+                        >
+                          <option value="">Select a subject</option>
+                          <option value="general">General Inquiry</option>
+                          <option value="investor">Investor Questions</option>
+                          <option value="contractor">SME Questions</option>
+                          <option value="technical">Technical Support</option>
+                          <option value="partnership">Partnership Opportunities</option>
+                          <option value="press">Press & Media</option>
+                          <option value="other">Other</option>
+                        </select>
+                      </div>
+
+                      <div>
+                        <label htmlFor="message" className="mb-2 block text-sm font-medium text-primary">
+                          Message *
+                        </label>
+                        <textarea
+                          id="message"
+                          name="message"
+                          rows={6}
+                          required
+                          placeholder="Tell us how we can help you..."
+                          value={formData.message}
+                          onChange={handleInputChange}
+                          className="w-full resize-y rounded-lg border border-white/10 bg-[#151514] px-4 py-3 text-primary outline-none transition focus:border-[#c79a36] focus:ring-2 focus:ring-[#c79a36]/20 placeholder:text-[#7f7a71]"
+                        />
+                      </div>
+
+                      <div className="flex items-start">
+                        <input
+                          id="consent"
+                          name="consent"
+                          type="checkbox"
+                          required
+                          checked={formData.consent}
+                          onChange={handleInputChange}
+                          className="mt-1 h-4 w-4 rounded border-white/20 bg-[#151514] text-[#c79a36] focus:ring-[#c79a36]"
+                        />
+                        <label htmlFor="consent" className="ml-3 text-sm public-body">
+                          I agree to receive communications from Finverno and understand that I can unsubscribe at any
+                          time. View our{' '}
+                          <a href="/privacy" className="public-accent hover:underline">
+                            Privacy Policy
+                          </a>
+                          .
+                        </label>
+                      </div>
+
+                      <Button
+                        type="submit"
+                        variant="primary"
+                        className="public-button w-full hover:bg-[#d7ad58]"
+                        disabled={loading}
+                      >
+                        {loading ? 'Sending...' : 'Send Message'}
+                      </Button>
+                    </form>
+                  </>
                 )}
-                
-                <form onSubmit={handleSubmit} className="space-y-6">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              </div>
+
+              <div className="space-y-8">
                 <div>
-                  <label htmlFor="firstName" className="block text-sm font-medium text-primary mb-2">
-                    First Name *
-                  </label>
-                  <Input
-                    id="firstName"
-                    name="firstName"
-                    type="text"
-                    required
-                    placeholder="John"
-                    value={formData.firstName}
-                    onChange={handleInputChange}
-                  />
+                  <h2 className="font-public-display text-3xl text-primary mb-6">Get in touch</h2>
+                  <p className="public-body">
+                    Choose the most convenient way to reach us. We can help with SME onboarding, investor access, or
+                    platform-related questions.
+                  </p>
                 </div>
-                <div>
-                  <label htmlFor="lastName" className="block text-sm font-medium text-primary mb-2">
-                    Last Name *
-                  </label>
-                  <Input
-                    id="lastName"
-                    name="lastName"
-                    type="text"
-                    required
-                    placeholder="Doe"
-                    value={formData.lastName}
-                    onChange={handleInputChange}
-                  />
+
+                <div className="space-y-6">
+                  {[
+                    ['Email', 'General inquiries', 'contact@finverno.com', 'mailto:contact@finverno.com'],
+                    ['Phone', 'Monday - Friday, 9AM - 6PM IST', '+91 9972508604', 'tel:+919972508604'],
+                  ].map(([title, subtitle, value, href]) => (
+                    <div key={title} className="public-panel-soft rounded-lg p-6">
+                      <h3 className="text-lg font-medium text-primary">{title}</h3>
+                      <p className="public-body mt-1">{subtitle}</p>
+                      <a href={href} className="public-accent mt-3 inline-block hover:underline">
+                        {value}
+                      </a>
+                    </div>
+                  ))}
+
+                  <div className="public-panel-soft rounded-lg p-6">
+                    <h3 className="text-lg font-medium text-primary">Office</h3>
+                    <p className="public-body mt-1">Visit us at our headquarters</p>
+                    <address className="public-body mt-3 not-italic leading-8">
+                      Finverno Private Limited
+                      <br />
+                      403, 3rd Floor, 22nd Cross
+                      <br />
+                      2nd Sector, HSR Layout
+                      <br />
+                      Bengaluru – 560102, Karnataka
+                    </address>
+                  </div>
+                </div>
+
+                <div className="public-panel rounded-lg p-6">
+                  <h3 className="text-lg font-semibold text-primary mb-4">Registered Company Details</h3>
+                  <dl className="space-y-3 text-sm">
+                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between">
+                      <dt className="public-body">Company Name</dt>
+                      <dd className="text-primary font-medium">Finverno Private Limited</dd>
+                    </div>
+                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between">
+                      <dt className="public-body">Incorporation Date</dt>
+                      <dd className="text-primary font-medium">17 December 2025</dd>
+                    </div>
+                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between">
+                      <dt className="public-body">CIN</dt>
+                      <dd className="text-primary font-medium">U70200KA2025PTC212659</dd>
+                    </div>
+                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between">
+                      <dt className="public-body">PAN</dt>
+                      <dd className="text-primary font-medium">AAGCF7643D</dd>
+                    </div>
+                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between">
+                      <dt className="public-body">GSTIN</dt>
+                      <dd className="text-primary font-medium">29AAGCF7643D1ZI</dd>
+                    </div>
+                  </dl>
                 </div>
               </div>
-
-              <div>
-                <label htmlFor="email" className="block text-sm font-medium text-primary mb-2">
-                  Email Address *
-                </label>
-                <Input
-                  id="email"
-                  name="email"
-                  type="email"
-                  required
-                  placeholder="john.doe@example.com"
-                  value={formData.email}
-                  onChange={handleInputChange}
-                />
-              </div>
-
-              <div>
-                <label htmlFor="company" className="block text-sm font-medium text-primary mb-2">
-                  Company
-                </label>
-                <Input
-                  id="company"
-                  name="company"
-                  type="text"
-                  placeholder="Your Company Name"
-                  value={formData.company}
-                  onChange={handleInputChange}
-                />
-              </div>
-
-              <div>
-                <label htmlFor="subject" className="block text-sm font-medium text-primary mb-2">
-                  Subject *
-                </label>
-                <select
-                  id="subject"
-                  name="subject"
-                  required
-                  value={formData.subject}
-                  onChange={handleInputChange}
-                  className="w-full px-4 py-3 border border-neutral-medium rounded-lg focus:ring-2 focus:ring-accent-orange focus:border-transparent transition-colors duration-200 bg-neutral-dark text-primary"
-                >
-                  <option value="">Select a subject</option>
-                  <option value="general">General Inquiry</option>
-                  <option value="investor">Investor Questions</option>
-                  <option value="contractor">SME Questions</option>
-                  <option value="technical">Technical Support</option>
-                  <option value="partnership">Partnership Opportunities</option>
-                  <option value="press">Press & Media</option>
-                  <option value="other">Other</option>
-                </select>
-              </div>
-
-              <div>
-                <label htmlFor="message" className="block text-sm font-medium text-primary mb-2">
-                  Message *
-                </label>
-                <textarea
-                  id="message"
-                  name="message"
-                  rows={5}
-                  required
-                  placeholder="Tell us how we can help you..."
-                  value={formData.message}
-                  onChange={handleInputChange}
-                  className="w-full px-4 py-3 border border-neutral-medium rounded-lg focus:ring-2 focus:ring-accent-orange focus:border-transparent transition-colors duration-200 bg-neutral-dark text-primary placeholder-text-secondary resize-vertical"
-                />
-              </div>
-
-              <div className="flex items-start">
-                <input
-                  id="consent"
-                  name="consent"
-                  type="checkbox"
-                  required
-                  checked={formData.consent}
-                  onChange={handleInputChange}
-                  className="mt-1 h-4 w-4 text-accent-orange focus:ring-accent-orange border-neutral-medium rounded"
-                />
-                <label htmlFor="consent" className="ml-3 text-sm text-secondary">
-                  I agree to receive communications from Finverno and understand that I can unsubscribe at any time. 
-                  View our <a href="/privacy" className="text-accent-orange hover:underline">Privacy Policy</a>.
-                </label>
-              </div>
-
-              <Button 
-                type="submit" 
-                variant="primary" 
-                className="w-full"
-                disabled={loading}
-              >
-                {loading ? 'Sending...' : 'Send Message'}
-              </Button>
-                </form>
-              </>
-            )}
-          </div>
-
-          {/* Contact Information */}
-          <div className="space-y-8">
-            <div>
-              <h2 className="text-2xl font-semibold text-primary mb-6">Get in Touch</h2>
-              <p className="text-secondary mb-8">
-                We'd love to hear from you. Choose the most convenient way to reach us, and we'll get back to you as soon as possible.
-              </p>
-            </div>
-
-            {/* Contact Methods */}
-            <div className="space-y-6">
-              <div className="flex items-start space-x-4">
-                <div className="flex-shrink-0 w-10 h-10 bg-accent-orange rounded-lg flex items-center justify-center">
-                  <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 4.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
-                  </svg>
-                </div>
-                <div>
-                  <h3 className="text-lg font-medium text-primary">Email</h3>
-                  <p className="text-secondary">General inquiries</p>
-                  <a href="mailto:contact@finverno.com" className="text-accent-orange hover:underline">
-                    contact@finverno.com
-                  </a>
-                </div>
-              </div>
-
-              <div className="flex items-start space-x-4">
-                <div className="flex-shrink-0 w-10 h-10 bg-accent-orange rounded-lg flex items-center justify-center">
-                  <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" />
-                  </svg>
-                </div>
-                <div>
-                  <h3 className="text-lg font-medium text-primary">Phone</h3>
-                  <p className="text-secondary">Monday - Friday, 9AM - 6PM IST</p>
-                  <a href="tel:+91-9972508604" className="text-accent-orange hover:underline">
-                    +91 9972508604
-                  </a>
-                </div>
-              </div>
-
-              <div className="flex items-start space-x-4">
-                <div className="flex-shrink-0 w-10 h-10 bg-accent-orange rounded-lg flex items-center justify-center">
-                  <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
-                  </svg>
-                </div>
-                <div>
-                  <h3 className="text-lg font-medium text-primary">Office</h3>
-                  <p className="text-secondary">Visit us at our headquarters</p>
-                  <address className="text-secondary not-italic">
-                    Finverno Private Limited<br />
-                    403, 3rd Floor, 22nd Cross<br />
-                    2nd Sector, HSR Layout<br />
-                    Bengaluru – 560102, Karnataka
-                  </address>
-                </div>
-              </div>
-            </div>
-
-            <div className="bg-neutral-dark rounded-lg p-6 border border-neutral-medium">
-              <h3 className="text-lg font-semibold text-primary mb-4">Registered Company Details</h3>
-              <dl className="space-y-3 text-sm">
-                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between">
-                  <dt className="text-secondary">Company Name</dt>
-                  <dd className="text-primary font-medium">Finverno Private Limited</dd>
-                </div>
-                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between">
-                  <dt className="text-secondary">Incorporation Date</dt>
-                  <dd className="text-primary font-medium">17 December 2025</dd>
-                </div>
-                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between">
-                  <dt className="text-secondary">CIN</dt>
-                  <dd className="text-primary font-medium">U70200KA2025PTC212659</dd>
-                </div>
-                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between">
-                  <dt className="text-secondary">PAN</dt>
-                  <dd className="text-primary font-medium">AAGCF7643D</dd>
-                </div>
-                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between">
-                  <dt className="text-secondary">GSTIN</dt>
-                  <dd className="text-primary font-medium">29AAGCF7643D1ZI</dd>
-                </div>
-                <div>
-                  <dt className="text-secondary mb-1">Registered Office</dt>
-                  <dd className="text-primary">
-                    403, 3rd Floor, 22nd Cross, 2nd Sector, HSR Layout,<br className="hidden sm:block" />
-                    Bengaluru – 560102, Karnataka, India
-                  </dd>
-                </div>
-              </dl>
-            </div>
-
-            {/* Support Hours */}
-            <div className="bg-neutral-dark rounded-lg p-6 border border-neutral-medium">
-              <h3 className="text-lg font-semibold text-primary mb-4">Support Hours</h3>
-              <div className="space-y-2 text-sm">
-                <div className="flex justify-between">
-                  <span className="text-secondary">Monday - Friday</span>
-                  <span className="text-primary">9:00 AM - 6:00 PM EST</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-secondary">Saturday</span>
-                  <span className="text-primary">10:00 AM - 4:00 PM EST</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-secondary">Sunday</span>
-                  <span className="text-primary">Closed</span>
-                </div>
-              </div>
-            </div>
-
-            {/* Emergency Contact */}
-            <div className="bg-error/10 border border-error/20 rounded-lg p-6">
-              <h3 className="text-lg font-semibold text-error mb-2">Emergency Support</h3>
-              <p className="text-error/90 text-sm mb-2">
-                For critical system issues affecting active investments:
-              </p>
-              <a href="tel:+1-555-0199" className="text-error font-medium hover:underline">
-                +1 (555) 012-3499
-              </a>
-              <p className="text-error/80 text-xs mt-1">Available 24/7 for emergency situations only</p>
             </div>
           </div>
-        </div>
+        </section>
       </div>
     </Layout>
   );

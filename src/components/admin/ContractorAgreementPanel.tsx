@@ -3,7 +3,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Button } from '@/components';
 
-type AgreementType = 'master_platform' | 'financing_addendum' | 'procurement_declaration';
+type AgreementType = 'master_platform' | 'financing_addendum' | 'procurement_declaration' | 'fuel_procurement_declaration';
 
 type Agreement = {
   id: string;

@@ -13,6 +13,7 @@ export default function VehiclesPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [editingVehicle, setEditingVehicle] = useState<Vehicle | null>(null);
 
   const fetchVehicles = async () => {
     setIsLoading(true);
@@ -40,6 +41,7 @@ export default function VehiclesPage() {
 
   const handleModalClose = () => {
     setIsModalOpen(false);
+    setEditingVehicle(null);
   };
 
   const handleModalSuccess = () => {
@@ -58,7 +60,14 @@ export default function VehiclesPage() {
                 Manage your registered vehicles for fuel expense tracking
               </p>
             </div>
-            <Button onClick={() => setIsModalOpen(true)}>Add Vehicle</Button>
+            <Button
+              onClick={() => {
+                setEditingVehicle(null);
+                setIsModalOpen(true);
+              }}
+            >
+              Add Vehicle
+            </Button>
           </div>
 
           {/* Navigation Tabs */}
@@ -104,7 +113,13 @@ export default function VehiclesPage() {
               </Button>
             </div>
           ) : (
-            <VehicleTable vehicles={vehicles} />
+            <VehicleTable
+              vehicles={vehicles}
+              onEdit={(vehicle) => {
+                setEditingVehicle(vehicle);
+                setIsModalOpen(true);
+              }}
+            />
           )}
         </div>
       </div>
@@ -114,6 +129,7 @@ export default function VehiclesPage() {
         isOpen={isModalOpen}
         onClose={handleModalClose}
         onSuccess={handleModalSuccess}
+        vehicle={editingVehicle}
       />
     </ContractorDashboardLayout>
   );

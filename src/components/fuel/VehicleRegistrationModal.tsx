@@ -1,20 +1,50 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Button } from '@/components/Button';
 import { Input } from '@/components/Input';
 import { vehicleSchema, type VehicleInput } from '@/lib/validations/fuel';
+import type { Vehicle } from '@/types/supabase';
+
+const vehicleTypeOptions = [
+  'Two Wheeler',
+  'Three Wheeler Cargo',
+  'Three Wheeler Passenger',
+  'Pickup / LCV',
+  'Mini Truck',
+  'Light Commercial Vehicle',
+  'Medium Commercial Vehicle',
+  'Heavy Commercial Vehicle',
+  'Tipper',
+  'Dumper',
+  'Container Truck',
+  'Trailer Truck',
+  'Open Truck',
+  'Closed Body Truck',
+  'Transit Mixer',
+  'Water Tanker',
+  'Tanker',
+  'Tractor Trolley',
+  'Flatbed',
+  'JCB',
+  'Loader',
+  'Excavator',
+  'Crane',
+  'Other',
+];
 
 interface VehicleRegistrationModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSuccess: () => void;
+  vehicle?: Vehicle | null;
 }
 
 export function VehicleRegistrationModal({
   isOpen,
   onClose,
   onSuccess,
+  vehicle,
 }: VehicleRegistrationModalProps) {
   const [formData, setFormData] = useState<VehicleInput>({
     vehicle_number: '',
@@ -23,6 +53,17 @@ export function VehicleRegistrationModal({
   const [errors, setErrors] = useState<{ [key: string]: string }>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitMessage, setSubmitMessage] = useState<string | null>(null);
+  const isEditing = Boolean(vehicle);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    setFormData({
+      vehicle_number: vehicle?.vehicle_number ?? '',
+      vehicle_type: vehicle?.vehicle_type ?? '',
+    });
+    setErrors({});
+    setSubmitMessage(null);
+  }, [isOpen, vehicle]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -46,11 +87,18 @@ export function VehicleRegistrationModal({
 
       // Submit to API
       const response = await fetch('/api/contractor/vehicles', {
-        method: 'POST',
+        method: isEditing ? 'PUT' : 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify(validationResult.data),
+        body: JSON.stringify(
+          isEditing
+            ? {
+                vehicle_id: vehicle?.id,
+                ...validationResult.data,
+              }
+            : validationResult.data
+        ),
       });
 
       const result = await response.json();
@@ -60,7 +108,7 @@ export function VehicleRegistrationModal({
       }
 
       // Success
-      setSubmitMessage('Vehicle registered successfully!');
+      setSubmitMessage(isEditing ? 'Vehicle updated successfully!' : 'Vehicle registered successfully!');
       setFormData({ vehicle_number: '', vehicle_type: '' });
       setTimeout(() => {
         onSuccess();
@@ -91,10 +139,10 @@ export function VehicleRegistrationModal({
         <div className="sticky top-0 bg-neutral-dark border-b border-neutral-medium p-6 flex items-center justify-between">
           <div>
             <h2 className="text-xl font-semibold text-primary">
-              Register Vehicle
+              {isEditing ? 'Edit Vehicle' : 'Register Vehicle'}
             </h2>
             <p className="text-secondary text-sm mt-1">
-              Add a new vehicle for fuel expense tracking
+              {isEditing ? 'Update vehicle details for fuel workflows' : 'Add a new vehicle for fuel expense tracking'}
             </p>
           </div>
           <button
@@ -158,14 +206,11 @@ export function VehicleRegistrationModal({
               }`}
             >
               <option value="">Select vehicle type</option>
-              <option value="Truck">Truck</option>
-              <option value="JCB">JCB</option>
-              <option value="Loader">Loader</option>
-              <option value="Excavator">Excavator</option>
-              <option value="Crane">Crane</option>
-              <option value="Dumper">Dumper</option>
-              <option value="Tipper">Tipper</option>
-              <option value="Other">Other</option>
+              {vehicleTypeOptions.map((vehicleType) => (
+                <option key={vehicleType} value={vehicleType}>
+                  {vehicleType}
+                </option>
+              ))}
             </select>
             {errors.vehicle_type && (
               <p className="mt-2 text-sm text-warning">{errors.vehicle_type}</p>
@@ -194,7 +239,7 @@ export function VehicleRegistrationModal({
               Cancel
             </Button>
             <Button type="submit" disabled={isSubmitting} className="flex-1">
-              {isSubmitting ? 'Registering...' : 'Register Vehicle'}
+              {isSubmitting ? (isEditing ? 'Saving...' : 'Registering...') : isEditing ? 'Save Changes' : 'Register Vehicle'}
             </Button>
           </div>
         </form>

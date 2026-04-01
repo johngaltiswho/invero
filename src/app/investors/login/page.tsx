@@ -5,22 +5,25 @@ import { Button } from '@/components/Button';
 export default function InvestorAccessPage() {
   return (
     <Layout>
-      <div className="container mx-auto px-4 py-16 max-w-3xl">
-        <div className="bg-neutral-light rounded-2xl p-8 sm:p-12 text-center border border-neutral-medium">
-          <h1 className="text-3xl sm:text-4xl font-bold text-primary mb-4">
+      <div className="public-page min-h-screen">
+        <div className="container mx-auto max-w-3xl px-4 py-16">
+        <div className="public-panel rounded-2xl p-8 sm:p-12 text-center">
+          <div className="public-kicker mb-4">Investor Access</div>
+          <h1 className="font-public-display text-4xl sm:text-5xl text-primary mb-4">
             Investor Portal
           </h1>
-          <p className="text-secondary mb-8 max-w-xl mx-auto">
+          <p className="public-body mb-8 max-w-xl mx-auto">
             Access live project funding, capital returns, and portfolio performance from your Finverno dashboard.
           </p>
           <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
             <Link href="/dashboard/investor">
-              <Button className="px-8">Go to Dashboard</Button>
+              <Button className="public-button px-8 hover:bg-[#d7ad58]">Go to Dashboard</Button>
             </Link>
           </div>
-          <p className="text-xs text-secondary mt-6">
+          <p className="mt-6 text-xs public-body">
             If you don’t have access yet, please contact the administrator.
           </p>
+        </div>
         </div>
       </div>
     </Layout>

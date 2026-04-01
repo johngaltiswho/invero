@@ -14,6 +14,11 @@ import {
   CONTRACTOR_PROCUREMENT_DECLARATION_TEMPLATE_VERSION,
   renderContractorProcurementDeclarationHTML,
 } from '@/lib/contractor-agreements/templates/procurement-declaration';
+import {
+  CONTRACTOR_FUEL_PROCUREMENT_DECLARATION_TEMPLATE_KEY,
+  CONTRACTOR_FUEL_PROCUREMENT_DECLARATION_TEMPLATE_VERSION,
+  renderContractorFuelProcurementDeclarationHTML,
+} from '@/lib/contractor-agreements/templates/fuel-procurement-declaration';
 import type {
   ContractorAgreementTemplatePayload,
   ContractorAgreementType,
@@ -192,6 +197,14 @@ export function renderContractorAgreementHTML(payload: ContractorAgreementTempla
       templateKey: CONTRACTOR_PROCUREMENT_DECLARATION_TEMPLATE_KEY,
       templateVersion: CONTRACTOR_PROCUREMENT_DECLARATION_TEMPLATE_VERSION,
       html: renderContractorProcurementDeclarationHTML(payload),
+    };
+  }
+
+  if (payload.agreementType === 'fuel_procurement_declaration') {
+    return {
+      templateKey: CONTRACTOR_FUEL_PROCUREMENT_DECLARATION_TEMPLATE_KEY,
+      templateVersion: CONTRACTOR_FUEL_PROCUREMENT_DECLARATION_TEMPLATE_VERSION,
+      html: renderContractorFuelProcurementDeclarationHTML(payload),
     };
   }
 

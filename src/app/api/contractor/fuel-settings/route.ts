@@ -2,6 +2,8 @@ import { NextResponse } from 'next/server';
 import { auth, currentUser } from '@clerk/nextjs/server';
 import { supabaseAdmin } from '@/lib/supabase';
 import { getMonthlyBudgetStatus } from '@/lib/fuel/auto-approval-service';
+import { getSmeFuelAccountSummary } from '@/lib/fuel/finance';
+import { getLatestContractorAgreementByType } from '@/lib/contractor-agreements/service';
 
 /**
  * Helper to resolve contractor from Clerk auth
@@ -100,13 +102,21 @@ export async function GET() {
             spent: 0,
             remaining: 0,
           },
+          account_summary: null,
           message: 'Fuel settings not configured. Please contact admin.',
         },
       });
     }
 
-    // Get monthly budget status
-    const budgetStatus = await getMonthlyBudgetStatus(contractor.id);
+    const [budgetStatus, accountSummary] = await Promise.all([
+      getMonthlyBudgetStatus(contractor.id),
+      getSmeFuelAccountSummary(contractor.id),
+    ]);
+
+    const fuelAgreement = await getLatestContractorAgreementByType(
+      contractor.id,
+      'fuel_procurement_declaration'
+    );
 
     // Get count of approved pumps
     const { count: approvedPumpsCount } = await supabaseAdmin
@@ -119,6 +129,9 @@ export async function GET() {
       success: true,
       data: {
         settings: {
+          overdraft_allowed: settings.overdraft_allowed ?? ((settings.account_mode ?? 'credit') === 'credit'),
+          overdraft_limit_amount: settings.overdraft_limit_amount ?? settings.account_limit_amount ?? 0,
+          warning_threshold_amount: settings.warning_threshold_amount ?? 0,
           monthly_fuel_budget: settings.monthly_fuel_budget,
           per_request_max_amount: settings.per_request_max_amount,
           per_request_max_liters: settings.per_request_max_liters,
@@ -127,6 +140,17 @@ export async function GET() {
           auto_approve_enabled: settings.auto_approve_enabled,
         },
         budget_status: budgetStatus,
+        account_summary: accountSummary,
+        fuel_agreement: fuelAgreement
+          ? {
+              id: fuelAgreement.id,
+              status: fuelAgreement.status,
+              agreement_date: fuelAgreement.agreement_date,
+              issued_at: fuelAgreement.issued_at,
+              executed_at: fuelAgreement.executed_at,
+            }
+          : null,
+        fuel_access_enabled: fuelAgreement?.status === 'executed',
         approved_pumps_count: approvedPumpsCount || 0,
       },
     });

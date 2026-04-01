@@ -83,6 +83,26 @@ export async function listContractorAgreements(contractorId?: string, agreementT
   return (data || []) as ContractorAgreement[];
 }
 
+export async function getLatestContractorAgreementByType(
+  contractorId: string,
+  agreementType: ContractorAgreementType
+): Promise<ContractorAgreement | null> {
+  const { data, error } = await supabaseAdmin
+    .from('contractor_agreements')
+    .select('*')
+    .eq('contractor_id', contractorId)
+    .eq('agreement_type', agreementType)
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (error) {
+    throw new Error(error.message || 'Failed to load contractor agreement');
+  }
+
+  return (data || null) as ContractorAgreement | null;
+}
+
 export async function getContractorAgreement(agreementId: string): Promise<ContractorAgreement | null> {
   const { data, error } = await supabaseAdmin
     .from('contractor_agreements')
@@ -410,7 +430,7 @@ async function getLatestContractorAgreementForEmail(email: string): Promise<Cont
     .from('contractor_agreements')
     .select('*')
     .eq('contractor_id', contractor.id)
-    .in('agreement_type', ['master_platform', 'financing_addendum', 'procurement_declaration'])
+    .in('agreement_type', ['master_platform', 'financing_addendum', 'procurement_declaration', 'fuel_procurement_declaration'])
     .order('created_at', { ascending: false });
 
   if (error) {
