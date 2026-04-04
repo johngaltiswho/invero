@@ -4,6 +4,7 @@ import { createClient } from '@supabase/supabase-js';
 import { createSignedUrlWithFallback } from '@/lib/storage-url';
 import { auditDeliveryStatus } from '@/lib/audit';
 import { validateRequestBody, raiseDisputeSchema, confirmDeliverySchema } from '@/lib/validations';
+import { generateInvoiceForPurchaseRequest } from '@/lib/invoice-service';
 
 function supabaseAdmin() {
   return createClient(
@@ -285,33 +286,27 @@ export async function PATCH(request: NextRequest) {
       request
     });
 
-    // Trigger invoice generation inline
+    // Generate invoice inline and fail loudly if it cannot be created.
     try {
-      const appOrigin = process.env.NEXT_PUBLIC_APP_URL || new URL(request.url).origin;
-      const internalSecret = process.env.CRON_SECRET;
-      if (!internalSecret) {
-        console.warn('CRON_SECRET is not configured. Invoice generation call may be rejected.');
-      }
-
-      const invoiceRes = await fetch(`${appOrigin}/api/invoices`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(internalSecret ? { 'x-internal-secret': internalSecret } : {}),
-        },
-        body: JSON.stringify({ purchase_request_id }),
+      await generateInvoiceForPurchaseRequest({
+        purchaseRequestId: purchase_request_id,
+        request,
       });
-      if (!invoiceRes.ok) {
-        const msg = await invoiceRes.text();
-        console.error('Invoice generation request failed:', invoiceRes.status, msg);
-      }
-    } catch {
-      // Non-blocking — cron will catch it if this fails
+    } catch (invoiceError) {
+      console.error('Inline invoice generation failed after delivery confirmation:', invoiceError);
+      return NextResponse.json(
+        {
+          error: invoiceError instanceof Error
+            ? `Delivery was confirmed but invoice generation failed: ${invoiceError.message}`
+            : 'Delivery was confirmed but invoice generation failed',
+        },
+        { status: 500 }
+      );
     }
 
     return NextResponse.json({
       success: true,
-      message: 'Delivery confirmed. Invoice is being generated.',
+      message: 'Delivery confirmed and invoice generated.',
     });
   } catch (err) {
     console.error('Delivery tracker PATCH error:', err);

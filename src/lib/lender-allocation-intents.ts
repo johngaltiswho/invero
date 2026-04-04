@@ -230,10 +230,11 @@ export async function getLenderAllocationIntentById(intentId: string): Promise<L
 
 async function getCurrentAgreementForSleeve(investorId: string, sleeveId: string) {
   const agreements = await listInvestorAgreements(investorId, sleeveId);
-  return (
-    agreements.find((agreement) => !agreement.superseded_at && !['voided', 'expired'].includes(String(agreement.status || ''))) ||
-    null
+  const currentAgreements = agreements.filter(
+    (agreement) => !agreement.superseded_at && !['voided', 'expired'].includes(String(agreement.status || ''))
   );
+
+  return currentAgreements.find((agreement) => String(agreement.status || '') !== 'executed') || currentAgreements[0] || null;
 }
 
 export async function supersedeOpenAllocationIntentsForInvestor(investorId: string, exceptIntentId?: string) {
@@ -288,11 +289,30 @@ export async function ensureExecutableAgreementForSleeve(input: {
   actor: AdminActor;
 }) {
   const currentAgreement = await getCurrentAgreementForSleeve(input.investorId, input.sleeve.id);
-  if (
-    currentAgreement?.status === 'executed' &&
-    Math.abs((Number(currentAgreement.commitment_amount) || 0) - input.commitmentAmount) < 0.01
-  ) {
-    return currentAgreement;
+  if (currentAgreement) {
+    if (
+      currentAgreement.status === 'executed' &&
+      Math.abs((Number(currentAgreement.commitment_amount) || 0) - input.commitmentAmount) < 0.01
+    ) {
+      return currentAgreement;
+    }
+
+    if (currentAgreement.lender_allocation_intent_id === input.intentId) {
+      if (currentAgreement.status === 'issued' || currentAgreement.status === 'investor_signed' || currentAgreement.status === 'executed') {
+        return currentAgreement;
+      }
+
+      const generated = await regenerateAgreementDraft(
+        currentAgreement.id,
+        input.actor,
+        {
+          commitment_amount: input.commitmentAmount,
+          agreement_date: input.agreementDate || new Date().toISOString().slice(0, 10),
+        }
+      );
+
+      return issueAgreement(generated.id, input.actor);
+    }
   }
 
   await supersedeNonExecutedAgreementsForSleeve(
@@ -471,8 +491,9 @@ export async function syncAllocationIntentFundingStatus(intentId: string): Promi
 
   const snapshot = await getAllocationIntentFundingSnapshot(intent.id, Number(intent.total_amount || 0));
 
+  const totalAmount = roundCurrency(Number(intent.total_amount || 0));
   const nextStatus: LenderAllocationIntentStatus =
-    snapshot.remainingAmount <= 0.009
+    snapshot.approvedAmount >= totalAmount - 0.009
       ? 'completed'
       : snapshot.pendingAmount > 0
         ? 'funding_submitted'

@@ -1,4 +1,4 @@
-import { auth } from '@clerk/nextjs/server';
+import { auth, currentUser } from '@clerk/nextjs/server';
 import { supabaseAdmin } from '@/lib/supabase';
 
 export class InvestorAuthError extends Error {
@@ -11,8 +11,15 @@ export class InvestorAuthError extends Error {
   }
 }
 
-function isMissingColumnError(message?: string | null) {
-  return !!message && message.includes("Could not find the 'clerk_user_id' column");
+function isMissingColumnError(error?: { message?: string | null; code?: string | null } | null) {
+  if (!error) return false;
+  if (error.code === '42703') return true;
+
+  const message = error.message || '';
+  return (
+    message.includes("Could not find the 'clerk_user_id' column") ||
+    message.includes('column investors.clerk_user_id does not exist')
+  );
 }
 
 export async function resolveActiveInvestor<T = any>(select = '*'): Promise<{
@@ -29,12 +36,27 @@ export async function resolveActiveInvestor<T = any>(select = '*'): Promise<{
   }
 
   const sessionClaims = (authState.sessionClaims || {}) as Record<string, any>;
-  const primaryEmail =
+  let primaryEmail =
     sessionClaims.email ||
     sessionClaims.primary_email_address ||
     sessionClaims.email_address ||
     sessionClaims?.external_accounts?.[0]?.email_address ||
     null;
+
+  if (!primaryEmail) {
+    try {
+      const clerkUser = await currentUser();
+      primaryEmail =
+        clerkUser?.primaryEmailAddress?.emailAddress ||
+        clerkUser?.emailAddresses?.[0]?.emailAddress ||
+        null;
+    } catch (error: any) {
+      if (error?.status === 429 || error?.clerkError) {
+        throw new InvestorAuthError('Too many authentication requests, please retry shortly', 429);
+      }
+      console.warn('Failed to fetch Clerk currentUser for investor email fallback:', error);
+    }
+  }
 
   const user = {
     id: userId,
@@ -49,7 +71,7 @@ export async function resolveActiveInvestor<T = any>(select = '*'): Promise<{
     .eq('status', 'active')
     .maybeSingle();
 
-  if (byClerkIdResponse.error && !isMissingColumnError(byClerkIdResponse.error.message)) {
+  if (byClerkIdResponse.error && !isMissingColumnError(byClerkIdResponse.error)) {
     console.error('Error fetching investor by clerk_user_id:', byClerkIdResponse.error);
     throw new InvestorAuthError('Failed to load investor profile', 500);
   }
@@ -84,10 +106,14 @@ export async function resolveActiveInvestor<T = any>(select = '*'): Promise<{
   }
 
   try {
-    await (supabaseAdmin as any)
+    const healResponse = await (supabaseAdmin as any)
       .from('investors')
       .update({ clerk_user_id: userId })
       .eq('id', (byEmail as any).id);
+
+    if (healResponse?.error && !isMissingColumnError(healResponse.error)) {
+      console.warn('Failed to link investor clerk_user_id during auth heal:', healResponse.error);
+    }
   } catch (linkError) {
     console.warn('Failed to link investor clerk_user_id during auth heal:', linkError);
   }

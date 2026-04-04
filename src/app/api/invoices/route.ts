@@ -1,49 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
 import { createClient } from '@supabase/supabase-js';
-import {
-  generateInvoicePDF,
-  uploadInvoicePDF,
-  type InvoiceLineItem,
-} from '@/lib/invoice-generator';
 import { createSignedUrlWithFallback } from '@/lib/storage-url';
-import { auditInvoice } from '@/lib/audit';
 import { rateLimit, RateLimitPresets } from '@/lib/rate-limit';
+import { generateInvoiceForPurchaseRequest } from '@/lib/invoice-service';
 
 type InvoiceRow = {
   id: string;
   invoice_url?: string | null;
   [key: string]: unknown;
 };
-
-type PurchaseRequestMaterial = {
-  name?: string | null;
-  unit?: string | null;
-  hsn_code?: string | null;
-};
-
-type PurchaseRequestItem = {
-  hsn_code?: string | null;
-  item_description?: string | null;
-  requested_qty?: number | string | null;
-  purchase_qty?: number | string | null;
-  purchase_unit?: string | null;
-  unit_rate?: number | string | null;
-  tax_percent?: number | string | null;
-  project_materials?: {
-    materials?: PurchaseRequestMaterial | null;
-  } | null;
-};
-
-type PurchaseRequestRow = {
-  id: string;
-  project_id: string;
-  contractor_id: string;
-  dispatched_at?: string | null;
-  purchase_request_items?: PurchaseRequestItem[] | null;
-};
-
-const PLATFORM_FEE_GST_PERCENT = 18;
 
 function supabaseAdmin() {
   return createClient(
@@ -149,299 +115,25 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    const { purchase_request_id, force_regenerate } = await request.json();
+    const { purchase_request_id, force_regenerate, renumber_existing } = await request.json();
 
     if (!purchase_request_id) {
       return NextResponse.json({ error: 'purchase_request_id is required' }, { status: 400 });
     }
 
-    const supabase = supabaseAdmin();
-
-    // Check if invoice already exists for this PR
-    const { data: existing } = await supabase
-      .from('invoices')
-      .select('id, invoice_number')
-      .eq('purchase_request_id', purchase_request_id)
-      .single();
-
-    const shouldForceRegenerate = force_regenerate === true;
-
-    if (existing && !shouldForceRegenerate) {
-      return NextResponse.json({ success: true, message: 'Invoice already exists', invoiceId: existing.id });
-    }
-
-    // Fetch purchase request with items and contractor
-    let pr: PurchaseRequestRow | null = null;
-    let prError: { message?: string } | null = null;
-
-    const withHsnQuery = await supabase
-      .from('purchase_requests')
-      .select(`
-        id,
-        project_id,
-        contractor_id,
-        dispatched_at,
-        remarks,
-        purchase_request_items (
-          id,
-          hsn_code,
-          item_description,
-          requested_qty,
-          purchase_qty,
-          purchase_unit,
-          unit_rate,
-          tax_percent,
-          project_materials (
-            id,
-            materials ( name, unit, hsn_code )
-          )
-        )
-      `)
-      .eq('id', purchase_request_id)
-      .single();
-
-    pr = withHsnQuery.data as PurchaseRequestRow | null;
-    prError = withHsnQuery.error;
-
-    // Backward compatibility if newer columns are not yet applied.
-    if (
-      prError &&
-      (
-        String(prError.message || '').includes('hsn_code') ||
-        String(prError.message || '').includes('item_description') ||
-        String(prError.message || '').includes('purchase_qty') ||
-        String(prError.message || '').includes('purchase_unit')
-      )
-    ) {
-      const fallbackQuery = await supabase
-        .from('purchase_requests')
-        .select(`
-          id,
-          project_id,
-          contractor_id,
-          dispatched_at,
-          remarks,
-          purchase_request_items (
-            id,
-            hsn_code,
-            requested_qty,
-            purchase_qty,
-            purchase_unit,
-            unit_rate,
-            tax_percent,
-            project_materials (
-              id,
-              materials ( name, unit )
-            )
-          )
-        `)
-        .eq('id', purchase_request_id)
-        .single();
-      pr = fallbackQuery.data as PurchaseRequestRow | null;
-      prError = fallbackQuery.error;
-    }
-
-    if (prError || !pr) {
-      return NextResponse.json({ error: 'Purchase request not found' }, { status: 404 });
-    }
-
-    // Fetch contractor details
-    const { data: contractor } = await supabase
-      .from('contractors')
-      .select('id, company_name, gstin, email, platform_fee_rate, platform_fee_cap, business_address, city, state, pincode')
-      .eq('id', pr.contractor_id)
-      .single();
-
-    if (!contractor) {
-      return NextResponse.json({ error: 'Contractor not found' }, { status: 404 });
-    }
-
-    const contractorAddress = [
-      contractor.business_address,
-      contractor.city,
-      contractor.state,
-      contractor.pincode
-    ]
-      .filter((part) => part && String(part).trim().length > 0)
-      .map((part) => String(part).trim())
-      .join(', ');
-
-    // Fetch project name
-    const { data: project } = await supabase
-      .from('projects')
-      .select('id, project_name, client_name, project_address')
-      .eq('id', pr.project_id)
-      .single();
-
-    const shipToAddress = project?.project_address?.trim() || undefined;
-
-    // Build line items
-    const lineItems: InvoiceLineItem[] = (pr.purchase_request_items || []).map((item: PurchaseRequestItem) => {
-      const material = item.project_materials?.materials;
-      const qty = Number(item.purchase_qty ?? item.requested_qty) || 0;
-      const rate = Number(item.unit_rate) || 0;
-      const taxPct = Number(item.tax_percent) || 0;
-      const amount = qty * rate;
-      const taxAmount = amount * (taxPct / 100);
-      return {
-        material_name: material?.name || 'Unknown Material',
-        hsn_code: item.hsn_code || material?.hsn_code || null,
-        item_description: item.item_description || null,
-        unit: item.purchase_unit || material?.unit || 'nos',
-        quantity: qty,
-        unit_rate: rate,
-        tax_percent: taxPct,
-        amount,
-        tax_amount: taxAmount,
-        total: amount + taxAmount,
-      };
+    const result = await generateInvoiceForPurchaseRequest({
+      purchaseRequestId: purchase_request_id,
+      forceRegenerate: force_regenerate === true,
+      renumberExisting: renumber_existing === true,
+      request,
     });
 
-    const platformFeeRate = Number(contractor.platform_fee_rate ?? 0.0025);
-    const platformFeeCap = Number(contractor.platform_fee_cap ?? 25000);
-    const materialSubtotal = lineItems.reduce((s, i) => s + i.amount, 0);
-    const platformFeeAmount = Math.min(materialSubtotal * platformFeeRate, platformFeeCap);
-
-    if (platformFeeAmount > 0) {
-      const platformFeeTaxAmount = platformFeeAmount * (PLATFORM_FEE_GST_PERCENT / 100);
-      lineItems.push({
-        material_name: 'Platform Fee',
-        hsn_code: '996111',
-        item_description: `As per contractor terms (${(platformFeeRate * 100).toFixed(2)}%, cap Rs ${platformFeeCap.toFixed(2)})`,
-        unit: 'service',
-        quantity: 1,
-        unit_rate: platformFeeAmount,
-        tax_percent: PLATFORM_FEE_GST_PERCENT,
-        amount: platformFeeAmount,
-        tax_amount: platformFeeTaxAmount,
-        total: platformFeeAmount + platformFeeTaxAmount,
-      });
-    }
-
-    const subtotal = lineItems.reduce((s, i) => s + i.amount, 0);
-    const totalTax = lineItems.reduce((s, i) => s + i.tax_amount, 0);
-    const grandTotal = subtotal + totalTax;
-
-    const invoiceDate = pr.dispatched_at ? new Date(pr.dispatched_at) : new Date();
-    // Preserve invoice number/id when force-regenerating an existing invoice.
-    // New invoices should be numbered based on invoice date (not generation date).
-    const { data: invNumData } = await supabase.rpc('next_invoice_number', {
-      p_invoice_date: invoiceDate.toISOString()
-    });
-    const invoiceNumber = existing?.invoice_number || invNumData || `INV-${Date.now()}`;
-    const invoiceId = existing?.id || crypto.randomUUID();
-
-    // Generate PDF
-    const pdfBuffer = generateInvoicePDF({
-      invoiceNumber,
-      invoiceDate,
-      purchaseRequestId: pr.id,
-      contractorId: contractor.id,
-      projectId: pr.project_id,
-      projectName: project?.project_name || pr.project_id,
-      clientName: project?.client_name || undefined,
-      contractorName: contractor.company_name,
-      contractorGSTIN: contractor.gstin,
-      contractorAddress: contractorAddress || undefined,
-      shipToAddress,
-      lineItems,
-      subtotal,
-      totalTax,
-      grandTotal,
-    });
-
-    // Upload PDF to storage
-    const invoiceUrl = await uploadInvoicePDF(pdfBuffer, contractor.id, invoiceId);
-
-    let invoiceRecord: { id: string } | null = null;
-    if (existing) {
-      const { data: updatedRecord, error: updateError } = await supabase
-        .from('invoices')
-        .update({
-          invoice_date: invoiceDate.toISOString(),
-          total_amount: grandTotal,
-          line_items: lineItems,
-          invoice_url: invoiceUrl,
-          status: 'generated',
-          generated_by: 'system',
-          updated_at: invoiceDate.toISOString(),
-        })
-        .eq('id', invoiceId)
-        .select('id')
-        .single();
-
-      if (updateError) {
-        console.error('Error updating invoice:', updateError);
-        return NextResponse.json({ error: 'Failed to update invoice record' }, { status: 500 });
-      }
-      invoiceRecord = updatedRecord;
-    } else {
-      const { data: insertedRecord, error: insertError } = await supabase
-        .from('invoices')
-        .insert({
-          id: invoiceId,
-          purchase_request_id: pr.id,
-          contractor_id: contractor.id,
-          project_id: pr.project_id,
-          invoice_number: invoiceNumber,
-          invoice_date: invoiceDate.toISOString(),
-          total_amount: grandTotal,
-          line_items: lineItems,
-          invoice_url: invoiceUrl,
-          status: 'generated',
-          generated_by: 'system',
-        })
-        .select('id')
-        .single();
-
-      if (insertError) {
-        console.error('Error inserting invoice:', insertError);
-        return NextResponse.json({ error: 'Failed to create invoice record' }, { status: 500 });
-      }
-      invoiceRecord = insertedRecord;
-    }
-
-    // Update purchase request with invoice reference
-    await supabase
-      .from('purchase_requests')
-      .update({
-        invoice_generated_at: invoiceDate.toISOString(),
-        invoice_url: invoiceUrl,
-        delivery_status: 'delivered',
-        delivered_at: invoiceDate.toISOString(),
-      })
-      .eq('id', purchase_request_id);
-
-    // Audit log for invoice generation
-    await auditInvoice({
-      action: existing ? 'update' : 'generate',
-      invoiceId: invoiceRecord?.id || invoiceId,
-      invoiceNumber,
-      userId: 'system',
-      userEmail: 'system@invero.app',
-      userName: 'System',
-      userRole: 'system',
-      description: existing ? `Regenerated invoice ${invoiceNumber}` : `Generated invoice ${invoiceNumber}`,
-      metadata: {
-        purchase_request_id: pr.id,
-        contractor_id: contractor.id,
-        project_id: pr.project_id,
-        project_name: project?.project_name,
-        total_amount: grandTotal,
-        force_regenerate: !!existing
-      },
-      request
-    });
-
-    return NextResponse.json({
-      success: true,
-      invoiceId: invoiceRecord?.id || invoiceId,
-      invoiceNumber,
-      invoiceUrl,
-      regenerated: !!existing,
-    });
+    return NextResponse.json(result);
   } catch (err) {
     console.error('Invoices POST error:', err);
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+    return NextResponse.json(
+      { error: err instanceof Error ? err.message : 'Internal server error' },
+      { status: 500 }
+    );
   }
 }

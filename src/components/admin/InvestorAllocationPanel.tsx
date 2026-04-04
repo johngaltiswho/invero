@@ -25,6 +25,9 @@ type AllocationIntent = {
   completed_at?: string | null;
   created_at: string;
   notes?: string | null;
+  funded_amount?: number;
+  pending_amount?: number;
+  remaining_amount?: number;
 };
 
 type Investor = {
@@ -54,7 +57,8 @@ export default function InvestorAllocationPanel({ investor }: Props): React.Reac
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [form, setForm] = useState({
-    amount: '',
+    desiredTotalAmount: '',
+    additionalAmount: '',
     poolParticipationAmount: '',
     fixedDebtAmount: '',
     notes: '',
@@ -74,10 +78,31 @@ export default function InvestorAllocationPanel({ investor }: Props): React.Reac
     if (allocationTouched) return;
     setForm((prev) => ({
       ...prev,
-      poolParticipationAmount: prev.amount,
+      poolParticipationAmount: prev.additionalAmount,
       fixedDebtAmount: '',
     }));
-  }, [form.amount, allocationTouched]);
+  }, [form.additionalAmount, allocationTouched]);
+
+  const currentlyFundedCapital = useMemo(
+    () =>
+      intents
+        .filter((intent) => intent.status === 'completed')
+        .reduce((sum, intent) => sum + Number(intent.total_amount || 0), 0),
+    [intents]
+  );
+
+  const currentOpenIntent = useMemo(
+    () => intents.find((intent) => !['completed', 'cancelled', 'superseded'].includes(intent.status)) || null,
+    [intents]
+  );
+
+  const incrementalTopUp = useMemo(() => {
+    const desiredTotal = Number(form.desiredTotalAmount || 0);
+    if (!Number.isFinite(desiredTotal) || desiredTotal <= 0) {
+      return 0;
+    }
+    return Math.max(desiredTotal - currentlyFundedCapital, 0);
+  }, [form.desiredTotalAmount, currentlyFundedCapital]);
 
   const fetchIntents = async () => {
     try {
@@ -103,9 +128,9 @@ export default function InvestorAllocationPanel({ investor }: Props): React.Reac
     setError(null);
 
     try {
-      const amount = Number(form.amount);
+      const amount = Number(form.additionalAmount);
       if (!Number.isFinite(amount) || amount <= 0) {
-        throw new Error('Enter a valid proposed amount');
+        throw new Error('Enter a valid additional allocation amount');
       }
 
       const poolParticipationAmount = Number(form.poolParticipationAmount || 0);
@@ -138,12 +163,13 @@ export default function InvestorAllocationPanel({ investor }: Props): React.Reac
 
       setMessage(
         result.ready_for_funding
-          ? 'Allocation prepared. Executed agreements already exist, so the investor can fund immediately.'
-          : 'Allocation prepared. Fresh agreements have been generated and the investor must sign before funding.'
+          ? 'Additional allocation prepared. Executed sleeve agreements already cover this proposal, so the investor can fund immediately.'
+          : 'Additional allocation prepared. Fresh agreement documents have been generated for the incremental top-up.'
       );
       setAllocationTouched(false);
       setForm({
-        amount: '',
+        desiredTotalAmount: '',
+        additionalAmount: '',
         poolParticipationAmount: '',
         fixedDebtAmount: '',
         notes: '',
@@ -208,35 +234,89 @@ export default function InvestorAllocationPanel({ investor }: Props): React.Reac
 
       <div className="grid gap-6 p-6 lg:grid-cols-[1.1fr,0.9fr]">
         <div className="rounded-lg border border-neutral-medium bg-neutral-darker/40 p-4">
-          <h4 className="mb-3 text-sm font-semibold uppercase tracking-wide text-primary">Create Or Refresh Proposal</h4>
+          <h4 className="mb-3 text-sm font-semibold uppercase tracking-wide text-primary">Increase Allocation</h4>
           <div className="space-y-3">
+            <div className="grid gap-3 md:grid-cols-3">
+              <div className="rounded-lg border border-neutral-medium bg-neutral-dark p-3">
+                <div className="text-xs uppercase tracking-wide text-secondary">Currently Funded</div>
+                <div className="mt-1 text-lg font-semibold text-primary">{formatCurrency(currentlyFundedCapital)}</div>
+              </div>
+              <div className="rounded-lg border border-neutral-medium bg-neutral-dark p-3">
+                <div className="text-xs uppercase tracking-wide text-secondary">Open Proposal</div>
+                <div className="mt-1 text-lg font-semibold text-primary">
+                  {currentOpenIntent ? formatCurrency(Number(currentOpenIntent.total_amount || 0)) : '—'}
+                </div>
+              </div>
+              <div className="rounded-lg border border-neutral-medium bg-neutral-dark p-3">
+                <div className="text-xs uppercase tracking-wide text-secondary">New Total After Funding</div>
+                <div className="mt-1 text-lg font-semibold text-primary">
+                  {formatCurrency(currentlyFundedCapital + (Number(form.additionalAmount || 0) || 0))}
+                </div>
+              </div>
+            </div>
             <div>
-              <label className="text-xs uppercase tracking-wide text-secondary">Total Amount (₹)</label>
+              <label className="text-xs uppercase tracking-wide text-secondary">Desired Total Exposure (₹)</label>
               <input
                 type="number"
                 min="0"
                 step="0.01"
-                value={form.amount}
+                value={form.desiredTotalAmount}
                 onChange={(e) => {
-                  const nextAmount = e.target.value;
+                  const nextDesiredTotal = e.target.value;
+                  const parsedDesiredTotal = Number(nextDesiredTotal || 0);
+                  const nextAdditional = Number.isFinite(parsedDesiredTotal)
+                    ? Math.max(parsedDesiredTotal - currentlyFundedCapital, 0)
+                    : 0;
+
                   setForm((prev) => {
                     if (!allocationTouched) {
                       return {
                         ...prev,
-                        amount: nextAmount,
-                        poolParticipationAmount: nextAmount,
+                        desiredTotalAmount: nextDesiredTotal,
+                        additionalAmount: nextAdditional ? String(nextAdditional) : '',
+                        poolParticipationAmount: nextAdditional ? String(nextAdditional) : '',
                         fixedDebtAmount: '',
                       };
                     }
 
                     return {
                       ...prev,
-                      amount: nextAmount,
+                      desiredTotalAmount: nextDesiredTotal,
+                      additionalAmount: nextAdditional ? String(nextAdditional) : '',
                     };
                   });
                 }}
                 className="mt-2 w-full rounded-lg border border-neutral-medium bg-neutral-darker px-3 py-2 text-sm text-primary"
-                placeholder="Enter committed amount"
+                placeholder="Enter the revised total commitment"
+              />
+            </div>
+            <div>
+              <label className="text-xs uppercase tracking-wide text-secondary">Additional Allocation (₹)</label>
+              <input
+                type="number"
+                min="0"
+                step="0.01"
+                value={form.additionalAmount}
+                onChange={(e) => {
+                  const nextAmount = e.target.value;
+                  setForm((prev) => {
+                    if (!allocationTouched) {
+                      return {
+                        ...prev,
+                        additionalAmount: nextAmount,
+                        poolParticipationAmount: nextAmount,
+                        fixedDebtAmount: '',
+                      };
+                    }
+
+                    return {
+                        ...prev,
+                        additionalAmount: nextAmount,
+                    };
+                  });
+                }}
+                className="mt-2 w-full rounded-lg border border-neutral-medium bg-neutral-darker px-3 py-2 text-sm text-primary"
+                placeholder="Enter the incremental top-up amount"
               />
             </div>
             <div className="grid gap-3 md:grid-cols-2">
@@ -282,10 +362,15 @@ export default function InvestorAllocationPanel({ investor }: Props): React.Reac
               />
             </div>
             <p className="text-xs text-secondary">
-              Creating a new proposal supersedes open proposals and regenerates any non-executed agreement drafts for the relevant sleeves.
+              Funded agreements remain part of the investor’s history. Creating a new proposal only supersedes open proposals and regenerates any non-executed agreement drafts for the incremental top-up.
             </p>
+            {form.desiredTotalAmount && incrementalTopUp <= 0 && (
+              <p className="text-xs text-secondary">
+                The desired total is not above the already funded capital. Enter a higher total to generate an incremental proposal.
+              </p>
+            )}
             <Button size="sm" disabled={saving} onClick={handleCreateIntent}>
-              {saving ? 'Saving...' : 'Create Proposal'}
+              {saving ? 'Saving...' : 'Create Incremental Proposal'}
             </Button>
             {message && <p className="text-xs text-secondary">{message}</p>}
             {error && <p className="text-xs text-error">{error}</p>}
@@ -298,6 +383,9 @@ export default function InvestorAllocationPanel({ investor }: Props): React.Reac
             <div className="space-y-3 text-sm text-secondary">
               <div className="text-primary font-medium">{formatCurrency(Number(currentIntent.total_amount || 0))}</div>
               <div>{renderAllocationSummary(currentIntent.allocation_payload || [])}</div>
+              <div>
+                Funded {formatCurrency(Number(currentIntent.funded_amount || 0))} · Remaining {formatCurrency(Number(currentIntent.remaining_amount ?? currentIntent.total_amount ?? 0))}
+              </div>
               <span className={`inline-flex rounded border px-2 py-1 text-xs ${getStatusColor(currentIntent.status)}`}>
                 {STATUS_LABELS[currentIntent.status]}
               </span>
@@ -331,6 +419,9 @@ export default function InvestorAllocationPanel({ investor }: Props): React.Reac
                 <div>
                   <div className="font-medium text-primary">{formatCurrency(Number(intent.total_amount || 0))}</div>
                   <div className="text-xs text-secondary">{renderAllocationSummary(intent.allocation_payload || [])}</div>
+                  <div className="mt-1 text-xs text-secondary">
+                    Funded {formatCurrency(Number(intent.funded_amount || 0))} · Remaining {formatCurrency(Number(intent.remaining_amount ?? intent.total_amount ?? 0))}
+                  </div>
                   <div className="mt-1 text-xs text-secondary">
                     Created {formatDate(intent.created_at)}
                     {intent.agreements_ready_at ? ` · Agreements ready ${formatDate(intent.agreements_ready_at)}` : ''}

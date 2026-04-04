@@ -11,6 +11,7 @@ function supabaseAdmin() {
 
 type DeliveredRequestRow = {
   id: string;
+  delivered_at?: string | null;
   invoice_generated_at?: string | null;
   invoice_url?: string | null;
 };
@@ -31,6 +32,14 @@ async function authorizeBackfill(request: NextRequest) {
   await requireAdmin();
 }
 
+function parseDateBoundary(value: string | null, boundary: 'start' | 'end'): string | null {
+  if (!value) return null;
+  const suffix = boundary === 'start' ? 'T00:00:00.000Z' : 'T23:59:59.999Z';
+  const parsed = new Date(`${value}${suffix}`);
+  if (Number.isNaN(parsed.getTime())) return null;
+  return parsed.toISOString();
+}
+
 export async function POST(request: NextRequest) {
   try {
     await authorizeBackfill(request);
@@ -39,13 +48,25 @@ export async function POST(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const limit = Math.min(Number(searchParams.get('limit') || 100), 500);
     const forceRegenerate = searchParams.get('force') === 'true';
+    const renumberExisting = searchParams.get('renumber') === 'true';
+    const fromDate = parseDateBoundary(searchParams.get('from'), 'start');
+    const toDate = parseDateBoundary(searchParams.get('to'), 'end');
 
-    const { data: deliveredRequests, error: deliveredError } = await supabase
+    let deliveredQuery = supabase
       .from('purchase_requests')
-      .select('id, invoice_generated_at, invoice_url')
+      .select('id, delivered_at, invoice_generated_at, invoice_url')
       .eq('delivery_status', 'delivered')
       .order('delivered_at', { ascending: false })
       .limit(limit);
+
+    if (fromDate) {
+      deliveredQuery = deliveredQuery.gte('delivered_at', fromDate);
+    }
+    if (toDate) {
+      deliveredQuery = deliveredQuery.lte('delivered_at', toDate);
+    }
+
+    const { data: deliveredRequests, error: deliveredError } = await deliveredQuery;
 
     if (deliveredError) {
       return NextResponse.json({ error: 'Failed to fetch delivered requests' }, { status: 500 });
@@ -103,7 +124,8 @@ export async function POST(request: NextRequest) {
           },
           body: JSON.stringify({
             purchase_request_id: purchaseRequestId,
-            force_regenerate: forceRegenerate
+            force_regenerate: forceRegenerate,
+            renumber_existing: renumberExisting,
           })
         });
         const payload = await response.json();
@@ -130,12 +152,19 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({
       success: true,
-      message: forceRegenerate ? 'Invoice regeneration completed' : 'Invoice backfill completed',
+      message: forceRegenerate
+        ? renumberExisting
+          ? 'Invoice renumbering and regeneration completed'
+          : 'Invoice regeneration completed'
+        : 'Invoice backfill completed',
       scanned: delivered.length,
       attempted: candidateRequestIds.length,
       generated,
       skipped: delivered.length - candidateRequestIds.length,
       force: forceRegenerate,
+      renumber: renumberExisting,
+      from: searchParams.get('from'),
+      to: searchParams.get('to'),
       errors
     });
   } catch (error) {
@@ -159,13 +188,24 @@ export async function GET(request: NextRequest) {
     const supabase = supabaseAdmin();
     const { searchParams } = new URL(request.url);
     const limit = Math.min(Number(searchParams.get('limit') || 100), 500);
+    const fromDate = parseDateBoundary(searchParams.get('from'), 'start');
+    const toDate = parseDateBoundary(searchParams.get('to'), 'end');
 
-    const { data: deliveredRequests, error: deliveredError } = await supabase
+    let deliveredQuery = supabase
       .from('purchase_requests')
-      .select('id, invoice_generated_at, invoice_url')
+      .select('id, delivered_at, invoice_generated_at, invoice_url')
       .eq('delivery_status', 'delivered')
       .order('delivered_at', { ascending: false })
       .limit(limit);
+
+    if (fromDate) {
+      deliveredQuery = deliveredQuery.gte('delivered_at', fromDate);
+    }
+    if (toDate) {
+      deliveredQuery = deliveredQuery.lte('delivered_at', toDate);
+    }
+
+    const { data: deliveredRequests, error: deliveredError } = await deliveredQuery;
 
     if (deliveredError) {
       return NextResponse.json({ error: 'Failed to fetch delivered requests' }, { status: 500 });
@@ -191,6 +231,8 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({
       success: true,
       scanned: delivered.length,
+      from: searchParams.get('from'),
+      to: searchParams.get('to'),
       missing_count: missingInvoiceIds.length,
       missing_purchase_request_ids: missingInvoiceIds
     });

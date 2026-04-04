@@ -3,6 +3,17 @@ import { requireAdmin, getAdminUser } from '@/lib/admin-auth';
 import { createClient } from '@supabase/supabase-js';
 import { sendEmail, formatCurrency } from '@/lib/email';
 import { calculateCapitalAccrualMetrics } from '@/lib/capital-accrual';
+import { calculateSoftPoolValuation } from '@/lib/pool-valuation';
+import { applyLenderCapitalAllocations, normalizeLenderCapitalAllocations } from '@/lib/lender-sleeves';
+import { selectDirectInflowAllocationIntent } from '@/lib/direct-inflow-allocation';
+import {
+  calculateTrancheAllocations,
+  getAllocationIntentFundingSnapshot,
+  getLenderAllocationIntentById,
+  listLenderAllocationIntentsForInvestor,
+  syncAllocationIntentFundingStatus,
+  type LenderAllocationIntent,
+} from '@/lib/lender-allocation-intents';
 import {
   capitalReturnProcessedEmail,
   capitalUpdateInvestorEmail,
@@ -116,6 +127,7 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const { 
       investor_id, 
+      allocation_intent_id,
       transaction_type, 
       transaction_date,
       amount, 
@@ -501,6 +513,73 @@ export async function POST(request: NextRequest) {
     let existingFundedAmount = 0;
     let shouldMarkRequestFunded = false;
     let purchaseRequestApprovedAt: string | null = null;
+    let linkedAllocationIntent: LenderAllocationIntent | null = null;
+    let normalizedInflowAllocations: ReturnType<typeof normalizeLenderCapitalAllocations> | null = null;
+
+    if (transaction_type === 'inflow' && normalizedInvestorId) {
+      const explicitAllocationIntentId = typeof allocation_intent_id === 'string' && allocation_intent_id.trim().length > 0
+        ? allocation_intent_id.trim()
+        : null;
+
+      if (explicitAllocationIntentId) {
+        linkedAllocationIntent = await getLenderAllocationIntentById(explicitAllocationIntentId);
+        if (!linkedAllocationIntent || linkedAllocationIntent.investor_id !== normalizedInvestorId) {
+          return NextResponse.json(
+            { error: 'Linked allocation intent not found for this investor' },
+            { status: 400 }
+          );
+        }
+      } else {
+        const intentCandidates = await listLenderAllocationIntentsForInvestor(normalizedInvestorId);
+        const candidatesWithRemaining = await Promise.all(
+          intentCandidates.map(async (intent) => {
+            const snapshot = await getAllocationIntentFundingSnapshot(intent.id, Number(intent.total_amount || 0));
+            return {
+              id: intent.id,
+              status: intent.status,
+              created_at: intent.created_at,
+              remainingAmount: snapshot.remainingAmount,
+            };
+          })
+        );
+        const selectedIntent = selectDirectInflowAllocationIntent(candidatesWithRemaining);
+        linkedAllocationIntent = selectedIntent
+          ? (intentCandidates.find((intent) => intent.id === selectedIntent.id) || null)
+          : null;
+      }
+
+      if (linkedAllocationIntent) {
+        const linkedAllocationSnapshot = await getAllocationIntentFundingSnapshot(
+          linkedAllocationIntent.id,
+          Number(linkedAllocationIntent.total_amount || 0)
+        );
+
+        if (linkedAllocationSnapshot.remainingAmount <= 0.009) {
+          return NextResponse.json(
+            { error: 'This allocation has already been fully funded' },
+            { status: 400 }
+          );
+        }
+
+        if (numAmount - linkedAllocationSnapshot.remainingAmount > 0.01) {
+          return NextResponse.json(
+            {
+              error: `Direct inflow exceeds the remaining approved amount of ${linkedAllocationSnapshot.remainingAmount.toFixed(2)}`
+            },
+            { status: 400 }
+          );
+        }
+
+        normalizedInflowAllocations = calculateTrancheAllocations({
+          totalIntentAmount: Number(linkedAllocationIntent.total_amount || 0),
+          trancheAmount: numAmount,
+          targetAllocations: Array.isArray(linkedAllocationIntent.allocation_payload)
+            ? linkedAllocationIntent.allocation_payload
+            : [],
+          alreadyAllocatedByModel: linkedAllocationSnapshot.allocatedByModel,
+        });
+      }
+    }
 
     if (transaction_type === 'deployment' && normalizedPurchaseRequestId) {
       let purchaseRequest: any = null;
@@ -628,6 +707,10 @@ export async function POST(request: NextRequest) {
       updated_at: transactionTimestamp.toISOString()
     };
 
+    if (transaction_type === 'inflow' && normalizedInflowAllocations?.length === 1) {
+      transactionData.model_type = normalizedInflowAllocations[0]?.modelType || null;
+    }
+
     if (project_id?.trim()) {
       transactionData.project_id = project_id.trim();
     }
@@ -676,6 +759,105 @@ export async function POST(request: NextRequest) {
         { error: 'Failed to create capital transaction' },
         { status: 500 }
       );
+    }
+
+    if (transaction_type === 'inflow' && normalizedInvestorId && linkedAllocationIntent && normalizedInflowAllocations) {
+      let poolNavPerUnit: number | null = null;
+
+      if (normalizedInflowAllocations.some((allocation) => allocation.modelType === 'pool_participation')) {
+        const [
+          poolInflowsRes,
+          poolDistributionsRes,
+          poolTransactionsRes,
+          poolRequestsRes,
+          contractorsRes,
+          projectsRes,
+        ] = await Promise.all([
+          supabase
+            .from('capital_transactions')
+            .select('investor_id, amount, created_at, status, transaction_type')
+            .eq('transaction_type', 'inflow')
+            .eq('status', 'completed'),
+          supabase
+            .from('capital_transactions')
+            .select('investor_id, amount, created_at, status, transaction_type')
+            .eq('transaction_type', 'return')
+            .not('investor_id', 'is', null)
+            .eq('status', 'completed'),
+          supabase
+            .from('capital_transactions')
+            .select('purchase_request_id, amount, created_at, status, transaction_type')
+            .in('transaction_type', ['deployment', 'return'])
+            .not('purchase_request_id', 'is', null)
+            .eq('status', 'completed'),
+          supabase
+            .from('purchase_requests')
+            .select('id, project_id, contractor_id, status'),
+          supabase
+            .from('contractors')
+            .select('id, company_name, participation_fee_rate_daily'),
+          supabase
+            .from('projects')
+            .select('id, project_name'),
+        ]);
+
+        const poolValuation = calculateSoftPoolValuation({
+          investorInflows: poolInflowsRes.data || [],
+          investorDistributions: poolDistributionsRes.data || [],
+          poolTransactions: poolTransactionsRes.data || [],
+          purchaseRequests: poolRequestsRes.data || [],
+          contractors: contractorsRes.data || [],
+          projects: projectsRes.data || [],
+        });
+
+        poolNavPerUnit = Number(poolValuation.netNavPerUnit || 0) > 0
+          ? Number(poolValuation.netNavPerUnit)
+          : 100;
+      }
+
+      try {
+        await applyLenderCapitalAllocations({
+          investorId: normalizedInvestorId,
+          totalAmount: numAmount,
+          capitalTransactionId: data.id,
+          allocations: normalizedInflowAllocations,
+          poolNavPerUnit,
+        });
+      } catch (allocationError) {
+        console.error('Failed to apply lender allocations for direct inflow:', allocationError);
+        return NextResponse.json(
+          { error: 'Failed to apply lender sleeve allocations for direct inflow' },
+          { status: 500 }
+        );
+      }
+
+      const { error: paymentSubmissionError } = await supabase
+        .from('investor_payment_submissions')
+        .insert({
+          investor_id: normalizedInvestorId,
+          amount: numAmount,
+          payment_date: selectedDate,
+          payment_method: 'admin_direct_entry',
+          payment_reference: referenceNumberTrimmed,
+          notes: description.trim() || null,
+          allocation_intent_id: linkedAllocationIntent.id,
+          allocation_payload: normalizedInflowAllocations,
+          status: 'approved',
+          review_notes: 'Recorded directly by admin',
+          approved_at: new Date().toISOString(),
+          approved_by: adminUser?.id || 'unknown',
+          capital_transaction_id: data.id,
+        });
+
+      if (paymentSubmissionError) {
+        console.error('Failed to create approved payment submission for direct inflow:', paymentSubmissionError);
+        return NextResponse.json(
+          { error: 'Failed to create funding snapshot record for direct inflow' },
+          { status: 500 }
+        );
+      }
+
+      await syncAllocationIntentFundingStatus(linkedAllocationIntent.id);
     }
 
     const investorEmail = data?.investor?.email;

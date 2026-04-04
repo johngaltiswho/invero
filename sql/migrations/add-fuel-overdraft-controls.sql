@@ -14,12 +14,17 @@ SET
     ELSE 0
   END,
   warning_threshold_amount = CASE
-    WHEN COALESCE(account_limit_amount, monthly_fuel_budget, 0) >= 5000 THEN 5000
-    ELSE COALESCE(account_limit_amount, monthly_fuel_budget, 0)
+    WHEN account_mode = 'credit' THEN LEAST(COALESCE(account_limit_amount, monthly_fuel_budget, 0), 5000)
+    ELSE LEAST(COALESCE(monthly_fuel_budget, account_limit_amount, 0), 5000)
   END
-WHERE
-  overdraft_limit_amount IS NULL
-  OR warning_threshold_amount IS NULL;
+;
+
+ALTER TABLE contractor_fuel_settings
+  DROP CONSTRAINT IF EXISTS contractor_fuel_settings_warning_threshold_amount_check;
+
+ALTER TABLE contractor_fuel_settings
+  ADD CONSTRAINT contractor_fuel_settings_warning_threshold_amount_check
+  CHECK (warning_threshold_amount >= 0);
 
 COMMENT ON COLUMN contractor_fuel_settings.overdraft_allowed IS
   'Whether the SME fuel account may go below zero, treating the negative balance as fuel receivable / overdraft used.';

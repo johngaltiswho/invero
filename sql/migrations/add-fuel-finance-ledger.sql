@@ -4,8 +4,9 @@ ALTER TABLE contractor_fuel_settings
   ADD COLUMN IF NOT EXISTS account_limit_amount DECIMAL(12,2) NOT NULL DEFAULT 50000;
 
 UPDATE contractor_fuel_settings
-SET account_limit_amount = COALESCE(account_limit_amount, monthly_fuel_budget)
-WHERE account_limit_amount IS NULL OR account_limit_amount = 0;
+SET
+  account_mode = COALESCE(NULLIF(account_mode, ''), 'credit'),
+  account_limit_amount = COALESCE(NULLIF(account_limit_amount, 0), monthly_fuel_budget, 50000);
 
 COMMENT ON COLUMN contractor_fuel_settings.account_mode IS 'Unified SME fuel account mode: cash_carry uses prepaid balance semantics, credit uses outstanding/limit semantics.';
 COMMENT ON COLUMN contractor_fuel_settings.account_limit_amount IS 'Unified available balance / credit headroom cap used by the fuel account.';

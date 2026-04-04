@@ -141,6 +141,8 @@ async function supersedePriorCurrentAgreementsForSleeve(input: {
     throw new Error(priorAgreementsError.message || 'Failed to validate prior current agreements');
   }
 
+  const supersedableAgreementIds: string[] = [];
+
   for (const priorAgreement of priorAgreements || []) {
     if (!priorAgreement.lender_allocation_intent_id) continue;
 
@@ -154,10 +156,6 @@ async function supersedePriorCurrentAgreementsForSleeve(input: {
       throw new Error(allocationIntentError.message || 'Failed to validate prior allocation intent');
     }
 
-    if (allocationIntent?.status === 'funding_submitted' || allocationIntent?.status === 'completed') {
-      throw new AgreementWorkflowError('Cannot replace the current agreement after funding activity has started. Use amendment or remediation workflow instead');
-    }
-
     const { data: submissions, error: submissionsError } = await (supabaseAdmin as any)
       .from('investor_payment_submissions')
       .select('id')
@@ -169,9 +167,22 @@ async function supersedePriorCurrentAgreementsForSleeve(input: {
       throw new Error(submissionsError.message || 'Failed to validate prior payment submissions');
     }
 
-    if ((submissions || []).length > 0) {
-      throw new AgreementWorkflowError('Cannot replace the current agreement while a payment submission exists for it. Resolve the submission first');
+    const hasFundingActivity =
+      allocationIntent?.status === 'funding_submitted' ||
+      allocationIntent?.status === 'completed' ||
+      (submissions || []).length > 0;
+
+    // Keep funded history intact. Incremental top-ups may create a newer current agreement
+    // while the older executed/funded agreement remains part of the sleeve history.
+    if (hasFundingActivity) {
+      continue;
     }
+
+    supersedableAgreementIds.push(priorAgreement.id);
+  }
+
+  if (supersedableAgreementIds.length === 0) {
+    return;
   }
 
   const { error } = await (supabaseAdmin as any)
@@ -181,11 +192,7 @@ async function supersedePriorCurrentAgreementsForSleeve(input: {
       superseded_reason: input.reason,
       updated_at: new Date().toISOString(),
     })
-    .eq('investor_id', input.investorId)
-    .eq('lender_sleeve_id', input.lenderSleeveId)
-    .is('superseded_at', null)
-    .neq('id', input.exceptAgreementId)
-    .not('status', 'in', '("voided","expired")');
+    .in('id', supersedableAgreementIds);
 
   if (error) {
     throw new Error(error.message || 'Failed to supersede prior current agreements');
@@ -277,9 +284,16 @@ export function selectCurrentInvestorAgreements<T extends { lender_sleeve_id?: s
 
   return Array.from(grouped.values())
     .map((group) => {
-      const current =
-        group.find((agreement) => !agreement.superseded_at && !['voided', 'expired'].includes(String(agreement.status || '')));
-      return current;
+      const active = group.filter(
+        (agreement) => !agreement.superseded_at && !['voided', 'expired'].includes(String(agreement.status || ''))
+      );
+
+      if (active.length === 0) {
+        return null;
+      }
+
+      // Prefer an in-flight top-up agreement over older executed history for the same sleeve.
+      return active.find((agreement) => String(agreement.status || '') !== 'executed') || active[0];
     })
     .filter(Boolean) as T[];
 }
