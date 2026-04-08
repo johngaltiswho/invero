@@ -1,11 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAdmin, getAdminUser } from '@/lib/admin-auth';
-import { createClient } from '@supabase/supabase-js';
-import { sendEmail, formatCurrency } from '@/lib/email';
-import { calculateCapitalAccrualMetrics } from '@/lib/capital-accrual';
+import { sendEmail } from '@/lib/email';
 import { calculateSoftPoolValuation } from '@/lib/pool-valuation';
 import { applyLenderCapitalAllocations, normalizeLenderCapitalAllocations } from '@/lib/lender-sleeves';
 import { selectDirectInflowAllocationIntent } from '@/lib/direct-inflow-allocation';
+import { recordCapitalReturn } from '@/lib/capital-returns';
 import {
   calculateTrancheAllocations,
   getAllocationIntentFundingSnapshot,
@@ -15,28 +14,11 @@ import {
   type LenderAllocationIntent,
 } from '@/lib/lender-allocation-intents';
 import {
-  capitalReturnProcessedEmail,
   capitalUpdateInvestorEmail,
   contractorFundsDeployedEmail,
 } from '@/lib/notifications/email-templates';
-
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-);
-
-type InsertedReturnTransaction = {
-  amount: number | string;
-  reference_number?: string | null;
-  project_id?: string | null;
-  investor?: {
-    email?: string | null;
-    name?: string | null;
-  } | null;
-  project?: {
-    project_name?: string | null;
-  } | null;
-};
+import { supabaseAdmin as supabase } from '@/lib/supabase';
+const db = supabase as any;
 
 export async function GET(request: NextRequest) {
   try {
@@ -51,7 +33,7 @@ export async function GET(request: NextRequest) {
 
     const offset = (page - 1) * limit;
 
-    let query = supabase
+    let query = db
       .from('capital_transactions')
       .select(`
         *,
@@ -95,10 +77,10 @@ export async function GET(request: NextRequest) {
     }
 
     // Transform data to match frontend expectations
-    const transactions = data?.map(transaction => ({
+    const transactions = ((data || []) as any[]).map(transaction => ({
       ...transaction,
       project_name: transaction.project?.project_name
-    })) || [];
+    }));
 
     return NextResponse.json({
       transactions,
@@ -165,7 +147,7 @@ export async function POST(request: NextRequest) {
 
     // Ensure investor account exists (for legacy investors without auto-created accounts)
     if (requiresInvestorId && normalizedInvestorId) {
-      const { error: ensureAccountError } = await supabase
+      const { error: ensureAccountError } = await db
         .from('investor_accounts')
         .upsert({ investor_id: normalizedInvestorId }, { onConflict: 'investor_id' });
 
@@ -214,7 +196,7 @@ export async function POST(request: NextRequest) {
 
     // For deployment and withdrawal, check if investor has sufficient balance
     if ((transaction_type === 'deployment' || transaction_type === 'withdrawal') && normalizedInvestorId) {
-      const { data: account, error: accountError } = await supabase
+      const { data: account, error: accountError } = await db
         .from('investor_accounts')
         .select('available_balance')
         .eq('investor_id', normalizedInvestorId)
@@ -252,261 +234,26 @@ export async function POST(request: NextRequest) {
           { status: 400 }
         );
       }
+      try {
+        const result = await recordCapitalReturn({
+          purchaseRequestId: normalizedPurchaseRequestId,
+          amount: numAmount,
+          description,
+          referenceNumber: referenceNumberTrimmed,
+          transactionTimestamp,
+          adminUserId: adminUser?.id || 'unknown',
+        });
 
-      const { data: deployments, error: deploymentsError } = await supabase
-        .from('capital_transactions')
-        .select('investor_id, amount, project_id, contractor_id, created_at')
-        .eq('transaction_type', 'deployment')
-        .eq('status', 'completed')
-        .eq('purchase_request_id', normalizedPurchaseRequestId);
-
-      if (deploymentsError) {
-        console.error('Failed to fetch deployments for return allocation:', deploymentsError);
+        return NextResponse.json({
+          message: 'Capital return recorded and distributed successfully',
+          transactions: result.transactions,
+        }, { status: 201 });
+      } catch (returnError) {
         return NextResponse.json(
-          { error: 'Unable to allocate return across investors' },
-          { status: 500 }
-        );
-      }
-
-      if (!deployments || deployments.length === 0) {
-        return NextResponse.json(
-          { error: 'No completed deployments found for this purchase request' },
+          { error: returnError instanceof Error ? returnError.message : 'Failed to record capital return' },
           { status: 400 }
         );
       }
-
-      const aggregatedDeployments = deployments.reduce<Map<string, { amount: number; project_id?: string | null; contractor_id?: string | null }>>((map, deployment) => {
-        if (!deployment.investor_id) {
-          return map;
-        }
-        const existing = map.get(deployment.investor_id) || { amount: 0, project_id: deployment.project_id, contractor_id: deployment.contractor_id };
-        existing.amount += Number(deployment.amount) || 0;
-        if (!existing.project_id && deployment.project_id) {
-          existing.project_id = deployment.project_id;
-        }
-        if (!existing.contractor_id && deployment.contractor_id) {
-          existing.contractor_id = deployment.contractor_id;
-        }
-        map.set(deployment.investor_id, existing);
-        return map;
-      }, new Map());
-
-      const aggregatedEntries = Array.from(aggregatedDeployments.entries());
-
-      const totalDeployed = aggregatedEntries.reduce(
-        (sum, [, deployment]) => sum + deployment.amount,
-        0
-      );
-
-      if (totalDeployed <= 0) {
-        return NextResponse.json(
-          { error: 'Cannot allocate returns because deployment totals are zero' },
-          { status: 400 }
-        );
-      }
-
-      if (aggregatedEntries.length === 0) {
-        return NextResponse.json(
-          { error: 'Unable to determine investors for this purchase request' },
-          { status: 400 }
-        );
-      }
-
-      await Promise.all(
-        aggregatedEntries.map(([investorId]) =>
-          supabase
-            .from('investor_accounts')
-            .upsert({ investor_id: investorId }, { onConflict: 'investor_id' })
-        )
-      );
-
-      let amountAllocated = 0;
-      const transactionsToInsert = aggregatedEntries.map(([investorId, deployment], index) => {
-        const rawShare = totalDeployed === 0 ? 0 : deployment.amount / totalDeployed;
-        let shareAmount = Number((numAmount * rawShare).toFixed(2));
-        if (index === aggregatedEntries.length - 1) {
-          shareAmount = Number((numAmount - amountAllocated).toFixed(2));
-        }
-        amountAllocated += shareAmount;
-
-        return {
-          investor_id: investorId,
-          transaction_type: 'return' as const,
-          amount: shareAmount,
-          description: description.trim(),
-          admin_user_id: adminUser?.id || 'unknown',
-          status: 'completed',
-          created_at: transactionTimestamp.toISOString(),
-          updated_at: transactionTimestamp.toISOString(),
-          project_id: deployment.project_id,
-          contractor_id: deployment.contractor_id,
-          purchase_request_id: normalizedPurchaseRequestId,
-          reference_number: referenceNumberTrimmed
-        };
-      }).filter((transaction) => transaction.amount > 0);
-
-      if (transactionsToInsert.length === 0) {
-        return NextResponse.json(
-          { error: 'Unable to allocate capital return with the provided amount' },
-          { status: 400 }
-        );
-      }
-
-      const { data: purchaseRequest, error: purchaseRequestError } = await supabase
-        .from('purchase_requests')
-        .select('id, status, contractor_id')
-        .eq('id', normalizedPurchaseRequestId)
-        .single();
-
-      if (purchaseRequestError || !purchaseRequest) {
-        console.error('Failed to load purchase request for return:', purchaseRequestError);
-        return NextResponse.json(
-          { error: 'Purchase request not found for return allocation' },
-          { status: 404 }
-        );
-      }
-
-      const { data: contractorTerms, error: contractorTermsError } = await supabase
-        .from('contractors')
-        .select('platform_fee_rate, platform_fee_cap, participation_fee_rate_daily')
-        .eq('id', purchaseRequest.contractor_id)
-        .single();
-
-      if (contractorTermsError) {
-        console.error('Failed to load contractor terms for return allocation:', contractorTermsError);
-      }
-
-      const { data: existingReturns, error: existingReturnsError } = await supabase
-        .from('capital_transactions')
-        .select('purchase_request_id, transaction_type, amount, created_at')
-        .eq('transaction_type', 'return')
-        .eq('status', 'completed')
-        .eq('purchase_request_id', normalizedPurchaseRequestId);
-
-      if (existingReturnsError) {
-        console.error('Failed to load existing returns for purchase request:', existingReturnsError);
-      }
-
-      const metricsBeforeReturn = calculateCapitalAccrualMetrics({
-        transactions: [
-          ...(deployments || []).map((row) => ({
-            purchase_request_id: normalizedPurchaseRequestId,
-            transaction_type: 'deployment',
-            amount: row.amount,
-            created_at: row.created_at
-          })),
-          ...((existingReturns || []).map((row: { purchase_request_id?: string | null; transaction_type?: string | null; amount?: number | null; created_at?: string | null }) => ({
-            purchase_request_id: normalizedPurchaseRequestId,
-            transaction_type: 'return',
-            amount: row.amount,
-            created_at: row.created_at
-          })))
-        ],
-        terms: contractorTerms
-      });
-
-      if (metricsBeforeReturn.remainingInvestorDue <= 0) {
-        return NextResponse.json(
-          { error: 'This purchase request has already been fully returned' },
-          { status: 400 }
-        );
-      }
-
-      if (numAmount - metricsBeforeReturn.remainingInvestorDue > 1e-2) {
-        return NextResponse.json(
-          {
-            error: `Only ${formatCurrency(metricsBeforeReturn.remainingInvestorDue)} remains due for this purchase request`
-          },
-          { status: 400 }
-        );
-      }
-
-      const { data: insertedReturns, error: insertReturnsError } = await supabase
-        .from('capital_transactions')
-        .insert(transactionsToInsert)
-        .select(`
-          *,
-          investor:investors!capital_transactions_investor_id_fkey(
-            id,
-            name,
-            email,
-            investor_type
-          ),
-          project:projects!capital_transactions_project_id_fkey(
-            id,
-            project_name
-          )
-        `);
-
-      if (insertReturnsError) {
-        console.error('Failed to record distributed capital returns:', insertReturnsError);
-        return NextResponse.json(
-          { error: 'Failed to record capital returns' },
-          { status: 500 }
-        );
-      }
-
-      await Promise.all(
-        ((insertedReturns || []) as InsertedReturnTransaction[]).map(async (returnTxn) => {
-          const investorEmail = returnTxn?.investor?.email;
-          if (!investorEmail) return;
-          const investorName = returnTxn?.investor?.name || 'Investor';
-          const projectName = returnTxn?.project?.project_name || returnTxn.project_id || 'Project';
-          try {
-            await sendEmail({
-              to: investorEmail,
-              ...capitalReturnProcessedEmail({
-                recipientName: investorName,
-                projectName,
-                amount: Number(returnTxn.amount) || 0,
-                referenceNumber: returnTxn.reference_number,
-              }),
-            });
-          } catch (emailError) {
-            console.error('Failed to send capital return email:', emailError);
-          }
-        })
-      );
-
-      const metricsAfterReturn = calculateCapitalAccrualMetrics({
-        transactions: [
-          ...(deployments || []).map((row) => ({
-            purchase_request_id: normalizedPurchaseRequestId,
-            transaction_type: 'deployment',
-            amount: row.amount,
-            created_at: row.created_at
-          })),
-          ...((existingReturns || []).map((row: { purchase_request_id?: string | null; transaction_type?: string | null; amount?: number | null; created_at?: string | null }) => ({
-            purchase_request_id: normalizedPurchaseRequestId,
-            transaction_type: 'return',
-            amount: row.amount,
-            created_at: row.created_at
-          }))),
-          {
-            purchase_request_id: normalizedPurchaseRequestId,
-            transaction_type: 'return',
-            amount: numAmount,
-            created_at: transactionTimestamp.toISOString()
-          }
-        ],
-        terms: contractorTerms
-      });
-
-      if (metricsAfterReturn.remainingInvestorDue <= 1e-2 && purchaseRequest.status !== 'completed') {
-        const { error: closeError } = await supabase
-          .from('purchase_requests')
-          .update({ status: 'completed', updated_at: new Date().toISOString() })
-          .eq('id', normalizedPurchaseRequestId);
-
-        if (closeError) {
-          console.error('Failed to close purchase request after return:', closeError);
-        }
-      }
-
-      return NextResponse.json({
-        message: 'Capital return recorded and distributed successfully',
-        transactions: insertedReturns
-      }, { status: 201 });
     }
     let linkedPurchaseRequestId: string | null = null;
     let purchaseRequestTotal = 0;
@@ -585,7 +332,7 @@ export async function POST(request: NextRequest) {
       let purchaseRequest: any = null;
       let purchaseRequestError: { message?: string } | null = null;
 
-      const purchaseRequestWithPurchaseQty = await supabase
+      const purchaseRequestWithPurchaseQty = await db
         .from('purchase_requests')
         .select(`
           id,
@@ -604,7 +351,7 @@ export async function POST(request: NextRequest) {
       purchaseRequestError = purchaseRequestWithPurchaseQty.error;
 
       if (purchaseRequestError && String(purchaseRequestError.message || '').includes('purchase_qty')) {
-        const fallbackPurchaseRequest = await supabase
+        const fallbackPurchaseRequest = await db
           .from('purchase_requests')
           .select(`
             id,
@@ -650,7 +397,7 @@ export async function POST(request: NextRequest) {
       }, 0);
 
       if (purchaseRequestTotal > 0) {
-        const { data: fundingRows, error: existingFundingError } = await supabase
+        const { data: fundingRows, error: existingFundingError } = await db
           .from('capital_transactions')
           .select('amount')
           .eq('transaction_type', 'deployment')
@@ -735,7 +482,7 @@ export async function POST(request: NextRequest) {
       transactionData.purchase_request_id = normalizedPurchaseRequestId;
     }
 
-    const { data, error } = await supabase
+    const { data, error } = await db
       .from('capital_transactions')
       .insert([transactionData])
       .select(`
@@ -773,30 +520,30 @@ export async function POST(request: NextRequest) {
           contractorsRes,
           projectsRes,
         ] = await Promise.all([
-          supabase
+          db
             .from('capital_transactions')
             .select('investor_id, amount, created_at, status, transaction_type')
             .eq('transaction_type', 'inflow')
             .eq('status', 'completed'),
-          supabase
+          db
             .from('capital_transactions')
             .select('investor_id, amount, created_at, status, transaction_type')
             .eq('transaction_type', 'return')
             .not('investor_id', 'is', null)
             .eq('status', 'completed'),
-          supabase
+          db
             .from('capital_transactions')
             .select('purchase_request_id, amount, created_at, status, transaction_type')
             .in('transaction_type', ['deployment', 'return'])
             .not('purchase_request_id', 'is', null)
             .eq('status', 'completed'),
-          supabase
+          db
             .from('purchase_requests')
             .select('id, project_id, contractor_id, status'),
-          supabase
+          db
             .from('contractors')
             .select('id, company_name, participation_fee_rate_daily'),
-          supabase
+          db
             .from('projects')
             .select('id, project_name'),
         ]);
@@ -831,7 +578,7 @@ export async function POST(request: NextRequest) {
         );
       }
 
-      const { error: paymentSubmissionError } = await supabase
+      const { error: paymentSubmissionError } = await db
         .from('investor_payment_submissions')
         .insert({
           investor_id: normalizedInvestorId,
@@ -893,14 +640,14 @@ export async function POST(request: NextRequest) {
         purchase_request_id: normalizedPurchaseRequestId || null
       };
 
-      await supabase
+      await db
         .from('project_deployments')
         .insert([deploymentData]);
     }
 
     if (linkedPurchaseRequestId && shouldMarkRequestFunded) {
       const now = new Date().toISOString();
-      const { error: purchaseRequestUpdateError } = await supabase
+      const { error: purchaseRequestUpdateError } = await db
         .from('purchase_requests')
         .update({
           status: 'funded',
@@ -913,7 +660,7 @@ export async function POST(request: NextRequest) {
       if (purchaseRequestUpdateError) {
         console.error('Failed to update purchase request status after deployment:', purchaseRequestUpdateError);
       } else {
-        const { error: purchaseRequestItemsUpdateError } = await supabase
+        const { error: purchaseRequestItemsUpdateError } = await db
           .from('purchase_request_items')
           .update({
             status: 'ordered',
@@ -928,7 +675,7 @@ export async function POST(request: NextRequest) {
     }
 
     if (transaction_type === 'deployment' && contractor_id?.trim()) {
-      const { data: contractor } = await supabase
+      const { data: contractor } = await db
         .from('contractors')
         .select('email, contact_person, company_name')
         .eq('id', contractor_id.trim())

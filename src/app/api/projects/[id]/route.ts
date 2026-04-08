@@ -3,6 +3,11 @@ import { supabaseAdmin } from '@/lib/supabase';
 import { auth } from '@clerk/nextjs/server';
 import { getDefaultPOReference, listProjectPOReferences } from '@/lib/project-po-references';
 
+function isMissingColumnError(error: { code?: string | null; message?: string | null }, columnName: string) {
+  const message = String(error.message || '').toLowerCase();
+  return error.code === 'PGRST204' && message.includes(columnName.toLowerCase());
+}
+
 // GET /api/projects/[id] - Get specific project by ID
 export async function GET(
   request: NextRequest,
@@ -106,7 +111,6 @@ export async function PUT(
       'client_name',
       'project_address',
       'project_status',
-      'status',
       'estimated_value',
       'po_number',
       'funding_status',
@@ -123,13 +127,34 @@ export async function PUT(
     });
     updateData.updated_at = new Date().toISOString();
 
-    const { data: updatedProject, error: updateError } = await supabaseAdmin
+    let { data: updatedProject, error: updateError } = await supabaseAdmin
       .from('projects')
       .update(updateData)
       .eq('id', projectId)
       .eq('contractor_id', contractor.id)
       .select('*')
       .single();
+
+    const missingColumns = ['actual_end_date'];
+    for (const missingColumn of missingColumns) {
+      if (!(updateError && missingColumn in updateData && isMissingColumnError(updateError, missingColumn))) {
+        continue;
+      }
+
+      const { [missingColumn]: _ignoredMissingColumn, ...fallbackUpdateData } = updateData;
+      Object.assign(updateData, fallbackUpdateData);
+      delete updateData[missingColumn];
+
+      const retryResult = await supabaseAdmin
+        .from('projects')
+        .update(fallbackUpdateData)
+        .eq('id', projectId)
+        .eq('contractor_id', contractor.id)
+        .select('*')
+        .single();
+      updatedProject = retryResult.data;
+      updateError = retryResult.error;
+    }
 
     if (updateError) {
       console.error('Error updating project:', updateError);

@@ -1,22 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
-import { createClient } from '@supabase/supabase-js';
 import { createSignedUrlWithFallback } from '@/lib/storage-url';
 import { rateLimit, RateLimitPresets } from '@/lib/rate-limit';
 import { generateInvoiceForPurchaseRequest } from '@/lib/invoice-service';
+import { supabaseAdmin } from '@/lib/supabase';
 
 type InvoiceRow = {
   id: string;
   invoice_url?: string | null;
   [key: string]: unknown;
 };
-
-function supabaseAdmin() {
-  return createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!
-  );
-}
 
 /**
  * GET /api/invoices
@@ -32,7 +25,7 @@ export async function GET(request: NextRequest) {
     const { userId } = await auth();
     if (!userId) return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
 
-    const supabase = supabaseAdmin();
+    const supabase = supabaseAdmin;
 
     const { data: contractor } = await supabase
       .from('contractors')

@@ -17,6 +17,15 @@ export const dispatchPurchaseRequestSchema = z.object({
     .default(48),
 });
 
+export const backfillDeliverySchema = z.object({
+  purchase_request_id: z.string().uuid('Invalid purchase request ID format'),
+  delivered_at: z.string().datetime().optional(),
+  backfill_reason: z.string()
+    .min(5, 'Reason must be at least 5 characters')
+    .max(1000, 'Reason cannot exceed 1000 characters')
+    .trim(),
+});
+
 /**
  * Schema for raising a dispute (contractor)
  */
@@ -54,6 +63,7 @@ export const resolveDisputeSchema = z.object({
  * Type exports for TypeScript
  */
 export type DispatchPurchaseRequestInput = z.infer<typeof dispatchPurchaseRequestSchema>;
+export type BackfillDeliveryInput = z.infer<typeof backfillDeliverySchema>;
 export type RaiseDisputeInput = z.infer<typeof raiseDisputeSchema>;
 export type ConfirmDeliveryInput = z.infer<typeof confirmDeliverySchema>;
 export type ResolveDisputeInput = z.infer<typeof resolveDisputeSchema>;

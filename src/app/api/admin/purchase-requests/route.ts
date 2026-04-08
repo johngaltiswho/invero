@@ -126,6 +126,9 @@ async function fetchPurchaseRequests(options: FetchOptions = {}) {
         dispute_raised_at,
         dispute_reason,
         delivered_at,
+        backfill_recorded_at,
+        backfill_recorded_by,
+        backfill_reason,
         invoice_generated_at,
         contractors:contractor_id (
           id,
@@ -341,6 +344,9 @@ async function fetchPurchaseRequests(options: FetchOptions = {}) {
       dispute_raised_at: request.dispute_raised_at || null,
       dispute_reason: request.dispute_reason || null,
       delivered_at: request.delivered_at || null,
+      backfill_recorded_at: request.backfill_recorded_at || null,
+      backfill_recorded_by: request.backfill_recorded_by || null,
+      backfill_reason: request.backfill_reason || null,
       invoice_generated_at: request.invoice_generated_at || null,
       invoice_url: request.invoice_url || null,
       invoice_download_url: signedInvoiceUrl || request.invoice_url || null,
@@ -354,13 +360,21 @@ async function fetchPurchaseRequests(options: FetchOptions = {}) {
   }));
 
   const transactionsByRequest = new Map<string, Array<{ purchase_request_id: string; amount: number; transaction_type: string; created_at?: string | null }>>();
+  const latestRepaymentSubmissionByRequest = new Map<string, string>();
   if (requestIds.length > 0) {
-    const { data: fundingRows, error: fundingError } = await supabaseAdmin
-      .from('capital_transactions')
-      .select('purchase_request_id, amount, transaction_type, created_at')
-      .in('purchase_request_id', requestIds)
-      .in('transaction_type', ['deployment', 'return'])
-      .eq('status', 'completed');
+    const [{ data: fundingRows, error: fundingError }, { data: repaymentRows, error: repaymentError }] = await Promise.all([
+      supabaseAdmin
+        .from('capital_transactions')
+        .select('purchase_request_id, amount, transaction_type, created_at')
+        .in('purchase_request_id', requestIds)
+        .in('transaction_type', ['deployment', 'return'])
+        .eq('status', 'completed'),
+      supabaseAdmin
+        .from('contractor_repayment_submissions')
+        .select('purchase_request_id, status, created_at')
+        .in('purchase_request_id', requestIds)
+        .order('created_at', { ascending: false })
+    ]);
 
     if (fundingError) {
       console.error('Failed to load funding totals for purchase requests:', fundingError);
@@ -370,6 +384,16 @@ async function fetchPurchaseRequests(options: FetchOptions = {}) {
       );
       grouped.forEach((rows, requestId) => {
         transactionsByRequest.set(requestId, rows);
+      });
+    }
+
+    if (repaymentError) {
+      console.error('Failed to load contractor repayment submissions for purchase requests:', repaymentError);
+    } else {
+      (repaymentRows || []).forEach((row: { purchase_request_id: string; status: string }) => {
+        if (row.purchase_request_id && !latestRepaymentSubmissionByRequest.has(row.purchase_request_id)) {
+          latestRepaymentSubmissionByRequest.set(row.purchase_request_id, row.status);
+        }
       });
     }
   }
@@ -398,7 +422,8 @@ async function fetchPurchaseRequests(options: FetchOptions = {}) {
       remaining_due: metrics.remainingDue,
       investor_due: metrics.investorDue,
       remaining_investor_due: metrics.remainingInvestorDue,
-      days_outstanding: metrics.daysOutstanding
+      days_outstanding: metrics.daysOutstanding,
+      latest_repayment_submission_status: latestRepaymentSubmissionByRequest.get(request.id) || null
     };
   });
 

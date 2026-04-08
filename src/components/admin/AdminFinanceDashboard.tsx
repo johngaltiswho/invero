@@ -3,6 +3,7 @@
 import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { Button } from '@/components';
+import { getPurchaseRequestDisplayState } from '@/lib/purchase-request-state';
 
 type FinanceSummary = {
   total_requests: number;
@@ -57,12 +58,14 @@ type RequestFinanceRow = {
   contractor_name: string | null;
   vendor_name: string | null;
   status: string | null;
+  delivery_status?: string | null;
   requested_total: number;
   funded_total: number;
   returned_total: number;
   outstanding_principal: number;
   outstanding_fee: number;
   outstanding_total: number;
+  remaining_due: number;
   platform_fee: number;
   participation_fee: number;
   days_outstanding: number;
@@ -118,13 +121,18 @@ type InvestorPoolPosition = {
   net_gain: number;
 };
 
+const toFiniteNumber = (value: unknown): number => {
+  const numericValue = Number(value);
+  return Number.isFinite(numericValue) ? numericValue : 0;
+};
+
 const formatCurrency = (amount: number) =>
   new Intl.NumberFormat('en-IN', {
     style: 'currency',
     currency: 'INR',
     minimumFractionDigits: 0,
     maximumFractionDigits: 0
-  }).format(amount);
+  }).format(toFiniteNumber(amount));
 
 const AdminFinanceDashboard: React.FC = () => {
   const [summary, setSummary] = useState<FinanceSummary | null>(null);
@@ -393,41 +401,63 @@ const AdminFinanceDashboard: React.FC = () => {
             <thead className="bg-neutral-darker text-secondary text-xs uppercase tracking-wide">
               <tr>
                 <th className="px-6 py-4">Purchase Request</th>
-                <th className="px-6 py-4">Project</th>
                 <th className="px-6 py-4">Contractor / Vendor</th>
-                <th className="px-6 py-4">Funded</th>
+                <th className="px-6 py-4">Material</th>
+                <th className="px-6 py-4">Platform Fee</th>
+                <th className="px-6 py-4">Project Participation Fee</th>
                 <th className="px-6 py-4">Returned</th>
                 <th className="px-6 py-4">Principal Outstanding</th>
                 <th className="px-6 py-4">Accrued Fee Outstanding</th>
-                <th className="px-6 py-4">Total Investor Due</th>
+                <th className="px-6 py-4">Total Repayable</th>
                 <th className="px-6 py-4">Status</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-neutral-medium">
-              {requests.map((request) => (
-                <tr key={request.purchase_request_id} className="hover:bg-neutral-medium/20">
-                  <td className="px-6 py-4 text-primary font-medium">
-                    PR-{request.purchase_request_id.slice(0, 8).toUpperCase()}
-                  </td>
-                  <td className="px-6 py-4 text-secondary">
-                    <div>{request.project_name || 'Unnamed Project'}</div>
-                    <div className="text-xs text-secondary/70">{request.days_outstanding} days outstanding</div>
-                  </td>
-                  <td className="px-6 py-4 text-secondary">
-                    <div>{request.contractor_name || '—'}</div>
-                    <div className="text-xs text-secondary/70">Vendor: {request.vendor_name || '—'}</div>
-                  </td>
-                  <td className="px-6 py-4 text-success">{formatCurrency(request.funded_total)}</td>
-                  <td className="px-6 py-4 text-accent-amber">{formatCurrency(request.returned_total)}</td>
-                  <td className="px-6 py-4 text-primary">{formatCurrency(request.outstanding_principal)}</td>
-                  <td className="px-6 py-4 text-accent-blue">{formatCurrency(request.outstanding_fee)}</td>
-                  <td className="px-6 py-4 text-accent-blue font-medium">{formatCurrency(request.outstanding_total)}</td>
-                  <td className="px-6 py-4 text-secondary uppercase text-xs">{request.status || '—'}</td>
-                </tr>
-              ))}
+              {requests.map((request) => {
+                const fundedTotal = toFiniteNumber(request.funded_total);
+                const platformFee = toFiniteNumber(request.platform_fee);
+                const participationFee = toFiniteNumber(request.participation_fee);
+                const returnedTotal = toFiniteNumber(request.returned_total);
+                const outstandingPrincipal = toFiniteNumber(request.outstanding_principal);
+                const outstandingFee = toFiniteNumber(request.outstanding_fee);
+                const remainingDue = Number(request.remaining_due);
+                const totalRepayable =
+                  Number.isFinite(remainingDue)
+                    ? remainingDue
+                    : outstandingPrincipal + outstandingFee + platformFee;
+                const displayState = getPurchaseRequestDisplayState({
+                  status: request.status,
+                  delivery_status: request.delivery_status,
+                  funded_amount: fundedTotal,
+                  remaining_due: totalRepayable,
+                });
+
+                return (
+                  <tr key={request.purchase_request_id} className="hover:bg-neutral-medium/20">
+                    <td className="px-6 py-4 text-primary font-medium">
+                      <div>PR-{request.purchase_request_id.slice(0, 8).toUpperCase()}</div>
+                      <div className="text-xs text-secondary/70">{request.days_outstanding} days outstanding</div>
+                    </td>
+                    <td className="px-6 py-4 text-secondary">
+                      <div>{request.contractor_name || '—'}</div>
+                      <div className="text-xs text-secondary/70">Vendor: {request.vendor_name || '—'}</div>
+                    </td>
+                    <td className="px-6 py-4 text-success">{formatCurrency(fundedTotal)}</td>
+                    <td className="px-6 py-4 text-accent-amber">{formatCurrency(platformFee)}</td>
+                    <td className="px-6 py-4 text-accent-blue">{formatCurrency(participationFee)}</td>
+                    <td className="px-6 py-4 text-accent-amber">{formatCurrency(returnedTotal)}</td>
+                    <td className="px-6 py-4 text-primary">{formatCurrency(outstandingPrincipal)}</td>
+                    <td className="px-6 py-4 text-accent-blue">{formatCurrency(outstandingFee)}</td>
+                    <td className="px-6 py-4 text-accent-blue font-medium">{formatCurrency(totalRepayable)}</td>
+                    <td className="px-6 py-4">
+                      <span className={`text-xs px-2 py-1 rounded border ${displayState.classes}`}>{displayState.label}</span>
+                    </td>
+                  </tr>
+                );
+              })}
               {requests.length === 0 && (
                 <tr>
-                  <td className="px-6 py-6 text-center text-secondary" colSpan={9}>
+                  <td className="px-6 py-6 text-center text-secondary" colSpan={10}>
                     No purchase request reconciliation data available yet.
                   </td>
                 </tr>

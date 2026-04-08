@@ -3,7 +3,7 @@ import { requireAdmin } from '@/lib/admin-auth';
 import { createClient } from '@supabase/supabase-js';
 import { auditDeliveryStatus } from '@/lib/audit';
 import { currentUser } from '@clerk/nextjs/server';
-import { validateRequestBody, dispatchPurchaseRequestSchema } from '@/lib/validations';
+import { validateRequestBody, dispatchPurchaseRequestSchema, backfillDeliverySchema } from '@/lib/validations';
 
 function supabaseAdmin() {
   return createClient(
@@ -139,6 +139,9 @@ export async function GET(request: NextRequest) {
         dispute_raised_at,
         dispute_reason,
         delivered_at,
+        backfill_recorded_at,
+        backfill_recorded_by,
+        backfill_reason,
         invoice_generated_at,
         contractors ( id, company_name, email )
       `)
@@ -157,6 +160,118 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ success: true, data: data || [] });
   } catch (err) {
     console.error('Admin delivery GET error:', err);
+    if (err instanceof Error) {
+      if (err.message === 'Authentication required') {
+        return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
+      }
+      if (err.message === 'Admin access required') {
+        return NextResponse.json({ error: 'Forbidden: admin access required' }, { status: 403 });
+      }
+    }
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+  }
+}
+
+/**
+ * PATCH /api/admin/delivery
+ * Admin exception flow: record an already-delivered request and let the contractor
+ * dispute within 48 hours before it is auto-confirmed.
+ * Body: {
+ *   purchase_request_id: string,
+ *   delivered_at?: ISO string,
+ *   backfill_reason: string
+ * }
+ */
+export async function PATCH(request: NextRequest) {
+  try {
+    await requireAdmin();
+
+    const user = await currentUser();
+    const userId = user?.id || 'unknown';
+    const userEmail = user?.emailAddresses[0]?.emailAddress;
+    const userName = user?.firstName && user?.lastName ? `${user?.firstName} ${user?.lastName}` : user?.username;
+    const userRole = user?.publicMetadata?.role as string || user?.privateMetadata?.role as string || 'admin';
+
+    const body = await request.json();
+    const validation = await validateRequestBody(backfillDeliverySchema, body);
+    if (!validation.success) {
+      return 'response' in validation
+        ? validation.response
+        : NextResponse.json({ error: 'Validation failed' }, { status: 400 });
+    }
+
+    const { purchase_request_id, delivered_at, backfill_reason } = validation.data;
+    const supabase = supabaseAdmin();
+
+    const { data: pr, error: fetchError } = await supabase
+      .from('purchase_requests')
+      .select('id, delivery_status, contractor_id, dispatched_at, invoice_generated_at')
+      .eq('id', purchase_request_id)
+      .single();
+
+    if (fetchError || !pr) {
+      return NextResponse.json({ error: 'Purchase request not found' }, { status: 404 });
+    }
+
+    if (pr.delivery_status && pr.delivery_status !== 'not_dispatched') {
+      return NextResponse.json(
+        { error: `Cannot backfill delivery: current status is '${pr.delivery_status}'` },
+        { status: 400 }
+      );
+    }
+
+    if (pr.invoice_generated_at) {
+      return NextResponse.json(
+        { error: 'Cannot backfill delivery after invoice generation' },
+        { status: 400 }
+      );
+    }
+
+    const now = new Date();
+    const deliveredAt = delivered_at ? new Date(delivered_at) : now;
+    if (Number.isNaN(deliveredAt.getTime())) {
+      return NextResponse.json({ error: 'Invalid delivered_at timestamp' }, { status: 400 });
+    }
+    const confirmationDeadline = new Date(now.getTime() + 48 * 60 * 60 * 1000);
+
+    const { error: updateError } = await supabase
+      .from('purchase_requests')
+      .update({
+        delivery_status: 'backfill_pending_confirmation',
+        dispatched_at: pr.dispatched_at || deliveredAt.toISOString(),
+        delivered_at: deliveredAt.toISOString(),
+        dispute_deadline: confirmationDeadline.toISOString(),
+        backfill_recorded_at: now.toISOString(),
+        backfill_recorded_by: userEmail || userName || userId,
+        backfill_reason,
+        updated_at: now.toISOString(),
+      })
+      .eq('id', purchase_request_id);
+
+    if (updateError) {
+      console.error('Error backfilling delivery:', updateError);
+      return NextResponse.json({ error: 'Failed to record backfilled delivery' }, { status: 500 });
+    }
+
+    await auditDeliveryStatus({
+      purchaseRequestId: purchase_request_id,
+      oldStatus: pr.delivery_status,
+      newStatus: 'backfill_pending_confirmation',
+      userId,
+      userEmail,
+      userName,
+      userRole,
+      disputeReason: backfill_reason,
+      request
+    });
+
+    return NextResponse.json({
+      success: true,
+      message: `Backfilled delivery recorded. Contractor can dispute until ${confirmationDeadline.toISOString()}, after which the delivery will auto-confirm.`,
+      dispute_deadline: confirmationDeadline.toISOString(),
+    });
+  } catch (err) {
+    console.error('Admin delivery PATCH error:', err);
     if (err instanceof Error) {
       if (err.message === 'Authentication required') {
         return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });

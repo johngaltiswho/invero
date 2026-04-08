@@ -31,6 +31,7 @@ interface Invoice {
   invoice_date: string;
   total_amount: number;
   status: string;
+  invoice_kind?: 'supply' | 'repayment_fee' | string;
   invoice_url?: string;
   invoice_download_url?: string;
   project_id: string;
@@ -341,6 +342,7 @@ export default function DocumentsPage() {
                         <tr className="border-b border-neutral-medium text-left">
                           <th className="py-3 px-4 text-secondary font-medium">Invoice #</th>
                           <th className="py-3 px-4 text-secondary font-medium">Date</th>
+                          <th className="py-3 px-4 text-secondary font-medium">Type</th>
                           <th className="py-3 px-4 text-secondary font-medium">Amount</th>
                           <th className="py-3 px-4 text-secondary font-medium">Status</th>
                           <th className="py-3 px-4 text-secondary font-medium">Action</th>
@@ -351,6 +353,11 @@ export default function DocumentsPage() {
                           <tr key={inv.id} className="border-b border-neutral-medium/50 hover:bg-neutral-dark/30">
                             <td className="py-3 px-4 text-primary font-mono text-xs">{inv.invoice_number}</td>
                             <td className="py-3 px-4 text-secondary">{formatDate(inv.invoice_date)}</td>
+                            <td className="py-3 px-4 text-secondary">
+                              {inv.invoice_kind === 'repayment_fee'
+                                ? 'Project Participation Fee'
+                                : 'Supply'}
+                            </td>
                             <td className="py-3 px-4 text-primary">{formatCurrency(inv.total_amount)}</td>
                             <td className="py-3 px-4">
                               <span className={`text-xs px-2 py-1 rounded-full font-medium ${

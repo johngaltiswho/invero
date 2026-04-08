@@ -13,6 +13,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
+import { generateInvoiceForPurchaseRequest } from '@/lib/invoice-service';
 
 function supabaseAdmin() {
   return createClient(
@@ -32,13 +33,12 @@ export async function GET(request: NextRequest) {
   try {
     const supabase = supabaseAdmin();
 
-    // Find dispatched purchase requests where dispute_deadline has passed
-    // and invoice has not yet been generated
+    const nowIso = new Date().toISOString();
     const { data: overdueRequests, error: fetchError } = await supabase
       .from('purchase_requests')
-      .select('id, contractor_id, project_id')
-      .eq('delivery_status', 'dispatched')
-      .lt('dispute_deadline', new Date().toISOString())
+      .select('id, contractor_id, project_id, delivery_status')
+      .in('delivery_status', ['dispatched', 'backfill_pending_confirmation'])
+      .lt('dispute_deadline', nowIso)
       .is('invoice_generated_at', null);
 
     if (fetchError) {
@@ -55,21 +55,22 @@ export async function GET(request: NextRequest) {
 
     for (const pr of overdueRequests) {
       try {
-        const response = await fetch(`${appUrl}/api/invoices`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'x-internal-secret': process.env.CRON_SECRET || '',
-          },
-          body: JSON.stringify({ purchase_request_id: pr.id }),
-        });
+        const { error: updateError } = await supabase
+          .from('purchase_requests')
+          .update({
+            delivery_status: 'delivered',
+            delivered_at: nowIso,
+            updated_at: nowIso,
+          })
+          .eq('id', pr.id);
 
-        if (!response.ok) {
-          const err = await response.json().catch(() => ({ error: 'Unknown' }));
-          results.push({ id: pr.id, status: 'error', error: err.error });
-        } else {
-          results.push({ id: pr.id, status: 'success' });
+        if (updateError) {
+          results.push({ id: pr.id, status: 'error', error: updateError.message || 'Failed to update delivery status' });
+          continue;
         }
+
+        await generateInvoiceForPurchaseRequest({ purchaseRequestId: pr.id });
+        results.push({ id: pr.id, status: 'success' });
       } catch (err) {
         results.push({
           id: pr.id,

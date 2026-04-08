@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { ContractorDashboardLayout } from '@/components/ContractorDashboardLayout';
 import { Button, Input } from '@/components';
+import { getPurchaseRequestDisplayState } from '@/lib/purchase-request-state';
 
 interface Material {
   id: string;
@@ -42,6 +43,40 @@ interface Vendor {
   phone?: string;
 }
 
+interface PurchaseRequestRow {
+  id: string;
+  project_id: string;
+  project_po_reference_id?: string | null;
+  status: string;
+  created_at: string;
+  funded_at?: string | null;
+  approved_at?: string | null;
+  remarks?: string | null;
+  delivery_status?: string | null;
+  dispatched_at?: string | null;
+  dispute_deadline?: string | null;
+  dispute_raised_at?: string | null;
+  dispute_reason?: string | null;
+  delivered_at?: string | null;
+  backfill_recorded_at?: string | null;
+  backfill_recorded_by?: string | null;
+  backfill_reason?: string | null;
+  invoice_generated_at?: string | null;
+  invoice_url?: string | null;
+  invoice_download_url?: string | null;
+  funded_amount?: number | null;
+  returned_amount?: number | null;
+  remaining_due?: number | null;
+  latest_repayment_submission_status?: string | null;
+  project_po_references?: {
+    id: string;
+    po_number: string;
+    po_type?: string | null;
+    status?: string | null;
+    is_default?: boolean | null;
+  } | null;
+}
+
 export default function MaterialsPage() {
   const normalizeCategory = (value?: string) =>
     (value || '').trim().toLowerCase().replace(/\s+/g, ' ');
@@ -66,14 +101,13 @@ export default function MaterialsPage() {
   const [materialRequests, setMaterialRequests] = useState<Material[]>([]);
   const [vendors, setVendors] = useState<Vendor[]>([]);
   const [projects, setProjects] = useState<any[]>([]);
+  const [purchaseRequests, setPurchaseRequests] = useState<PurchaseRequestRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('');
   const [showRequestDialog, setShowRequestDialog] = useState(false);
   const [categories, setCategories] = useState<string[]>([]);
   const [activeTab, setActiveTab] = useState('materials');
-  const [deliveryRequests, setDeliveryRequests] = useState<any[]>([]);
-  const [deliveryLoading, setDeliveryLoading] = useState(false);
   const [confirmingDeliveryId, setConfirmingDeliveryId] = useState<string | null>(null);
   const [disputeDialog, setDisputeDialog] = useState<{ open: boolean; prId: string }>({ open: false, prId: '' });
   const [disputeReason, setDisputeReason] = useState('');
@@ -152,6 +186,20 @@ export default function MaterialsPage() {
           // Continue without requests - show empty state
         }
 
+        // Fetch purchase requests for purchase-status tab
+        try {
+          const purchaseRequestsResponse = await fetch('/api/purchase-requests');
+          const purchaseRequestsResult = await purchaseRequestsResponse.json();
+
+          if (purchaseRequestsResult.success) {
+            setPurchaseRequests(purchaseRequestsResult.data || []);
+          } else {
+            console.warn('Failed to fetch purchase requests:', purchaseRequestsResult.error);
+          }
+        } catch (purchaseRequestError) {
+          console.warn('Error fetching purchase requests:', purchaseRequestError);
+        }
+
         // Fetch contractor's projects
         // Note: The projects API will get contractor_id from auth context
         try {
@@ -178,24 +226,6 @@ export default function MaterialsPage() {
 
     loadData();
   }, []);
-
-  // Load delivery tracker data when that tab is activated
-  useEffect(() => {
-    if (activeTab !== 'delivery') return;
-    const fetchDelivery = async () => {
-      setDeliveryLoading(true);
-      try {
-        const res = await fetch('/api/delivery-tracker');
-        const data = await res.json();
-        if (data.success) setDeliveryRequests(data.data || []);
-      } catch {
-        // Delivery tracker may not be available yet
-      } finally {
-        setDeliveryLoading(false);
-      }
-    };
-    fetchDelivery();
-  }, [activeTab]);
 
   // Sort function
   const handleSort = (field: string, isRequest = false) => {
@@ -333,6 +363,60 @@ export default function MaterialsPage() {
     }
   };
 
+  const getPurchaseStatusStyle = (status?: string | null) => {
+    switch (String(status || '').toLowerCase()) {
+      case 'draft':
+        return 'bg-neutral-medium text-secondary border-neutral-light';
+      case 'submitted':
+        return 'bg-yellow-100 text-yellow-800 border-yellow-300';
+      case 'approved':
+        return 'bg-blue-100 text-blue-800 border-blue-300';
+      case 'funded':
+        return 'bg-purple-100 text-purple-800 border-purple-300';
+      case 'po_generated':
+        return 'bg-indigo-100 text-indigo-800 border-indigo-300';
+      case 'completed':
+        return 'bg-green-100 text-green-800 border-green-300';
+      case 'rejected':
+        return 'bg-red-100 text-red-800 border-red-300';
+      default:
+        return 'bg-gray-100 text-gray-800 border-gray-300';
+    }
+  };
+
+  const getProjectName = (projectId?: string | null) =>
+    projects.find((project) => project.id === projectId)?.project_name || '-';
+
+  const getDeliveryStatusStyle = (status?: string | null) => {
+    switch (String(status || '').toLowerCase()) {
+      case 'dispatched':
+        return 'bg-accent-amber/10 text-accent-amber border-accent-amber/30';
+      case 'backfill_pending_confirmation':
+        return 'bg-blue-900/10 text-blue-400 border-blue-400/30';
+      case 'disputed':
+        return 'bg-red-900/10 text-red-400 border-red-400/30';
+      case 'delivered':
+        return 'bg-green-900/10 text-green-400 border-green-400/30';
+      default:
+        return 'bg-neutral-medium text-secondary border-neutral-light';
+    }
+  };
+
+  const getDeliveryStatusLabel = (status?: string | null) => {
+    switch (String(status || '').toLowerCase()) {
+      case 'dispatched':
+        return 'Awaiting Confirmation';
+      case 'backfill_pending_confirmation':
+        return 'Backfill Awaiting Confirmation';
+      case 'disputed':
+        return 'Disputed';
+      case 'delivered':
+        return 'Delivered';
+      default:
+        return 'Not Dispatched';
+    }
+  };
+
   if (loading) {
     return (
       <ContractorDashboardLayout>
@@ -350,7 +434,7 @@ export default function MaterialsPage() {
         <div className="mb-8">
           <div className="flex justify-between items-start mb-4">
             <div className="flex-1">
-              <h1 className="text-3xl font-bold text-primary mb-2">Project Materials</h1>
+              <h1 className="text-3xl font-bold text-primary mb-2">Materials & Purchases</h1>
               <p className="text-secondary text-lg mb-3">
                 Request and manage materials for your construction projects
               </p>
@@ -410,20 +494,10 @@ export default function MaterialsPage() {
                   : 'text-secondary hover:text-primary'
               }`}
             >
-              Purchase Status
-            </button>
-            <button
-              onClick={() => setActiveTab('delivery')}
-              className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
-                activeTab === 'delivery'
-                  ? 'bg-neutral-dark text-primary shadow-sm'
-                  : 'text-secondary hover:text-primary'
-              }`}
-            >
-              Delivery Tracker
-              {deliveryRequests.filter(r => r.delivery_status === 'dispatched').length > 0 && (
+              Purchases & Delivery
+              {purchaseRequests.filter(r => ['dispatched', 'backfill_pending_confirmation'].includes(String(r.delivery_status || ''))).length > 0 && (
                 <span className="ml-2 bg-accent-amber text-neutral-darker text-xs px-2 py-0.5 rounded-full">
-                  {deliveryRequests.filter(r => r.delivery_status === 'dispatched').length}
+                  {purchaseRequests.filter(r => ['dispatched', 'backfill_pending_confirmation'].includes(String(r.delivery_status || ''))).length}
                 </span>
               )}
             </button>
@@ -671,12 +745,12 @@ export default function MaterialsPage() {
             )}
           </div>
         ) : activeTab === 'purchase' ? (
-          /* Purchase Status Tab */
+          /* Purchase & Delivery Tab */
           <div>
             <div className="mb-4 bg-blue-50 border border-blue-200 rounded-lg p-4">
-              <h3 className="font-semibold text-blue-900 mb-2">Purchase Status Summary</h3>
+              <h3 className="font-semibold text-blue-900 mb-2">Purchases & Delivery Summary</h3>
               <p className="text-sm text-blue-700">
-                Overview of your material purchase requests across all projects. To create new purchase requests, go to your individual project pages.
+                Track each purchase request from approval through dispatch, delivery confirmation, dispute, and invoice generation.
               </p>
             </div>
 
@@ -684,49 +758,148 @@ export default function MaterialsPage() {
               <table className="w-full">
                 <thead className="bg-neutral-medium border-b border-neutral-medium">
                   <tr>
-                    <th className="px-4 py-3 text-left text-sm font-medium text-primary">Material Name</th>
+                    <th className="px-4 py-3 text-left text-sm font-medium text-primary">Request</th>
                     <th className="px-4 py-3 text-left text-sm font-medium text-primary">Project</th>
+                    <th className="px-4 py-3 text-left text-sm font-medium text-primary">PO</th>
+                    <th className="px-4 py-3 text-left text-sm font-medium text-primary">Display State</th>
                     <th className="px-4 py-3 text-left text-sm font-medium text-primary">Purchase Status</th>
+                    <th className="px-4 py-3 text-left text-sm font-medium text-primary">Delivery Status</th>
                     <th className="px-4 py-3 text-left text-sm font-medium text-primary">Vendor</th>
-                    <th className="px-4 py-3 text-left text-sm font-medium text-primary">Quantity</th>
-                    <th className="px-4 py-3 text-left text-sm font-medium text-primary">Estimated Total</th>
+                    <th className="px-4 py-3 text-left text-sm font-medium text-primary">Dates</th>
+                    <th className="px-4 py-3 text-left text-sm font-medium text-primary">Notes</th>
+                    <th className="px-4 py-3 text-left text-sm font-medium text-primary">Actions</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-neutral-medium">
-                  {materials
-                    .filter(m => m.purchase_status && m.purchase_status !== 'none')
-                    .map((material) => (
-                    <tr key={material.id} className="hover:bg-neutral-medium transition-colors">
-                      <td className="px-4 py-3 text-sm font-medium text-primary">{material.name}</td>
-                      <td className="px-4 py-3 text-sm text-secondary">{material.project_context || '-'}</td>
-                      <td className="px-4 py-3">
-                        <span className={`text-xs px-2 py-1 rounded border ${
-                          material.purchase_status === 'purchase_requested' ? 'bg-yellow-100 text-yellow-800 border-yellow-300' :
-                          material.purchase_status === 'approved_for_purchase' ? 'bg-green-100 text-green-800 border-green-300' :
-                          material.purchase_status === 'rejected' ? 'bg-red-100 text-red-800 border-red-300' :
-                          'bg-gray-100 text-gray-800 border-gray-300'
-                        }`}>
-                          {material.purchase_status?.replace('_', ' ').toUpperCase()}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3 text-sm text-secondary">
-                        {material.vendor_id ? 
-                          vendors.find(v => v.id.toString() === material.vendor_id?.toString())?.name || 'Unknown Vendor' 
-                          : '-'}
-                      </td>
-                      <td className="px-4 py-3 text-sm text-secondary">
-                        {material.purchase_quantity ? `${material.purchase_quantity} ${material.unit}` : '-'}
-                      </td>
-                      <td className="px-4 py-3 text-sm text-secondary">
-                        {material.purchase_quantity && material.estimated_rate ? 
-                          `₹${(material.purchase_quantity * material.estimated_rate).toLocaleString('en-IN')}` : '-'}
-                      </td>
-                    </tr>
-                  ))}
+                  {purchaseRequests.map((purchaseRequest) => {
+                    const displayState = getPurchaseRequestDisplayState(purchaseRequest);
+                    const deadline = purchaseRequest.dispute_deadline ? new Date(purchaseRequest.dispute_deadline) : null;
+                    const now = new Date();
+                    const hoursLeft = deadline ? Math.max(0, (deadline.getTime() - now.getTime()) / 3600000) : 0;
+                    const canDispute = ['dispatched', 'backfill_pending_confirmation'].includes(String(purchaseRequest.delivery_status || '')) && deadline && deadline > now;
+                    const canConfirmDelivery = ['dispatched', 'backfill_pending_confirmation'].includes(String(purchaseRequest.delivery_status || ''));
+
+                    return (
+                      <tr key={purchaseRequest.id} className="hover:bg-neutral-medium transition-colors align-top">
+                        <td className="px-4 py-3 text-sm font-medium text-primary">
+                          #{purchaseRequest.id.slice(0, 8).toUpperCase()}
+                        </td>
+                        <td className="px-4 py-3 text-sm text-secondary">
+                          {getProjectName(purchaseRequest.project_id)}
+                        </td>
+                        <td className="px-4 py-3 text-sm text-secondary">
+                          {purchaseRequest.project_po_references?.po_number || '-'}
+                        </td>
+                        <td className="px-4 py-3">
+                          <span className={`text-xs px-2 py-1 rounded border ${displayState.classes}`}>
+                            {displayState.label}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3">
+                          <span className={`text-xs px-2 py-1 rounded border ${getPurchaseStatusStyle(purchaseRequest.status)}`}>
+                            {purchaseRequest.status?.replace(/_/g, ' ').toUpperCase()}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3">
+                          <div className="space-y-2">
+                            <span className={`inline-flex text-xs px-2 py-1 rounded border ${getDeliveryStatusStyle(purchaseRequest.delivery_status)}`}>
+                              {getDeliveryStatusLabel(purchaseRequest.delivery_status)}
+                            </span>
+                            {purchaseRequest.delivery_status === 'backfill_pending_confirmation' && purchaseRequest.backfill_reason && (
+                              <p className="text-xs text-secondary max-w-xs">
+                                Admin note: {purchaseRequest.backfill_reason}
+                              </p>
+                            )}
+                            {canDispute && (
+                              <p className={`text-xs font-medium ${hoursLeft < 6 ? 'text-red-400' : 'text-accent-amber'}`}>
+                                {purchaseRequest.delivery_status === 'backfill_pending_confirmation' ? 'Auto-confirmation' : 'Dispute window'} closes in {Math.floor(hoursLeft)}h {Math.round((hoursLeft % 1) * 60)}m
+                              </p>
+                            )}
+                            {purchaseRequest.delivery_status === 'disputed' && purchaseRequest.dispute_reason && (
+                              <p className="text-xs text-red-400 max-w-xs">Dispute: {purchaseRequest.dispute_reason}</p>
+                            )}
+                          </div>
+                        </td>
+                        <td className="px-4 py-3 text-sm text-secondary">
+                          {purchaseRequest.status === 'rejected' ? '-' : 'Assigned in admin'}
+                        </td>
+                        <td className="px-4 py-3 text-xs text-secondary space-y-1">
+                          <p>Created: {new Date(purchaseRequest.created_at).toLocaleDateString('en-IN')}</p>
+                          {purchaseRequest.dispatched_at && (
+                            <p>Dispatched: {new Date(purchaseRequest.dispatched_at).toLocaleDateString('en-IN')}</p>
+                          )}
+                          {purchaseRequest.delivered_at && (
+                            <p>Delivered: {new Date(purchaseRequest.delivered_at).toLocaleDateString('en-IN')}</p>
+                          )}
+                        </td>
+                        <td className="px-4 py-3 text-sm text-secondary max-w-xs">
+                          <div className="space-y-1">
+                            <p className="truncate">{purchaseRequest.remarks || '-'}</p>
+                          </div>
+                        </td>
+                        <td className="px-4 py-3">
+                          <div className="flex flex-col items-start gap-2">
+                            {canConfirmDelivery && (
+                              <button
+                                onClick={async () => {
+                                  try {
+                                    setConfirmingDeliveryId(purchaseRequest.id);
+                                    const res = await fetch('/api/delivery-tracker', {
+                                      method: 'PATCH',
+                                      headers: { 'Content-Type': 'application/json' },
+                                      body: JSON.stringify({ purchase_request_id: purchaseRequest.id, action: 'confirm' }),
+                                    });
+                                    const data = await res.json();
+                                    if (data.success) {
+                                      setPurchaseRequests(prev =>
+                                        prev.map(r =>
+                                          r.id === purchaseRequest.id
+                                            ? { ...r, delivery_status: 'delivered', delivered_at: new Date().toISOString() }
+                                            : r
+                                        )
+                                      );
+                                    } else {
+                                      alert(data.error || 'Failed to confirm delivery');
+                                    }
+                                  } catch {
+                                    alert('Failed to confirm delivery');
+                                  } finally {
+                                    setConfirmingDeliveryId(null);
+                                  }
+                                }}
+                                disabled={confirmingDeliveryId === purchaseRequest.id}
+                                className="px-3 py-1.5 text-xs font-medium bg-green-900/20 text-green-400 border border-green-400/30 rounded hover:bg-green-900/40 transition-colors disabled:opacity-50"
+                              >
+                                {confirmingDeliveryId === purchaseRequest.id ? 'Confirming...' : 'Confirm Delivery'}
+                              </button>
+                            )}
+                            {canDispute && (
+                              <button
+                                onClick={() => { setDisputeDialog({ open: true, prId: purchaseRequest.id }); setDisputeReason(''); }}
+                                className="px-3 py-1.5 text-xs font-medium bg-red-900/20 text-red-400 border border-red-400/30 rounded hover:bg-red-900/40 transition-colors"
+                              >
+                                Raise Dispute
+                              </button>
+                            )}
+                            {(purchaseRequest.invoice_download_url || purchaseRequest.invoice_url) && (
+                              <a
+                                href={purchaseRequest.invoice_download_url || purchaseRequest.invoice_url || '#'}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="px-3 py-1.5 text-xs font-medium bg-accent-amber/10 text-accent-amber border border-accent-amber/30 rounded hover:bg-accent-amber/20 transition-colors"
+                              >
+                                View Invoice
+                              </a>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
 
-              {materials.filter(m => m.purchase_status && m.purchase_status !== 'none').length === 0 && (
+              {purchaseRequests.length === 0 && (
                 <div className="p-8 text-center">
                   <h3 className="text-lg font-medium text-primary mb-2">No purchase requests yet</h3>
                   <p className="text-secondary mb-4">
@@ -739,192 +912,54 @@ export default function MaterialsPage() {
               )}
             </div>
           </div>
-        ) : (
-          /* Delivery Tracker Tab */
-          <div>
-            <div className="mb-4 bg-accent-amber/10 border border-accent-amber/30 rounded-lg p-4">
-              <p className="text-sm font-semibold text-accent-amber mb-1">Deemed Delivery Policy</p>
-              <p className="text-xs text-secondary">
-                When Finverno dispatches your order, you have 48–72 hours to raise a dispute. If no dispute is raised within that window, the delivery is confirmed and an invoice is automatically generated.
-              </p>
+        ) : null}
+
+        {/* Dispute Dialog */}
+        {disputeDialog.open && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+            <div className="bg-neutral-dark border border-neutral-medium rounded-lg p-6 w-full max-w-md">
+              <h3 className="text-base font-semibold text-primary mb-2">Raise Delivery Dispute</h3>
+              <p className="text-xs text-secondary mb-4">Describe the issue with this delivery (damaged goods, wrong items, quantity mismatch, etc.)</p>
+              <textarea
+                value={disputeReason}
+                onChange={e => setDisputeReason(e.target.value)}
+                placeholder="Describe the issue..."
+                rows={4}
+                className="w-full px-3 py-2 bg-neutral-darker border border-neutral-medium rounded-lg text-primary text-sm placeholder-neutral-medium focus:border-accent-amber focus:outline-none resize-none mb-4"
+              />
+              <div className="flex gap-3 justify-end">
+                <button
+                  onClick={() => setDisputeDialog({ open: false, prId: '' })}
+                  className="px-4 py-2 text-sm text-secondary hover:text-primary"
+                >
+                  Cancel
+                </button>
+                <button
+                  disabled={!disputeReason.trim()}
+                  onClick={async () => {
+                    try {
+                      const res = await fetch('/api/delivery-tracker', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ purchase_request_id: disputeDialog.prId, dispute_reason: disputeReason }),
+                      });
+                      const data = await res.json();
+                      if (data.success) {
+                        setPurchaseRequests(prev => prev.map(r => r.id === disputeDialog.prId ? { ...r, delivery_status: 'disputed', dispute_reason: disputeReason } : r));
+                        setDisputeDialog({ open: false, prId: '' });
+                      } else {
+                        alert(data.error || 'Failed to raise dispute');
+                      }
+                    } catch {
+                      alert('Failed to raise dispute');
+                    }
+                  }}
+                  className="px-4 py-2 text-sm font-medium bg-red-600 hover:bg-red-700 text-white rounded disabled:opacity-50"
+                >
+                  Submit Dispute
+                </button>
+              </div>
             </div>
-
-            {deliveryLoading ? (
-              <div className="flex justify-center py-12 text-secondary text-sm">Loading...</div>
-            ) : deliveryRequests.length === 0 ? (
-              <div className="text-center py-16 text-secondary">
-                <div className="text-4xl mb-3">🚚</div>
-                <p className="font-medium text-primary mb-1">No deliveries in progress</p>
-                <p className="text-sm">Dispatched purchase requests will appear here with their delivery status.</p>
-              </div>
-            ) : (
-              <div className="space-y-3">
-                {deliveryRequests.map((pr: any) => {
-                  const deadline = pr.dispute_deadline ? new Date(pr.dispute_deadline) : null;
-                  const now = new Date();
-                  const hoursLeft = deadline ? Math.max(0, (deadline.getTime() - now.getTime()) / 3600000) : 0;
-                  const canDispute = pr.delivery_status === 'dispatched' && deadline && deadline > now;
-                  const canConfirmDelivery = pr.delivery_status === 'dispatched';
-                  const statusColors: Record<string, string> = {
-                    dispatched: 'bg-accent-amber/10 text-accent-amber border-accent-amber/30',
-                    disputed: 'bg-red-900/10 text-red-400 border-red-400/30',
-                    delivered: 'bg-green-900/10 text-green-400 border-green-400/30',
-                  };
-                  const statusLabels: Record<string, string> = {
-                    dispatched: 'Awaiting Confirmation',
-                    disputed: 'Disputed',
-                    delivered: 'Delivered',
-                  };
-
-                  return (
-                    <div key={pr.id} className="bg-neutral-dark border border-neutral-medium rounded-lg p-4">
-                      <div className="flex items-start justify-between gap-4 flex-wrap">
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2 flex-wrap mb-1">
-                            <span className={`text-xs px-2 py-0.5 rounded-full border font-medium ${statusColors[pr.delivery_status] || 'bg-neutral-medium text-secondary'}`}>
-                              {statusLabels[pr.delivery_status] || pr.delivery_status}
-                            </span>
-                            <span className="text-xs text-secondary font-mono">PR-{pr.id.slice(0, 8).toUpperCase()}</span>
-                          </div>
-                          {pr.dispatched_at && (
-                            <p className="text-xs text-secondary mt-1">
-                              Dispatched: {new Date(pr.dispatched_at).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}
-                            </p>
-                          )}
-                          {canDispute && (
-                            <p className={`text-xs mt-1 font-medium ${hoursLeft < 6 ? 'text-red-400' : 'text-accent-amber'}`}>
-                              Dispute window closes in {Math.floor(hoursLeft)}h {Math.round((hoursLeft % 1) * 60)}m
-                            </p>
-                          )}
-                          {pr.delivery_status === 'disputed' && pr.dispute_reason && (
-                            <p className="text-xs text-red-400 mt-1">Dispute: {pr.dispute_reason}</p>
-                          )}
-                          {/* Line items summary */}
-                          {pr.purchase_request_items?.length > 0 && (
-                            <p className="text-xs text-secondary mt-1">
-                              {pr.purchase_request_items.length} item{pr.purchase_request_items.length > 1 ? 's' : ''}
-                              {' — '}
-                              {pr.purchase_request_items.slice(0, 2).map((item: any) => {
-                                const name = item.project_materials?.materials?.name;
-                                if (!name) return null;
-                                const hsn = item.hsn_code || item.project_materials?.materials?.hsn_code;
-                                return hsn ? `${name} (HSN: ${hsn})` : name;
-                              }
-                              ).filter(Boolean).join(', ')}
-                              {pr.purchase_request_items.length > 2 ? ` +${pr.purchase_request_items.length - 2} more` : ''}
-                            </p>
-                          )}
-                        </div>
-
-                        <div className="flex gap-2 shrink-0 flex-wrap">
-                          {canConfirmDelivery && (
-                            <button
-                              onClick={async () => {
-                                try {
-                                  setConfirmingDeliveryId(pr.id);
-                                  const res = await fetch('/api/delivery-tracker', {
-                                    method: 'PATCH',
-                                    headers: { 'Content-Type': 'application/json' },
-                                    body: JSON.stringify({ purchase_request_id: pr.id, action: 'confirm' }),
-                                  });
-                                  const data = await res.json();
-                                  if (data.success) {
-                                    setDeliveryRequests(prev =>
-                                      prev.map(r =>
-                                        r.id === pr.id
-                                          ? { ...r, delivery_status: 'delivered', delivered_at: new Date().toISOString() }
-                                          : r
-                                      )
-                                    );
-                                  } else {
-                                    alert(data.error || 'Failed to confirm delivery');
-                                  }
-                                } catch {
-                                  alert('Failed to confirm delivery');
-                                } finally {
-                                  setConfirmingDeliveryId(null);
-                                }
-                              }}
-                              disabled={confirmingDeliveryId === pr.id}
-                              className="px-3 py-1.5 text-xs font-medium bg-green-900/20 text-green-400 border border-green-400/30 rounded hover:bg-green-900/40 transition-colors disabled:opacity-50"
-                            >
-                              {confirmingDeliveryId === pr.id ? 'Confirming...' : 'Confirm Delivery'}
-                            </button>
-                          )}
-                          {canDispute && (
-                            <button
-                              onClick={() => { setDisputeDialog({ open: true, prId: pr.id }); setDisputeReason(''); }}
-                              className="px-3 py-1.5 text-xs font-medium bg-red-900/20 text-red-400 border border-red-400/30 rounded hover:bg-red-900/40 transition-colors"
-                            >
-                              Raise Dispute
-                            </button>
-                          )}
-                          {(pr.invoice_download_url || pr.invoice_url) && (
-                            <a
-                              href={pr.invoice_download_url || pr.invoice_url}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="px-3 py-1.5 text-xs font-medium bg-accent-amber/10 text-accent-amber border border-accent-amber/30 rounded hover:bg-accent-amber/20 transition-colors"
-                            >
-                              View Invoice
-                            </a>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-
-            {/* Dispute Dialog */}
-            {disputeDialog.open && (
-              <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-                <div className="bg-neutral-dark border border-neutral-medium rounded-lg p-6 w-full max-w-md">
-                  <h3 className="text-base font-semibold text-primary mb-2">Raise Delivery Dispute</h3>
-                  <p className="text-xs text-secondary mb-4">Describe the issue with this delivery (damaged goods, wrong items, quantity mismatch, etc.)</p>
-                  <textarea
-                    value={disputeReason}
-                    onChange={e => setDisputeReason(e.target.value)}
-                    placeholder="Describe the issue..."
-                    rows={4}
-                    className="w-full px-3 py-2 bg-neutral-darker border border-neutral-medium rounded-lg text-primary text-sm placeholder-neutral-medium focus:border-accent-amber focus:outline-none resize-none mb-4"
-                  />
-                  <div className="flex gap-3 justify-end">
-                    <button
-                      onClick={() => setDisputeDialog({ open: false, prId: '' })}
-                      className="px-4 py-2 text-sm text-secondary hover:text-primary"
-                    >
-                      Cancel
-                    </button>
-                    <button
-                      disabled={!disputeReason.trim()}
-                      onClick={async () => {
-                        try {
-                          const res = await fetch('/api/delivery-tracker', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ purchase_request_id: disputeDialog.prId, dispute_reason: disputeReason }),
-                          });
-                          const data = await res.json();
-                          if (data.success) {
-                            setDeliveryRequests(prev => prev.map(r => r.id === disputeDialog.prId ? { ...r, delivery_status: 'disputed', dispute_reason: disputeReason } : r));
-                            setDisputeDialog({ open: false, prId: '' });
-                          } else {
-                            alert(data.error || 'Failed to raise dispute');
-                          }
-                        } catch {
-                          alert('Failed to raise dispute');
-                        }
-                      }}
-                      className="px-4 py-2 text-sm font-medium bg-red-600 hover:bg-red-700 text-white rounded disabled:opacity-50"
-                    >
-                      Submit Dispute
-                    </button>
-                  </div>
-                </div>
-              </div>
-            )}
           </div>
         )}
 

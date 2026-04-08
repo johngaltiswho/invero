@@ -18,6 +18,7 @@ type AccrualTranche = {
 };
 
 const DAY_MS = 1000 * 60 * 60 * 24;
+const MONEY_EPSILON = 0.01;
 
 function toAmount(value: number | string | null | undefined): number {
   const parsed = Number(value ?? 0);
@@ -45,6 +46,7 @@ export type CapitalAccrualMetrics = {
   participationFee: number;
   outstandingParticipationFee: number;
   platformFee: number;
+  outstandingPlatformFee: number;
   investorDue: number;
   remainingInvestorDue: number;
   totalDue: number;
@@ -85,6 +87,8 @@ export function calculateCapitalAccrualMetrics(params: {
   let returnedAmount = 0;
   let participationFee = 0;
   let outstandingParticipationFee = 0;
+  let platformFee = 0;
+  let outstandingPlatformFee = 0;
 
   const accrueTo = (targetTime: number) => {
     tranches.forEach((tranche) => {
@@ -110,13 +114,20 @@ export function calculateCapitalAccrualMetrics(params: {
       remaining -= principalReduction;
       tranche.lastAccruedAt = tranche.remainingPrincipal > 0 ? tranche.lastAccruedAt : Math.max(tranche.lastAccruedAt, tranche.deployedAt);
     }
+
+    return remaining;
   };
 
   for (const event of events) {
     accrueTo(event.timestamp);
 
     if (event.type === 'deployment') {
+      const nextFundedAmount = fundedAmount + event.amount;
+      const nextPlatformFee = Math.min(nextFundedAmount * platformFeeRate, platformFeeCap);
+      const platformFeeDelta = Math.max(0, nextPlatformFee - platformFee);
       fundedAmount += event.amount;
+      platformFee = nextPlatformFee;
+      outstandingPlatformFee += platformFeeDelta;
       tranches.push({
         remainingPrincipal: event.amount,
         deployedAt: event.timestamp,
@@ -135,18 +146,36 @@ export function calculateCapitalAccrualMetrics(params: {
     }
 
     if (remainingReturn > 0) {
-      applyReturnToPrincipal(remainingReturn);
+      remainingReturn = applyReturnToPrincipal(remainingReturn);
+    }
+
+    if (remainingReturn > 0 && outstandingPlatformFee > 0) {
+      const appliedToPlatformFee = Math.min(outstandingPlatformFee, remainingReturn);
+      outstandingPlatformFee -= appliedToPlatformFee;
+      remainingReturn -= appliedToPlatformFee;
     }
   }
 
   accrueTo(asOfTime);
 
   const outstandingPrincipal = tranches.reduce((sum, tranche) => sum + tranche.remainingPrincipal, 0);
-  const platformFee = Math.min(fundedAmount * platformFeeRate, platformFeeCap);
   const investorDue = fundedAmount + participationFee;
-  const remainingInvestorDue = outstandingPrincipal + outstandingParticipationFee;
   const totalDue = investorDue + platformFee;
-  const remainingDue = remainingInvestorDue + platformFee;
+
+  // Legacy returns were sometimes recorded against fee + principal only.
+  // If the contractor has already returned the full contractor-facing amount,
+  // treat the platform fee bucket as settled during reconciliation.
+  if (
+    outstandingPrincipal <= MONEY_EPSILON &&
+    outstandingParticipationFee <= MONEY_EPSILON &&
+    outstandingPlatformFee > MONEY_EPSILON &&
+    returnedAmount + MONEY_EPSILON >= totalDue
+  ) {
+    outstandingPlatformFee = 0;
+  }
+
+  const remainingInvestorDue = Math.max(0, outstandingPrincipal + outstandingParticipationFee);
+  const remainingDue = Math.max(0, remainingInvestorDue + outstandingPlatformFee);
   const purchaseRequestTotal = params.purchaseRequestTotal;
   const remainingAmount = typeof purchaseRequestTotal === 'number'
     ? Math.max(purchaseRequestTotal - fundedAmount, 0)
@@ -167,6 +196,7 @@ export function calculateCapitalAccrualMetrics(params: {
     participationFee,
     outstandingParticipationFee,
     platformFee,
+    outstandingPlatformFee,
     investorDue,
     remainingInvestorDue,
     totalDue,

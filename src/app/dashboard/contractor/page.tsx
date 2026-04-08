@@ -22,6 +22,7 @@ export default function ContractorDashboard(): React.ReactElement {
   const [projects, setProjects] = useState<any[]>([]);
   const [projectsLoading, setProjectsLoading] = useState(true);
   const [showCreateProject, setShowCreateProject] = useState(false);
+  const [selectedQuickAction, setSelectedQuickAction] = useState('create_project');
   const [financeSummary, setFinanceSummary] = useState<{
     total_requests: number;
     total_requested_value: number;
@@ -99,6 +100,32 @@ export default function ContractorDashboard(): React.ReactElement {
     }
   }, [contractor]);
 
+  const activeProjectsCount = projects.filter((project) => {
+    const status = String(project.project_status || '').toLowerCase();
+    const isAwarded = status === 'awarded' || status === 'finalized';
+    const isCompleted = status === 'completed';
+    return isAwarded && !isCompleted;
+  }).length;
+
+  const handleQuickAction = () => {
+    switch (selectedQuickAction) {
+      case 'create_project':
+        setShowCreateProject(true);
+        return;
+      case 'manage_projects':
+        window.location.href = '/dashboard/contractor/projects';
+        return;
+      case 'update_progress':
+        window.location.href = '/dashboard/contractor/progress';
+        return;
+      case 'submit_invoice':
+        window.location.href = '/dashboard/contractor/invoices';
+        return;
+      default:
+        return;
+    }
+  };
+
   // Simple auth check - middleware handles contractor access control
   useEffect(() => {
     if (!isLoaded) return;
@@ -167,25 +194,19 @@ export default function ContractorDashboard(): React.ReactElement {
         )}
 
         {/* Top Row: Key Metrics + Quick Actions */}
-        <div className="grid lg:grid-cols-3 gap-6 mb-8">
-          <div className="bg-neutral-dark p-6 rounded-lg border border-neutral-medium">
-            <div className="flex items-center justify-between mb-4">
-              <div className="text-accent-amber text-sm font-mono">ACTIVE PROJECTS</div>
-              <div className="text-2xl">🏗️</div>
-            </div>
+        <div className="grid lg:grid-cols-3 gap-6 mb-6">
+          <div className="bg-neutral-dark p-6 rounded-lg border border-neutral-medium min-h-[180px]">
+            <div className="text-accent-amber text-sm font-mono mb-6">ACTIVE PROJECTS</div>
             <div className="text-2xl font-bold text-primary mb-1">
-              {projectsLoading ? '-' : projects.length}
+              {projectsLoading ? '-' : activeProjectsCount}
             </div>
             <div className="text-xs text-secondary">
-              {projectsLoading ? 'Loading...' : 'Currently active'}
+              {projectsLoading ? 'Loading...' : 'Awarded and in progress'}
             </div>
           </div>
           
-          <div className="bg-neutral-dark p-6 rounded-lg border border-neutral-medium">
-            <div className="flex items-center justify-between mb-4">
-              <div className="text-accent-amber text-sm font-mono">TOTAL VALUE</div>
-              <div className="text-2xl">💰</div>
-            </div>
+          <div className="bg-neutral-dark p-6 rounded-lg border border-neutral-medium min-h-[180px]">
+            <div className="text-accent-amber text-sm font-mono mb-6">TOTAL VALUE</div>
             <div className="text-2xl font-bold text-primary mb-1">
               {projectsLoading ? '-' : new Intl.NumberFormat('en-IN', {
                 style: 'currency',
@@ -197,50 +218,37 @@ export default function ContractorDashboard(): React.ReactElement {
             <div className="text-xs text-secondary">Contract value</div>
           </div>
 
-          <div className="bg-neutral-dark p-6 rounded-lg border border-neutral-medium">
+          <div className="bg-neutral-dark p-6 rounded-lg border border-neutral-medium min-h-[180px]">
             <h3 className="text-lg font-semibold text-primary mb-4">Quick Actions</h3>
             <div className="space-y-3">
-              <Button 
-                variant="primary" 
-                size="sm" 
-                className="w-full"
-                onClick={() => setShowCreateProject(true)}
+              <select
+                value={selectedQuickAction}
+                onChange={(event) => setSelectedQuickAction(event.target.value)}
+                className="w-full px-4 py-3 rounded-lg border bg-neutral-darker text-primary focus:outline-none focus:ring-2 focus:ring-accent-amber focus:border-transparent transition-all duration-200 border-neutral-medium"
               >
-                ➕ Create New Project
-              </Button>
-              <Button 
-                variant="outline" 
-                size="sm" 
+                <option value="create_project">Create New Project</option>
+                <option value="manage_projects">Manage Projects</option>
+                <option value="update_progress">Update Progress</option>
+                <option value="submit_invoice">Submit Invoice</option>
+              </select>
+              <Button
+                variant="primary"
+                size="sm"
                 className="w-full"
-                onClick={() => window.location.href = '/dashboard/contractor/projects'}
+                onClick={handleQuickAction}
               >
-                📋 Manage Projects
+                Run Action
               </Button>
-              <Button 
-                variant="outline" 
-                size="sm" 
-                className="w-full"
-                onClick={() => window.location.href = '/dashboard/contractor/progress'}
-              >
-                📊 Update Progress
-              </Button>
-              <Button 
-                variant="outline" 
-                size="sm" 
-                className="w-full"
-              >
-                💸 Submit Invoice
-              </Button>
+              <p className="text-xs text-secondary">
+                Use one quick action at a time without taking up a full card column.
+              </p>
             </div>
           </div>
         </div>
 
         <div className="grid lg:grid-cols-3 gap-6 mb-8">
-          <div className="bg-neutral-dark p-6 rounded-lg border border-neutral-medium">
-            <div className="flex items-center justify-between mb-4">
-              <div className="text-accent-amber text-sm font-mono">MATERIALS FUNDED</div>
-              <div className="text-2xl">💳</div>
-            </div>
+          <div className="bg-neutral-dark p-6 rounded-lg border border-neutral-medium min-h-[170px]">
+            <div className="text-accent-amber text-sm font-mono mb-6">MATERIALS FUNDED</div>
             <div className="text-2xl font-bold text-primary mb-1">
               {financeLoading || !financeSummary ? '-' : new Intl.NumberFormat('en-IN', {
                 style: 'currency',
@@ -254,11 +262,8 @@ export default function ContractorDashboard(): React.ReactElement {
             </div>
           </div>
 
-          <div className="bg-neutral-dark p-6 rounded-lg border border-neutral-medium">
-            <div className="flex items-center justify-between mb-4">
-              <div className="text-accent-amber text-sm font-mono">TOTAL DUE</div>
-              <div className="text-2xl">📌</div>
-            </div>
+          <div className="bg-neutral-dark p-6 rounded-lg border border-neutral-medium min-h-[170px]">
+            <div className="text-accent-amber text-sm font-mono mb-6">TOTAL DUE</div>
             <div className="text-2xl font-bold text-accent-blue mb-1">
               {financeLoading || !financeSummary ? '-' : new Intl.NumberFormat('en-IN', {
                 style: 'currency',
@@ -270,11 +275,8 @@ export default function ContractorDashboard(): React.ReactElement {
             <div className="text-xs text-secondary">Includes fees and interest</div>
           </div>
 
-          <div className="bg-neutral-dark p-6 rounded-lg border border-neutral-medium">
-            <div className="flex items-center justify-between mb-4">
-              <div className="text-accent-amber text-sm font-mono">PURCHASE REQUEST VALUE</div>
-              <div className="text-2xl">🧾</div>
-            </div>
+          <div className="bg-neutral-dark p-6 rounded-lg border border-neutral-medium min-h-[170px]">
+            <div className="text-accent-amber text-sm font-mono mb-6">PURCHASE REQUEST VALUE</div>
             <div className="text-2xl font-bold text-primary mb-1">
               {financeLoading || !financeSummary ? '-' : new Intl.NumberFormat('en-IN', {
                 style: 'currency',

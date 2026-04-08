@@ -9,6 +9,8 @@ import SimplePDFViewer from './SimplePDFViewer';
 import ContractorAgreementPanel from '@/components/admin/ContractorAgreementPanel';
 import ContractorUnderwritingPanel from '@/components/admin/ContractorUnderwritingPanel';
 import FuelProviderAgreementPanel from '@/components/admin/FuelProviderAgreementPanel';
+import AdminProjectReviewPanel from '@/components/admin/AdminProjectReviewPanel';
+import { getPurchaseRequestDisplayState } from '@/lib/purchase-request-state';
 
 interface ContractorWithDocuments extends Contractor {
   uploadProgress: number;
@@ -192,15 +194,22 @@ interface PurchaseRequest {
   vendor_name?: string | null;
   vendor_contact?: string | null;
   vendor_assigned_at?: string | null;
-  delivery_status?: 'not_dispatched' | 'dispatched' | 'disputed' | 'delivered' | null;
+  delivery_status?: 'not_dispatched' | 'dispatched' | 'backfill_pending_confirmation' | 'disputed' | 'delivered' | null;
   dispatched_at?: string | null;
   dispute_deadline?: string | null;
   dispute_raised_at?: string | null;
   dispute_reason?: string | null;
   delivered_at?: string | null;
+  backfill_recorded_at?: string | null;
+  backfill_recorded_by?: string | null;
+  backfill_reason?: string | null;
   invoice_generated_at?: string | null;
   invoice_url?: string | null;
   invoice_download_url?: string | null;
+  funded_amount?: number | null;
+  returned_amount?: number | null;
+  remaining_due?: number | null;
+  latest_repayment_submission_status?: string | null;
   contractors?: {
     id?: string;
     company_name: string;
@@ -251,7 +260,7 @@ interface ApprovedPump {
 
 export default function AdminVerificationDashboard(): React.ReactElement {
   const searchParams = useSearchParams();
-  const [activeTab, setActiveTab] = useState<'contractors' | 'agreements' | 'materials' | 'takeoffs' | 'purchases' | 'fuel' | 'fuel-providers'>('contractors');
+  const [activeTab, setActiveTab] = useState<'contractors' | 'projects' | 'agreements' | 'materials' | 'takeoffs' | 'purchases' | 'fuel' | 'fuel-providers'>('contractors');
   const [contractors, setContractors] = useState<ContractorWithDocuments[]>([]);
   const [materialRequests, setMaterialRequests] = useState<MaterialRequest[]>([]);
   const [takeoffItems, setTakeoffItems] = useState<BOQTakeoff[]>([]);
@@ -321,8 +330,14 @@ export default function AdminVerificationDashboard(): React.ReactElement {
   const [dispatchLoading, setDispatchLoading] = useState(false);
   const [disputeWindowHours, setDisputeWindowHours] = useState(48);
   const [generatingPO, setGeneratingPO] = useState(false);
+  const [generatingFeeInvoiceKind, setGeneratingFeeInvoiceKind] = useState<string | null>(null);
   const [showPurchaseModal, setShowPurchaseModal] = useState(false);
   const [purchaseAdminNotes, setPurchaseAdminNotes] = useState('');
+  const [showBackfillDeliveryModal, setShowBackfillDeliveryModal] = useState(false);
+  const [backfillDeliveryForm, setBackfillDeliveryForm] = useState({
+    deliveredAt: '',
+    reason: 'Delivery completed earlier; admin backfill recorded.'
+  });
   const [fuelPumps, setFuelPumps] = useState<any[]>([]);
   const [approvedPumps, setApprovedPumps] = useState<ApprovedPump[]>([]);
   const [showAddPump, setShowAddPump] = useState(false);
@@ -366,6 +381,11 @@ export default function AdminVerificationDashboard(): React.ReactElement {
 
   const formatLedgerEntryType = (entryType: string) =>
     entryType.replace(/_/g, ' ').replace(/\b\w/g, (char) => char.toUpperCase());
+
+  const formatDateTimeLocalValue = (date: Date) => {
+    const pad = (value: number) => String(value).padStart(2, '0');
+    return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+  };
 
   const renderContractorSelector = ({
     title,
@@ -449,6 +469,7 @@ export default function AdminVerificationDashboard(): React.ReactElement {
     const tab = searchParams.get('tab');
     if (
       tab === 'contractors' ||
+      tab === 'projects' ||
       tab === 'agreements' ||
       tab === 'materials' ||
       tab === 'takeoffs' ||
@@ -462,6 +483,8 @@ export default function AdminVerificationDashboard(): React.ReactElement {
 
   useEffect(() => {
     if (activeTab === 'contractors' || activeTab === 'agreements') {
+      loadContractors();
+    } else if (activeTab === 'projects') {
       loadContractors();
     } else if (activeTab === 'fuel') {
       loadContractors();
@@ -1074,6 +1097,52 @@ export default function AdminVerificationDashboard(): React.ReactElement {
     }
   };
 
+  const handleGenerateFeeInvoice = async (
+    purchaseRequestId: string,
+    invoiceKind: 'repayment_fee',
+    forceRegenerate = false
+  ) => {
+    const actionLabel = forceRegenerate ? 'regenerate' : 'generate';
+    if (!confirm(`Are you sure you want to ${actionLabel} the Project Participation Fee invoice?`)) {
+      return;
+    }
+
+    setGeneratingFeeInvoiceKind(invoiceKind);
+    try {
+      const response = await fetch('/api/admin/purchase-requests/fee-invoices', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          purchase_request_id: purchaseRequestId,
+          invoice_kind: invoiceKind,
+          force_regenerate: forceRegenerate
+        })
+      });
+
+      const result = await response.json();
+      if (!response.ok || !result.success) {
+        throw new Error(result.error || 'Failed to generate Project Participation Fee invoice');
+      }
+
+      alert(`Project Participation Fee invoice ${result.regenerated ? 'regenerated' : result.alreadyExisted ? 'already exists' : 'generated'} successfully: ${result.invoiceNumber}`);
+
+      if (result.invoiceUrl) {
+        window.open(result.invoiceUrl, '_blank', 'noopener,noreferrer');
+      }
+
+      const refreshed = await loadPurchaseRequests(prStatusFilter);
+      if (selectedPurchaseRequest?.id === purchaseRequestId) {
+        const updatedSelection = refreshed.find(req => req.id === purchaseRequestId) || null;
+        setSelectedPurchaseRequest(updatedSelection);
+      }
+    } catch (error) {
+      console.error('Failed to generate Project Participation Fee invoice:', error);
+      alert(error instanceof Error ? error.message : 'Failed to generate Project Participation Fee invoice');
+    } finally {
+      setGeneratingFeeInvoiceKind(null);
+    }
+  };
+
   const handleAddPump = async (e: React.FormEvent) => {
     e.preventDefault();
 
@@ -1492,9 +1561,47 @@ export default function AdminVerificationDashboard(): React.ReactElement {
     }
   };
 
+  const handleBackfillDelivered = async () => {
+    if (!selectedPurchaseRequest) return;
+
+    setDispatchLoading(true);
+    try {
+      const response = await fetch('/api/admin/delivery', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          purchase_request_id: selectedPurchaseRequest.id,
+          delivered_at: backfillDeliveryForm.deliveredAt
+            ? new Date(backfillDeliveryForm.deliveredAt).toISOString()
+            : undefined,
+          backfill_reason: backfillDeliveryForm.reason.trim(),
+        }),
+      });
+      const result = await response.json();
+      if (result.success) {
+        alert('Backfilled delivery recorded. Contractor now has 2 days to dispute before auto-confirmation.');
+        const refreshed = await loadPurchaseRequests();
+        const updated = (refreshed as PurchaseRequest[]).find(r => r.id === selectedPurchaseRequest.id) || null;
+        setSelectedPurchaseRequest(updated);
+        setShowBackfillDeliveryModal(false);
+      } else {
+        alert(result.error || 'Failed to record delivered backfill');
+      }
+    } catch (err) {
+      console.error('Error backfilling delivery:', err);
+      alert('Error recording delivered backfill');
+    } finally {
+      setDispatchLoading(false);
+    }
+  };
+
   const openPurchaseModal = (request: PurchaseRequest) => {
     setSelectedPurchaseRequest(request);
     setPurchaseAdminNotes(request.approval_notes || '');
+    setBackfillDeliveryForm({
+      deliveredAt: formatDateTimeLocalValue(new Date()),
+      reason: 'Delivery completed earlier; admin backfill recorded.'
+    });
     setShowPurchaseModal(true);
   };
 
@@ -1736,25 +1843,6 @@ export default function AdminVerificationDashboard(): React.ReactElement {
     }
   };
 
-  const getPurchaseRequestStatusStyle = (status: PurchaseRequest['status']) => {
-    switch (status) {
-      case 'submitted':
-        return { label: 'Submitted', classes: 'text-yellow-600 bg-yellow-100 border-yellow-300' };
-      case 'approved':
-        return { label: 'Approved', classes: 'text-green-600 bg-green-100 border-green-300' };
-      case 'funded':
-        return { label: 'Funded', classes: 'text-blue-600 bg-blue-100 border-blue-300' };
-      case 'po_generated':
-        return { label: 'PO Generated', classes: 'text-indigo-600 bg-indigo-100 border-indigo-300' };
-      case 'completed':
-        return { label: 'Completed', classes: 'text-emerald-700 bg-emerald-100 border-emerald-300' };
-      case 'rejected':
-        return { label: 'Rejected', classes: 'text-red-600 bg-red-100 border-red-300' };
-      default:
-        return { label: status.replace(/_/g, ' ').toUpperCase(), classes: 'text-secondary bg-neutral-medium/50 border-neutral-medium' };
-    }
-  };
-
   const getDocumentIcon = (docType: DocumentType) => {
     switch (docType) {
       case 'pan_card': return '🆔';
@@ -1802,6 +1890,16 @@ export default function AdminVerificationDashboard(): React.ReactElement {
               }`}
             >
               SME Verification
+            </button>
+            <button
+              onClick={() => setActiveTab('projects')}
+              className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+                activeTab === 'projects'
+                  ? 'bg-neutral-dark text-primary'
+                  : 'text-secondary hover:text-primary'
+              }`}
+            >
+              Projects &amp; POs
             </button>
             <button
               onClick={() => setActiveTab('materials')}
@@ -3005,6 +3103,8 @@ export default function AdminVerificationDashboard(): React.ReactElement {
         </>
       )}
 
+      {activeTab === 'projects' && <AdminProjectReviewPanel />}
+
       {activeTab === 'takeoffs' && (
         /* Quantity Takeoffs Tab */
         <div className="grid lg:grid-cols-3 gap-8">
@@ -3399,7 +3499,7 @@ export default function AdminVerificationDashboard(): React.ReactElement {
                   <th className="text-left p-3 text-primary font-semibold">Items</th>
                   <th className="text-left p-3 text-primary font-semibold">Amount</th>
                   <th className="text-left p-3 text-primary font-semibold">Vendor</th>
-                  <th className="text-left p-3 text-primary font-semibold">Status</th>
+                  <th className="text-left p-3 text-primary font-semibold">Display State</th>
                   <th className="text-left p-3 text-primary font-semibold">Delivery</th>
                   <th className="text-right p-3 text-primary font-semibold">Action</th>
                 </tr>
@@ -3413,10 +3513,12 @@ export default function AdminVerificationDashboard(): React.ReactElement {
                   </tr>
                 ) : (
                   purchaseRequests.map((request) => {
-                    const statusMeta = getPurchaseRequestStatusStyle(request.status);
+                    const displayState = getPurchaseRequestDisplayState(request);
                     const deliveryLabel =
                       request.delivery_status === 'dispatched'
                         ? 'Dispatched'
+                        : request.delivery_status === 'backfill_pending_confirmation'
+                        ? 'Backfill Pending SME Confirmation'
                         : request.delivery_status === 'disputed'
                         ? 'Disputed'
                         : request.delivery_status === 'delivered'
@@ -3434,7 +3536,7 @@ export default function AdminVerificationDashboard(): React.ReactElement {
                         </td>
                         <td className="p-3 text-secondary">{request.vendor_name || 'Unassigned'}</td>
                         <td className="p-3">
-                          <span className={`text-xs px-2 py-1 rounded border ${statusMeta.classes}`}>{statusMeta.label}</span>
+                          <span className={`text-xs px-2 py-1 rounded border ${displayState.classes}`}>{displayState.label}</span>
                         </td>
                         <td className="p-3 text-secondary text-xs">{deliveryLabel}</td>
                         <td className="p-3 text-right">
@@ -3729,7 +3831,7 @@ export default function AdminVerificationDashboard(): React.ReactElement {
               <div className="grid md:grid-cols-3 gap-4 text-sm">
                 <div className="bg-neutral-darker border border-neutral-medium rounded-lg p-3">
                   <div className="text-secondary">Status</div>
-                  <div className="text-primary font-medium mt-1">{getPurchaseRequestStatusStyle(selectedPurchaseRequest.status).label}</div>
+                  <div className="text-primary font-medium mt-1">{getPurchaseRequestDisplayState(selectedPurchaseRequest).label}</div>
                 </div>
                 <div className="bg-neutral-darker border border-neutral-medium rounded-lg p-3">
                   <div className="text-secondary">Total Items</div>
@@ -3898,7 +4000,7 @@ export default function AdminVerificationDashboard(): React.ReactElement {
                 (!selectedPurchaseRequest.delivery_status || selectedPurchaseRequest.delivery_status === 'not_dispatched') && (
                 <div className="bg-blue-500/5 border border-blue-500/20 rounded-lg p-4">
                   <h3 className="text-base font-semibold text-primary mb-2">Initiate Delivery</h3>
-                  <div className="flex items-center gap-3">
+                  <div className="flex items-center gap-3 flex-wrap">
                     <select
                       value={disputeWindowHours}
                       onChange={e => setDisputeWindowHours(Number(e.target.value))}
@@ -3915,7 +4017,23 @@ export default function AdminVerificationDashboard(): React.ReactElement {
                     >
                       {dispatchLoading ? 'Processing...' : 'Mark as Dispatched'}
                     </button>
+                    <button
+                      onClick={() => {
+                        setBackfillDeliveryForm({
+                          deliveredAt: formatDateTimeLocalValue(selectedPurchaseRequest.delivered_at ? new Date(selectedPurchaseRequest.delivered_at) : new Date()),
+                          reason: selectedPurchaseRequest.backfill_reason || 'Delivery completed earlier; admin backfill recorded.'
+                        });
+                        setShowBackfillDeliveryModal(true);
+                      }}
+                      disabled={dispatchLoading}
+                      className="px-5 py-2 bg-neutral-darker text-primary border border-neutral-medium rounded-md text-sm font-medium hover:bg-neutral-medium disabled:opacity-50"
+                    >
+                      {dispatchLoading ? 'Processing...' : 'Record Delivered (Backfill)'}
+                    </button>
                   </div>
+                  <p className="text-xs text-secondary mt-3">
+                    Use backfill only when delivery already happened but ops missed the live dispatch update. SME will get 2 days to dispute before auto-confirmation.
+                  </p>
                 </div>
               )}
 
@@ -3927,6 +4045,26 @@ export default function AdminVerificationDashboard(): React.ReactElement {
                     <p className="text-blue-800">
                       Dispute deadline: {new Date(selectedPurchaseRequest.dispute_deadline).toLocaleString()}
                     </p>
+                  )}
+                </div>
+              )}
+
+              {selectedPurchaseRequest.delivery_status === 'backfill_pending_confirmation' && (
+                <div className="p-4 bg-amber-50 border border-amber-200 rounded-lg text-sm">
+                  <p className="font-medium text-amber-900">Backfilled Delivery Awaiting SME Confirmation</p>
+                  {selectedPurchaseRequest.delivered_at && (
+                    <p className="text-amber-800">Recorded delivered date: {formatDate(selectedPurchaseRequest.delivered_at)}</p>
+                  )}
+                  {selectedPurchaseRequest.backfill_recorded_at && (
+                    <p className="text-amber-800">Backfill recorded: {formatDate(selectedPurchaseRequest.backfill_recorded_at)}</p>
+                  )}
+                  {selectedPurchaseRequest.dispute_deadline && (
+                    <p className="text-amber-800">
+                      SME dispute deadline: {new Date(selectedPurchaseRequest.dispute_deadline).toLocaleString()}
+                    </p>
+                  )}
+                  {selectedPurchaseRequest.backfill_reason && (
+                    <p className="text-amber-800 mt-1">Reason: {selectedPurchaseRequest.backfill_reason}</p>
                   )}
                 </div>
               )}
@@ -3977,7 +4115,86 @@ export default function AdminVerificationDashboard(): React.ReactElement {
                       >
                         {generatingPO ? 'Regenerating...' : 'Regenerate Invoice'}
                       </Button>
+                      )}
+                    </div>
+                    {getPurchaseRequestDisplayState(selectedPurchaseRequest).key === 'repaid' && (
+                      <div className="mt-4 border-t border-green-200 pt-4">
+                        <p className="font-medium text-green-900">Project Participation Fee Invoice</p>
+                        <p className="text-green-800 mt-1">
+                          This purchase request is fully repaid. Generate the Project Participation Fee invoice from this procurement record.
+                        </p>
+                        <div className="mt-3 flex gap-2 flex-wrap">
+                          <Button
+                            size="sm"
+                            variant="primary"
+                            onClick={() => handleGenerateFeeInvoice(selectedPurchaseRequest.id, 'repayment_fee')}
+                            disabled={generatingFeeInvoiceKind === 'repayment_fee'}
+                          >
+                            {generatingFeeInvoiceKind === 'repayment_fee' ? 'Generating...' : 'Generate Project Participation Fee Invoice'}
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => handleGenerateFeeInvoice(selectedPurchaseRequest.id, 'repayment_fee', true)}
+                            disabled={generatingFeeInvoiceKind === 'repayment_fee'}
+                          >
+                            {generatingFeeInvoiceKind === 'repayment_fee' ? 'Regenerating...' : 'Regenerate Project Participation Fee Invoice'}
+                          </Button>
+                        </div>
+                      </div>
                     )}
+                  </div>
+              )}
+              
+              {showBackfillDeliveryModal && (
+                <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[70] p-4">
+                  <div className="w-full max-w-lg bg-neutral-dark border border-neutral-medium rounded-xl shadow-2xl">
+                    <div className="px-6 py-5 border-b border-neutral-medium">
+                      <h3 className="text-lg font-semibold text-primary">Record Delivered Backfill</h3>
+                      <p className="text-sm text-secondary mt-1">
+                        Use this only when delivery already happened but the admin dispatch update was missed. The SME will have 2 days to dispute.
+                      </p>
+                    </div>
+
+                    <div className="px-6 py-5 space-y-4">
+                      <div>
+                        <label className="block text-sm font-medium text-primary mb-2">Actual Delivered Date &amp; Time</label>
+                        <input
+                          type="datetime-local"
+                          value={backfillDeliveryForm.deliveredAt}
+                          onChange={(e) => setBackfillDeliveryForm(prev => ({ ...prev, deliveredAt: e.target.value }))}
+                          className="w-full px-3 py-2 bg-neutral-darker border border-neutral-medium rounded-md text-primary"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-sm font-medium text-primary mb-2">Reason / Proof Note</label>
+                        <textarea
+                          rows={4}
+                          value={backfillDeliveryForm.reason}
+                          onChange={(e) => setBackfillDeliveryForm(prev => ({ ...prev, reason: e.target.value }))}
+                          className="w-full px-3 py-2 bg-neutral-darker border border-neutral-medium rounded-md text-primary placeholder-secondary resize-none"
+                          placeholder="Explain why this delivery is being backfilled."
+                        />
+                      </div>
+                    </div>
+
+                    <div className="px-6 py-4 border-t border-neutral-medium flex justify-end gap-3">
+                      <button
+                        onClick={() => setShowBackfillDeliveryModal(false)}
+                        disabled={dispatchLoading}
+                        className="px-4 py-2 text-sm text-secondary hover:text-primary disabled:opacity-50"
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        onClick={handleBackfillDelivered}
+                        disabled={dispatchLoading || !backfillDeliveryForm.reason.trim()}
+                        className="px-5 py-2 bg-blue-600 text-white rounded-md text-sm font-medium hover:bg-blue-700 disabled:opacity-50"
+                      >
+                        {dispatchLoading ? 'Saving...' : 'Record Backfill'}
+                      </button>
+                    </div>
                   </div>
                 </div>
               )}

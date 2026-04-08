@@ -28,13 +28,13 @@ export function ContractorDashboardLayout({ children, activeTab }: ContractorDas
     },
     {
       id: 'projects',
-      name: 'My Projects',
+      name: 'Projects and Clients',
       href: '/dashboard/contractor/projects',
       description: 'Project management'
     },
     {
       id: 'materials',
-      name: 'Material Master',
+      name: 'Materials & Purchases',
       href: '/dashboard/contractor/materials',
       description: 'Materials & requests'
     },

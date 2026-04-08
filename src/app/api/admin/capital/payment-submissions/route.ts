@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAdmin, getAdminUser } from '@/lib/admin-auth';
-import { createClient } from '@supabase/supabase-js';
 import {
   applyLenderCapitalAllocations,
   normalizeLenderCapitalAllocations,
@@ -11,14 +10,27 @@ import {
   syncAllocationIntentFundingStatus,
   refreshAllocationIntentReadiness,
 } from '@/lib/lender-allocation-intents';
-
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-);
+import { supabaseAdmin as supabase } from '@/lib/supabase';
 const DOC_BUCKET = 'investor-documents';
+const db = supabase as any;
 
 type ReviewAction = 'approve' | 'reject';
+type PaymentSubmissionListItem = {
+  proof_document_path?: string | null;
+  [key: string]: any;
+};
+type PaymentSubmissionRow = {
+  id: string;
+  status: string;
+  investor_id: string;
+  amount: number | string;
+  allocation_intent_id?: string | null;
+  allocation_payload?: Array<{ modelType?: string; amount?: number }> | null;
+  payment_method?: string | null;
+  payment_reference?: string | null;
+  proof_document_path?: string | null;
+  [key: string]: any;
+};
 
 export async function GET(request: NextRequest) {
   try {
@@ -27,7 +39,7 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const status = (searchParams.get('status') || 'pending').toLowerCase();
 
-    let query = supabase
+    let query = db
       .from('investor_payment_submissions')
       .select(`
         *,
@@ -53,12 +65,12 @@ export async function GET(request: NextRequest) {
     }
 
     const submissions = await Promise.all(
-      (data || []).map(async (submission) => {
+      ((data || []) as PaymentSubmissionListItem[]).map(async (submission) => {
         if (!submission.proof_document_path) {
           return { ...submission, proof_signed_url: null };
         }
 
-        const { data: signedUrlData } = await supabase.storage
+        const { data: signedUrlData } = await db.storage
           .from(DOC_BUCKET)
           .createSignedUrl(submission.proof_document_path, 60 * 60);
 
@@ -94,7 +106,7 @@ export async function PATCH(request: NextRequest) {
       return NextResponse.json({ error: 'Invalid action' }, { status: 400 });
     }
 
-    const { data: submission, error: fetchError } = await supabase
+    const { data: submission, error: fetchError } = await db
       .from('investor_payment_submissions')
       .select('*')
       .eq('id', submissionId)
@@ -109,7 +121,7 @@ export async function PATCH(request: NextRequest) {
     }
 
     if (action === 'reject') {
-      const { data: rejected, error: rejectError } = await supabase
+      const { data: rejected, error: rejectError } = await db
         .from('investor_payment_submissions')
         .update({
           status: 'rejected',
@@ -134,7 +146,7 @@ export async function PATCH(request: NextRequest) {
       return NextResponse.json({ success: true, submission: rejected });
     }
 
-    const { error: ensureAccountError } = await supabase
+    const { error: ensureAccountError } = await db
       .from('investor_accounts')
       .upsert({ investor_id: submission.investor_id }, { onConflict: 'investor_id' });
 
@@ -163,7 +175,7 @@ export async function PATCH(request: NextRequest) {
 
     const trancheAmount = Number(submission.amount || 0);
 
-    const { data: transaction, error: transactionError } = await supabase
+    const { data: transaction, error: transactionError } = await db
       .from('capital_transactions')
       .insert([
         {
@@ -208,30 +220,30 @@ export async function PATCH(request: NextRequest) {
         contractorsRes,
         projectsRes,
       ] = await Promise.all([
-        supabase
+        db
           .from('capital_transactions')
           .select('investor_id, amount, created_at, status, transaction_type')
           .eq('transaction_type', 'inflow')
           .eq('status', 'completed'),
-        supabase
+        db
           .from('capital_transactions')
           .select('investor_id, amount, created_at, status, transaction_type')
           .eq('transaction_type', 'return')
           .not('investor_id', 'is', null)
           .eq('status', 'completed'),
-        supabase
+        db
           .from('capital_transactions')
           .select('purchase_request_id, amount, created_at, status, transaction_type')
           .in('transaction_type', ['deployment', 'return'])
           .not('purchase_request_id', 'is', null)
           .eq('status', 'completed'),
-        supabase
+        db
           .from('purchase_requests')
           .select('id, project_id, contractor_id, status'),
-        supabase
+        db
           .from('contractors')
           .select('id, company_name, participation_fee_rate_daily'),
-        supabase
+        db
           .from('projects')
           .select('id, project_name'),
       ]);
@@ -265,7 +277,7 @@ export async function PATCH(request: NextRequest) {
       return NextResponse.json({ error: 'Failed to apply lender sleeve allocations' }, { status: 500 });
     }
 
-    const { data: approved, error: updateError } = await supabase
+    const { data: approved, error: updateError } = await db
       .from('investor_payment_submissions')
       .update({
         status: 'approved',

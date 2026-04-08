@@ -52,6 +52,9 @@ export async function GET(request: NextRequest) {
         dispute_raised_at,
         dispute_reason,
         delivered_at,
+        backfill_recorded_at,
+        backfill_recorded_by,
+        backfill_reason,
         invoice_generated_at,
         invoice_url,
         created_at,
@@ -155,7 +158,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
-    if (pr.delivery_status !== 'dispatched') {
+    if (!['dispatched', 'backfill_pending_confirmation'].includes(pr.delivery_status)) {
       return NextResponse.json(
         { error: `Cannot raise dispute: delivery status is '${pr.delivery_status}'` },
         { status: 400 }
@@ -253,7 +256,7 @@ export async function PATCH(request: NextRequest) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
-    if (pr.delivery_status !== 'dispatched') {
+    if (!['dispatched', 'backfill_pending_confirmation'].includes(pr.delivery_status)) {
       return NextResponse.json(
         { error: `Cannot confirm: delivery status is '${pr.delivery_status}'` },
         { status: 400 }

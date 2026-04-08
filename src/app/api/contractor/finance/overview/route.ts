@@ -33,6 +33,8 @@ type ProjectRow = {
   project_name: string | null;
 };
 
+const FINANCE_INCLUDED_REQUEST_STATUSES = new Set(['approved', 'funded']);
+
 export async function GET() {
   try {
     const { userId } = await auth();
@@ -155,6 +157,7 @@ export async function GET() {
       total_platform_fee: number;
       total_participation_fee: number;
       total_due: number;
+      remaining_due: number;
       request_count: number;
     }>();
 
@@ -178,6 +181,8 @@ export async function GET() {
         platform_fee: metrics.platformFee,
         participation_fee: metrics.participationFee,
         total_due: metrics.totalDue,
+        remaining_due: metrics.remainingDue,
+        returned_amount: metrics.returnedAmount,
         days_outstanding: metrics.daysOutstanding
       };
     });
@@ -187,7 +192,11 @@ export async function GET() {
     let totalPlatformFee = 0;
     let totalParticipationFee = 0;
 
-    requests.forEach((request) => {
+    const financeEligibleRequests = requests.filter((request) =>
+      FINANCE_INCLUDED_REQUEST_STATUSES.has((request.status ?? '').toLowerCase())
+    );
+
+    financeEligibleRequests.forEach((request) => {
       if (!request.project_id) return;
       const requestTotal = requestTotals.get(request.id) || 0;
       const metrics = calculateCapitalAccrualMetrics({
@@ -215,6 +224,7 @@ export async function GET() {
         total_platform_fee: 0,
         total_participation_fee: 0,
         total_due: 0,
+        remaining_due: 0,
         request_count: 0
       };
 
@@ -223,6 +233,7 @@ export async function GET() {
       base.total_platform_fee += platformFee;
       base.total_participation_fee += participationFee;
       base.total_due += totalDue;
+      base.remaining_due += metrics.remainingDue;
       base.request_count += 1;
       projectTotals.set(request.project_id, base);
     });
@@ -231,7 +242,7 @@ export async function GET() {
 
     return NextResponse.json({
       summary: {
-        total_requests: requests.length,
+        total_requests: financeEligibleRequests.length,
         total_requested_value: totalRequestedValue,
         total_funded: totalFunded,
         total_platform_fee: totalPlatformFee,

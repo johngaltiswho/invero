@@ -5,6 +5,8 @@ import type { CreatePurchaseRequestPayload } from '@/types/purchase-requests';
 import { sendEmail } from '@/lib/email';
 import { purchaseRequestSubmittedEmail } from '@/lib/notifications/email-templates';
 import { rateLimit, RateLimitPresets } from '@/lib/rate-limit';
+import { createSignedUrlWithFallback } from '@/lib/storage-url';
+import { calculateCapitalAccrualMetrics, groupTransactionsByPurchaseRequest } from '@/lib/capital-accrual';
 
 async function resolveShippingLocation(
   supabase: any,
@@ -117,7 +119,7 @@ export async function GET(request: NextRequest) {
     // Get contractor
     const { data: contractor } = await supabase
       .from('contractors')
-      .select('id, company_name, contact_person, email')
+      .select('id, company_name, contact_person, email, platform_fee_rate, platform_fee_cap, participation_fee_rate_daily')
       .eq('clerk_user_id', user.id)
       .single();
 
@@ -142,6 +144,17 @@ export async function GET(request: NextRequest) {
         submitted_at,
         approved_at,
         funded_at,
+        delivery_status,
+        dispatched_at,
+        dispute_deadline,
+        dispute_raised_at,
+        dispute_reason,
+        delivered_at,
+        backfill_recorded_at,
+        backfill_recorded_by,
+        backfill_reason,
+        invoice_generated_at,
+        invoice_url,
         approved_by,
         approval_notes,
         project_po_references:project_po_reference_id (
@@ -181,9 +194,81 @@ export async function GET(request: NextRequest) {
       }, { status: 500 });
     }
 
+    const requestIds = (purchaseRequests || []).map((row: any) => row.id);
+    const transactionsByRequest = new Map<string, Array<{ purchase_request_id: string; amount: number; transaction_type: string; created_at?: string | null }>>();
+    const latestRepaymentSubmissionByRequest = new Map<string, string>();
+
+    if (requestIds.length > 0) {
+      const [{ data: fundingRows, error: fundingError }, { data: repaymentRows, error: repaymentError }] = await Promise.all([
+        supabase
+          .from('capital_transactions')
+          .select('purchase_request_id, amount, transaction_type, created_at')
+          .in('purchase_request_id', requestIds)
+          .in('transaction_type', ['deployment', 'return'])
+          .eq('status', 'completed'),
+        supabase
+          .from('contractor_repayment_submissions')
+          .select('purchase_request_id, status, created_at')
+          .in('purchase_request_id', requestIds)
+          .order('created_at', { ascending: false })
+      ]);
+
+      if (fundingError) {
+        console.error('Failed to load capital transactions for contractor purchase requests:', fundingError);
+      } else {
+        const grouped = groupTransactionsByPurchaseRequest(
+          fundingRows as Array<{ purchase_request_id: string; amount: number; transaction_type: string; created_at?: string | null }>
+        );
+        grouped.forEach((rows, requestId) => {
+          transactionsByRequest.set(requestId, rows);
+        });
+      }
+
+      if (repaymentError) {
+        console.error('Failed to load contractor repayment submissions for contractor purchase requests:', repaymentError);
+      } else {
+        (repaymentRows || []).forEach((row: { purchase_request_id: string; status: string }) => {
+          if (row.purchase_request_id && !latestRepaymentSubmissionByRequest.has(row.purchase_request_id)) {
+            latestRepaymentSubmissionByRequest.set(row.purchase_request_id, row.status);
+          }
+        });
+      }
+    }
+
+    const invoiceBucket = process.env.INVOICE_STORAGE_BUCKET || 'contractor-documents';
+    const enriched = await Promise.all(
+      (purchaseRequests || []).map(async (requestRow: any) => {
+        const fallbackPath = `${contractor.id}/invoices/${requestRow.id}.pdf`;
+        const signedUrl = await createSignedUrlWithFallback(supabase, {
+          sourceUrl: requestRow.invoice_url,
+          defaultBucket: invoiceBucket,
+          fallbackPath
+        });
+
+        const metrics = calculateCapitalAccrualMetrics({
+          transactions: transactionsByRequest.get(requestRow.id) || [],
+          terms: {
+            platform_fee_rate: contractor.platform_fee_rate,
+            platform_fee_cap: contractor.platform_fee_cap,
+            participation_fee_rate_daily: contractor.participation_fee_rate_daily
+          },
+          purchaseRequestTotal: 0
+        });
+
+        return {
+          ...requestRow,
+          invoice_download_url: signedUrl || requestRow.invoice_url || null,
+          funded_amount: metrics.fundedAmount,
+          returned_amount: metrics.returnedAmount,
+          remaining_due: metrics.remainingDue,
+          latest_repayment_submission_status: latestRepaymentSubmissionByRequest.get(requestRow.id) || null
+        };
+      })
+    );
+
     return NextResponse.json({
       success: true,
-      data: purchaseRequests || []
+      data: enriched
     });
 
   } catch (error) {

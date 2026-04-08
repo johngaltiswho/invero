@@ -9,6 +9,7 @@ type PurchaseRequestRow = {
   project_id: string | null;
   contractor_id: string | null;
   status: string | null;
+  delivery_status?: string | null;
   vendor_id?: number | null;
 };
 
@@ -31,7 +32,6 @@ type CapitalTransactionRow = {
 type ProjectRow = {
   id: string;
   project_name: string | null;
-  location: string | null;
   project_id_external?: string | null;
 };
 
@@ -156,12 +156,12 @@ export async function GET() {
     // Get all purchase requests for historical data
     const { data: purchaseRequests, error: purchaseRequestError } = await supabaseAdmin
       .from('purchase_requests')
-      .select('id, project_id, contractor_id, status, vendor_id');
+      .select('id, project_id, contractor_id, status, delivery_status, vendor_id');
 
     // Also get only requests that need funding (submitted/approved, not yet fully funded)
     const { data: openRequests, error: openRequestsError } = await supabaseAdmin
       .from('purchase_requests')
-      .select('id, project_id, contractor_id, status, vendor_id')
+      .select('id, project_id, contractor_id, status, delivery_status, vendor_id')
       .in('status', ['submitted', 'approved']);
 
     if (purchaseRequestError) {
@@ -336,7 +336,7 @@ export async function GET() {
     if (projectIds.length > 0) {
       const { data: projects, error: projectsError } = await supabaseAdmin
         .from('projects')
-        .select('id, project_name, location, project_id_external')
+        .select('id, project_name, project_id_external')
         .in('id', projectIds);
 
       if (projectsError) {
@@ -356,7 +356,7 @@ export async function GET() {
       if (missingProjectIds.length > 0) {
         const { data: projectsByExternal, error: projectsByExternalError } = await supabaseAdmin
           .from('projects')
-          .select('id, project_name, location, project_id_external')
+          .select('id, project_name, project_id_external')
           .in('project_id_external', missingProjectIds);
 
         if (projectsByExternalError) {
@@ -377,7 +377,7 @@ export async function GET() {
       if (stillMissing.length > 0) {
         const { data: projectsByName, error: projectsByNameError } = await supabaseAdmin
           .from('projects')
-          .select('id, project_name, location, project_id_external')
+          .select('id, project_name, project_id_external')
           .in('project_name', stillMissing);
 
         if (projectsByNameError) {
@@ -517,12 +517,14 @@ export async function GET() {
       contractor_name: string | null;
       vendor_name: string | null;
       status: string | null;
+      delivery_status: string | null;
       requested_total: number;
       funded_total: number;
       returned_total: number;
       outstanding_principal: number;
       outstanding_fee: number;
       outstanding_total: number;
+      remaining_due: number;
       platform_fee: number;
       participation_fee: number;
       days_outstanding: number;
@@ -566,16 +568,18 @@ export async function GET() {
       requestSummaries.push({
         purchase_request_id: request.id,
         project_id: normalizedProjectId,
-        project_name: projectMap.get(normalizedProjectId)?.project_name ?? projectMap.get(normalizedProjectId)?.project_id_external ?? normalizedProjectId,
+        project_name: projectMap.get(normalizedProjectId)?.project_name ?? projectMap.get(normalizedProjectId)?.project_id_external ?? null,
         contractor_name: contractor?.company_name ?? null,
         vendor_name: vendor?.name ?? null,
         status: request.status,
+        delivery_status: request.delivery_status ?? null,
         requested_total: requestTotal,
         funded_total: funded,
         returned_total: returns,
         outstanding_principal: metrics.outstandingPrincipal,
         outstanding_fee: metrics.outstandingParticipationFee,
         outstanding_total: metrics.remainingInvestorDue,
+        remaining_due: metrics.remainingDue,
         platform_fee: platformFee,
         participation_fee: participationFee,
         days_outstanding: metrics.daysOutstanding
@@ -594,7 +598,7 @@ export async function GET() {
         fundingLedger.push({
           purchase_request_id: request.id,
           project_id: normalizedProjectId,
-          project_name: projectMap.get(normalizedProjectId)?.project_name ?? projectMap.get(normalizedProjectId)?.project_id_external ?? normalizedProjectId,
+          project_name: projectMap.get(normalizedProjectId)?.project_name ?? projectMap.get(normalizedProjectId)?.project_id_external ?? null,
           contractor_name: contractor?.company_name ?? null,
           vendor_name: vendor?.name ?? null,
           event_type: transaction.transaction_type === 'return' ? 'return' : 'deployment',
@@ -610,7 +614,7 @@ export async function GET() {
       const project = projectMap.get(normalizedProjectId);
       const base = existing || {
         project_id: normalizedProjectId,
-        project_name: project?.project_name ?? project?.project_id_external ?? normalizedProjectId,
+        project_name: project?.project_name ?? project?.project_id_external ?? null,
         contractor_name: contractor?.company_name ?? null,
         total_requested: 0,
         total_funded: 0,

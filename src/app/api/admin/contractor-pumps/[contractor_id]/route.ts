@@ -1,6 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase';
 
+type ContractorApprovedPumpRow = {
+  id: string;
+  is_active: boolean;
+};
+const db = supabaseAdmin as any;
+
 /**
  * GET /api/admin/contractor-pumps/[contractor_id]
  * Get approved pumps for a contractor
@@ -13,7 +19,7 @@ export async function GET(
     const params = await context.params;
     const contractorId = params.contractor_id;
 
-    const { data: approvedPumps, error } = await supabaseAdmin
+    const { data: approvedPumps, error } = await db
       .from('contractor_approved_pumps')
       .select(`
         id,
@@ -75,7 +81,7 @@ export async function POST(
     }
 
     // Check if already exists
-    const { data: existing } = await supabaseAdmin
+    const { data: existing } = await db
       .from('contractor_approved_pumps')
       .select('id, is_active')
       .eq('contractor_id', contractorId)
@@ -85,7 +91,7 @@ export async function POST(
     if (existing) {
       if (!existing.is_active) {
         // Reactivate
-        const { data, error } = await supabaseAdmin
+        const { data, error } = await db
           .from('contractor_approved_pumps')
           .update({ is_active: true })
           .eq('id', existing.id)
@@ -108,7 +114,7 @@ export async function POST(
     }
 
     // Create new approval
-    const { data: newApproval, error } = await supabaseAdmin
+    const { data: newApproval, error } = await db
       .from('contractor_approved_pumps')
       .insert({
         contractor_id: contractorId,
@@ -159,7 +165,7 @@ export async function DELETE(
     }
 
     // Soft delete by setting is_active to false
-    const { data, error } = await supabaseAdmin
+    const { data, error } = await db
       .from('contractor_approved_pumps')
       .update({ is_active: false })
       .eq('contractor_id', contractorId)

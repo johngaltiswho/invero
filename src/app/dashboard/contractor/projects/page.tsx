@@ -126,16 +126,17 @@ function ContractorProjectsContent(): React.ReactElement {
 
   // Simple 2-stage filtering
   const filteredProjects = contractorProjects.filter(project => {
-    const isCompleted = project.project_status === 'completed' || project.status === 'Completed';
+    const persistedStatus = String(project.project_status || '').toLowerCase();
+    const isCompleted = persistedStatus === 'completed';
 
     if (mainTab === 'boq-quoting') {
       // Show only draft projects
-      return project.project_status === 'draft';
+      return persistedStatus === 'draft';
     } else if (mainTab === 'awarded') {
-      // Show active awarded projects (exclude draft and completed)
-      return project.project_status !== 'draft' && !isCompleted;
+      // Show awarded/finalized projects that are not explicitly completed
+      return (persistedStatus === 'awarded' || persistedStatus === 'finalized') && !isCompleted;
     } else if (mainTab === 'completed') {
-      // Show only completed projects
+      // Show only projects explicitly marked completed
       return isCompleted;
     }
     return true;
@@ -777,8 +778,8 @@ function ContractorProjectsContent(): React.ReactElement {
   const updateProjectStatuses = async (projects: any[]) => {
     const updatedProjects = await Promise.all(
       projects.map(async (project) => {
-        let currentProgress = 0;
-        let status = 'Planning';
+        let currentProgress = Number(project.current_progress ?? 0);
+        let scheduleEndDate: string | null = null;
         
         try {
           // Check if project has BOQ data
@@ -795,19 +796,16 @@ function ContractorProjectsContent(): React.ReactElement {
             if (tasks.length > 0) {
               const totalProgress = tasks.reduce((sum: number, task: any) => sum + (task.progress || 0), 0);
               currentProgress = Math.round(totalProgress / tasks.length);
+              const datedTasks = tasks.filter((task: any) => task.end_date);
+              if (datedTasks.length > 0) {
+                scheduleEndDate = datedTasks
+                  .map((task: any) => String(task.end_date))
+                  .sort((a: string, b: string) => new Date(b).getTime() - new Date(a).getTime())[0];
+              }
             }
           } else if (hasBOQ) {
             // If has BOQ but no schedule, set basic progress
             currentProgress = 15;
-          }
-          
-          // Determine status based on progress
-          if (currentProgress >= 100) {
-            status = 'Completed';
-          } else if (currentProgress > 0) {
-            status = 'Active';
-          } else {
-            status = 'Planning';
           }
           
         } catch (error) {
@@ -817,7 +815,7 @@ function ContractorProjectsContent(): React.ReactElement {
         return {
           ...project,
           currentProgress,
-          status
+          scheduleEndDate
         };
       })
     );
@@ -1464,7 +1462,12 @@ function ContractorProjectsContent(): React.ReactElement {
     }
   };
 
-  const markProjectCompleted = async (projectId: string) => {
+  const markProjectCompleted = async (projectId: string, actualEndDate?: string | null, completionPercentage?: number) => {
+    if ((completionPercentage ?? 0) < 100) {
+      alert('Complete the schedule to 100% before marking the project as completed.');
+      return;
+    }
+
     if (!confirm('Mark this project as completed?')) return;
 
     try {
@@ -1473,8 +1476,7 @@ function ContractorProjectsContent(): React.ReactElement {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           project_status: 'completed',
-          status: 'Completed',
-          actual_end_date: new Date().toISOString()
+          actual_end_date: actualEndDate || new Date().toISOString()
         })
       });
 
@@ -1719,7 +1721,7 @@ function ContractorProjectsContent(): React.ReactElement {
       <div className="p-6">
         {/* Header */}
         <div className="mb-8">
-          <h1 className="text-3xl font-bold text-primary mb-2">My Projects</h1>
+          <h1 className="text-3xl font-bold text-primary mb-2">Projects and Clients</h1>
           <p className="text-secondary">
             Manage and track progress of your active projects
           </p>
@@ -1799,7 +1801,7 @@ function ContractorProjectsContent(): React.ReactElement {
               <div className="bg-neutral-dark p-6 rounded-lg border border-neutral-medium">
                 <div className="text-accent-amber text-sm font-mono mb-2">COMPLETED PROJECTS</div>
                 <div className="text-2xl font-bold text-primary mb-1">
-                  {contractorProjects.filter(p => p.project_status === 'completed' || p.status === 'Completed').length}
+                  {contractorProjects.filter(p => p.project_status === 'completed').length}
                 </div>
                 <div className="text-xs text-secondary">Total completed</div>
               </div>
@@ -1809,7 +1811,7 @@ function ContractorProjectsContent(): React.ReactElement {
                 <div className="text-2xl font-bold text-success mb-1">
                   {(() => {
                     const nonDraftProjects = contractorProjects.filter(p => p.project_status !== 'draft');
-                    const completedProjects = contractorProjects.filter(p => p.project_status === 'completed' || p.status === 'Completed');
+                    const completedProjects = contractorProjects.filter(p => p.project_status === 'completed');
                     return nonDraftProjects.length > 0 ? Math.round((completedProjects.length / nonDraftProjects.length) * 100) : 0;
                   })()}%
                 </div>
@@ -1826,7 +1828,7 @@ function ContractorProjectsContent(): React.ReactElement {
                 <div className="text-accent-amber text-sm font-mono mb-2">TOTAL VALUE</div>
                 <div className="text-2xl font-bold text-primary mb-1">
                   {formatCurrency(contractorProjects
-                    .filter(p => p.project_status === 'completed' || p.status === 'Completed')
+                    .filter(p => p.project_status === 'completed')
                     .reduce((sum, p) => sum + (p.estimated_value || 0), 0))}
                 </div>
                 <div className="text-xs text-secondary">Completed portfolio value</div>
@@ -1837,7 +1839,7 @@ function ContractorProjectsContent(): React.ReactElement {
               <div className="bg-neutral-dark p-6 rounded-lg border border-neutral-medium">
                 <div className="text-accent-amber text-sm font-mono mb-2">AWARDED PROJECTS</div>
                 <div className="text-2xl font-bold text-primary mb-1">
-                  {contractorProjects.filter(p => (p.project_status === 'awarded' || p.project_status === 'finalized' || (!p.project_status && p.project_status !== 'draft')) && p.project_status !== 'completed' && p.status !== 'Completed').length}
+                  {contractorProjects.filter(p => (p.project_status === 'awarded' || p.project_status === 'finalized')).length}
                 </div>
                 <div className="text-xs text-secondary">Total awarded</div>
               </div>
@@ -1845,7 +1847,7 @@ function ContractorProjectsContent(): React.ReactElement {
               <div className="bg-neutral-dark p-6 rounded-lg border border-neutral-medium">
                 <div className="text-accent-amber text-sm font-mono mb-2">ACTIVE PROJECTS</div>
                 <div className="text-2xl font-bold text-primary mb-1">
-                  {contractorProjects.filter(p => (p.project_status === 'awarded' || p.project_status === 'finalized') && p.status === 'Active').length}
+                  {contractorProjects.filter(p => (p.project_status === 'awarded' || p.project_status === 'finalized') && Number((p as any).currentProgress ?? 0) > 0 && Number((p as any).currentProgress ?? 0) < 100).length}
                 </div>
                 <div className="text-xs text-success">Currently running</div>
               </div>
@@ -1854,7 +1856,7 @@ function ContractorProjectsContent(): React.ReactElement {
                 <div className="text-accent-amber text-sm font-mono mb-2">AVG PROGRESS</div>
                 <div className="text-2xl font-bold text-accent-amber mb-1">
                   {(() => {
-                    const awardedProjects = contractorProjects.filter(p => (p.project_status === 'awarded' || p.project_status === 'finalized' || !p.project_status) && p.project_status !== 'completed' && p.status !== 'Completed');
+                    const awardedProjects = contractorProjects.filter(p => (p.project_status === 'awarded' || p.project_status === 'finalized') && p.project_status !== 'completed');
                     return awardedProjects.length > 0 ? 
                       Math.round(awardedProjects.reduce((sum, p) => {
                         const progress = 'currentProgress' in p ? (p as any).currentProgress : (p as any).progress || 0;
@@ -1869,7 +1871,7 @@ function ContractorProjectsContent(): React.ReactElement {
                 <div className="text-accent-amber text-sm font-mono mb-2">TOTAL VALUE</div>
                 <div className="text-2xl font-bold text-primary mb-1">
                   {formatCurrency(contractorProjects
-                    .filter(p => (p.project_status === 'awarded' || p.project_status === 'finalized' || !p.project_status) && p.project_status !== 'completed' && p.status !== 'Completed')
+                    .filter(p => (p.project_status === 'awarded' || p.project_status === 'finalized') && p.project_status !== 'completed')
                     .reduce((sum, p) => sum + (p.estimated_value || 0), 0))}
                 </div>
                 <div className="text-xs text-secondary">Portfolio value</div>
@@ -2161,10 +2163,12 @@ function ContractorProjectsContent(): React.ReactElement {
               {filteredProjects.map((project) => {
                 const isGoogleSheetsProject = 'clientName' in project;
                 const clientName = isGoogleSheetsProject ? (project as any).clientName : (project.client_name || 'Unknown Client');
-                const projectStatus = project.project_status || project.status || 'draft';
+                const projectStatus = String(project.project_status || 'draft').toLowerCase();
                 const projectFinance = projectFinanceMap[project.id];
                 const fundedAmount = Number(projectFinance?.total_funded ?? 0);
                 const toRepayAmount = Number(projectFinance?.total_due ?? 0);
+                const completionPercentage = Math.max(0, Math.min(100, Math.round(Number((project as any).currentProgress ?? 0))));
+                const completionEligible = completionPercentage >= 100;
                 
                 return (
                   <div
@@ -2193,7 +2197,13 @@ function ContractorProjectsContent(): React.ReactElement {
                       <span className={`text-xs px-2 py-1 rounded font-medium ${
                         projectStatus === 'draft' 
                           ? 'bg-yellow-500/20 text-yellow-400' 
-                          : projectStatus === 'active' 
+                          : projectStatus === 'completed'
+                          ? 'bg-emerald-500/20 text-emerald-400'
+                          : projectStatus === 'awarded'
+                          ? 'bg-green-500/20 text-green-400'
+                          : projectStatus === 'finalized'
+                          ? 'bg-blue-500/20 text-blue-400'
+                          : projectStatus === 'active'
                           ? 'bg-green-500/20 text-green-400'
                           : 'bg-blue-500/20 text-blue-400'
                       }`}>
@@ -2203,6 +2213,10 @@ function ContractorProjectsContent(): React.ReactElement {
                     
                     {/* Funding Info - actual values to be loaded */}
                     <div className="space-y-2 text-sm">
+                      <div className="flex justify-between">
+                        <span className="text-secondary">Completion:</span>
+                        <span className="text-primary font-medium">{completionPercentage}%</span>
+                      </div>
                       <div className="flex justify-between">
                         <span className="text-secondary">Funded:</span>
                         <span className="text-primary font-medium">{formatCurrency(fundedAmount)}</span>
@@ -2223,9 +2237,15 @@ function ContractorProjectsContent(): React.ReactElement {
                           type="button"
                           onClick={(e) => {
                             e.stopPropagation();
-                            markProjectCompleted(project.id);
+                            if (!completionEligible) return;
+                            markProjectCompleted(project.id, (project as any).scheduleEndDate, completionPercentage);
                           }}
-                          className="text-xs px-2 py-1 rounded border border-success text-success hover:bg-success/10 transition-colors"
+                          disabled={!completionEligible}
+                          className={`text-xs px-2 py-1 rounded border transition-colors ${
+                            completionEligible
+                              ? 'border-success text-success hover:bg-success/10'
+                              : 'border-neutral-medium text-secondary cursor-not-allowed opacity-60'
+                          }`}
                         >
                           Mark Completed
                         </button>

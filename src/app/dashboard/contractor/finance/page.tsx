@@ -2,7 +2,7 @@
 
 export const dynamic = 'force-dynamic';
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { ContractorDashboardLayout } from '@/components/ContractorDashboardLayout';
 
 type FinanceSummary = {
@@ -23,6 +23,7 @@ type ProjectFinanceRow = {
   total_platform_fee: number;
   total_participation_fee: number;
   total_due: number;
+  remaining_due: number;
   request_count: number;
 };
 
@@ -37,7 +38,32 @@ type PurchaseRequestRow = {
   platform_fee: number;
   participation_fee: number;
   total_due: number;
+  remaining_due: number;
+  returned_amount: number;
   days_outstanding: number;
+};
+
+type ContractorRepaymentSubmission = {
+  id: string;
+  purchase_request_id: string;
+  amount: number;
+  payment_date: string;
+  payment_method: string;
+  payment_reference?: string | null;
+  notes?: string | null;
+  status: 'pending' | 'approved' | 'rejected';
+  review_notes?: string | null;
+  created_at: string;
+  proof_signed_url?: string | null;
+};
+
+type FinvernoBankDetails = {
+  account_holder_name: string;
+  bank_name: string;
+  account_number: string;
+  ifsc_code: string;
+  account_type: string;
+  upi_id: string;
 };
 
 type EditablePurchaseRequestItem = {
@@ -99,6 +125,36 @@ export default function ContractorFinancePage(): React.ReactElement {
   const [editLoading, setEditLoading] = useState(false);
   const [savingEdit, setSavingEdit] = useState(false);
   const [deletingRequestId, setDeletingRequestId] = useState<string | null>(null);
+  const [repaymentSubmissions, setRepaymentSubmissions] = useState<ContractorRepaymentSubmission[]>([]);
+  const [repaymentModalRequest, setRepaymentModalRequest] = useState<PurchaseRequestRow | null>(null);
+  const [finvernoBankDetails, setFinvernoBankDetails] = useState<FinvernoBankDetails>({
+    account_holder_name: '',
+    bank_name: '',
+    account_number: '',
+    ifsc_code: '',
+    account_type: '',
+    upi_id: '',
+  });
+  const [repaymentForm, setRepaymentForm] = useState({
+    amount: '',
+    paymentDate: new Date().toISOString().split('T')[0] || '',
+    paymentMethod: 'bank_transfer',
+    paymentReference: '',
+    notes: '',
+  });
+  const [repaymentProofFile, setRepaymentProofFile] = useState<File | null>(null);
+  const [repaymentProofName, setRepaymentProofName] = useState('');
+  const [submittingRepayment, setSubmittingRepayment] = useState(false);
+
+  const latestSubmissionByRequest = useMemo(() => {
+    const map = new Map<string, ContractorRepaymentSubmission>();
+    repaymentSubmissions.forEach((submission) => {
+      if (!map.has(submission.purchase_request_id)) {
+        map.set(submission.purchase_request_id, submission);
+      }
+    });
+    return map;
+  }, [repaymentSubmissions]);
 
   const canEditRequest = (status: string) => {
     const normalized = status.toLowerCase();
@@ -127,6 +183,91 @@ export default function ContractorFinancePage(): React.ReactElement {
   useEffect(() => {
     fetchOverview();
   }, []);
+
+  const fetchFinvernoBankDetails = async () => {
+    try {
+      const response = await fetch('/api/contractor/finverno-bank-details');
+      const data = await response.json();
+      if (response.ok && data.success) {
+        setFinvernoBankDetails(data.details || {});
+      }
+    } catch (err) {
+      console.error('Failed to fetch Finverno bank details:', err);
+    }
+  };
+
+  const fetchRepaymentSubmissions = async () => {
+    try {
+      const response = await fetch('/api/contractor/repayment-submissions');
+      const data = await response.json();
+      if (response.ok && data.success) {
+        setRepaymentSubmissions(data.submissions || []);
+      }
+    } catch (err) {
+      console.error('Failed to fetch repayment submissions:', err);
+    }
+  };
+
+  useEffect(() => {
+    fetchFinvernoBankDetails();
+    fetchRepaymentSubmissions();
+  }, []);
+
+  const openRepaymentModal = (request: PurchaseRequestRow) => {
+    setRepaymentModalRequest(request);
+    setRepaymentForm({
+      amount: String(Number(request.remaining_due || 0).toFixed(2)),
+      paymentDate: new Date().toISOString().split('T')[0] || '',
+      paymentMethod: 'bank_transfer',
+      paymentReference: '',
+      notes: '',
+    });
+    setRepaymentProofFile(null);
+    setRepaymentProofName('');
+  };
+
+  const closeRepaymentModal = () => {
+    setRepaymentModalRequest(null);
+    setRepaymentProofFile(null);
+    setRepaymentProofName('');
+  };
+
+  const submitRepayment = async () => {
+    if (!repaymentModalRequest) return;
+
+    try {
+      setSubmittingRepayment(true);
+      setError(null);
+
+      const formData = new FormData();
+      formData.append('purchase_request_id', repaymentModalRequest.id);
+      formData.append('amount', repaymentForm.amount);
+      formData.append('payment_date', repaymentForm.paymentDate);
+      formData.append('payment_method', repaymentForm.paymentMethod);
+      formData.append('payment_reference', repaymentForm.paymentReference);
+      formData.append('notes', repaymentForm.notes);
+      if (repaymentProofFile) {
+        formData.append('proof_file', repaymentProofFile);
+      }
+
+      const response = await fetch('/api/contractor/repayment-submissions', {
+        method: 'POST',
+        body: formData,
+      });
+      const result = await response.json();
+
+      if (!response.ok || !result.success) {
+        throw new Error(result.error || 'Failed to submit repayment confirmation');
+      }
+
+      await Promise.all([fetchRepaymentSubmissions(), fetchOverview()]);
+      closeRepaymentModal();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to submit repayment confirmation');
+    } finally {
+      setSubmittingRepayment(false);
+    }
+  };
 
   const openEditRequestModal = async (requestId: string) => {
     try {
@@ -446,7 +587,20 @@ export default function ContractorFinancePage(): React.ReactElement {
                               </button>
                             </div>
                           ) : (
-                            <span className="text-xs text-secondary">Locked</span>
+                            <div className="flex items-center gap-2">
+                              {request.remaining_due > 0.009 ? (
+                                <button
+                                  type="button"
+                                  onClick={() => openRepaymentModal(request)}
+                                  disabled={latestSubmissionByRequest.get(request.id)?.status === 'pending'}
+                                  className="px-3 py-1.5 text-xs font-medium rounded border border-accent-amber/40 text-accent-amber hover:bg-accent-amber/10 transition-colors disabled:opacity-60"
+                                >
+                                  {latestSubmissionByRequest.get(request.id)?.status === 'pending' ? 'Pending Review' : 'Repay'}
+                                </button>
+                              ) : (
+                                <span className="text-xs text-secondary">Settled</span>
+                              )}
+                            </div>
                           )}
                         </td>
                       </tr>
@@ -602,6 +756,135 @@ export default function ContractorFinancePage(): React.ReactElement {
                 </div>
               </div>
             ) : null}
+          </div>
+        </div>
+      )}
+
+      {repaymentModalRequest && (
+        <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4">
+          <div className="w-full max-w-3xl max-h-[90vh] overflow-y-auto bg-neutral-dark border border-neutral-medium rounded-lg">
+            <div className="p-6 border-b border-neutral-medium flex items-center justify-between">
+              <div>
+                <h2 className="text-xl font-semibold text-primary">Submit Repayment</h2>
+                <p className="text-sm text-secondary mt-1">
+                  Purchase Request {repaymentModalRequest.id.slice(0, 8)}… · {repaymentModalRequest.project_name || 'Unnamed Project'}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={closeRepaymentModal}
+                className="text-secondary hover:text-primary text-xl"
+              >
+                ×
+              </button>
+            </div>
+
+            <div className="p-6 grid gap-6 md:grid-cols-2">
+              <div className="rounded-lg border border-neutral-medium bg-neutral-darker/40 p-4">
+                <h3 className="mb-3 text-sm font-semibold uppercase tracking-wide text-primary">Repayment Summary</h3>
+                <div className="space-y-2 text-sm text-secondary">
+                  <div><span className="text-primary">Requested:</span> {formatCurrency(repaymentModalRequest.total_requested)}</div>
+                  <div><span className="text-primary">Funded:</span> {formatCurrency(repaymentModalRequest.total_funded)}</div>
+                  <div><span className="text-primary">Platform Fee:</span> {formatCurrency(repaymentModalRequest.platform_fee)}</div>
+                  <div><span className="text-primary">Participation Fee:</span> {formatCurrency(repaymentModalRequest.participation_fee)}</div>
+                  <div><span className="text-primary">Total Due:</span> {formatCurrency(repaymentModalRequest.total_due)}</div>
+                  <div><span className="text-primary">Returned:</span> {formatCurrency(repaymentModalRequest.returned_amount || 0)}</div>
+                  <div><span className="text-primary">Repayable Balance:</span> {formatCurrency(repaymentModalRequest.remaining_due)}</div>
+                </div>
+              </div>
+
+              <div className="rounded-lg border border-neutral-medium bg-neutral-darker/40 p-4">
+                <h3 className="mb-3 text-sm font-semibold uppercase tracking-wide text-primary">Finverno Bank Details</h3>
+                <div className="space-y-1 text-sm text-secondary">
+                  <p><span className="text-primary">Account Holder:</span> {finvernoBankDetails.account_holder_name || '—'}</p>
+                  <p><span className="text-primary">Bank:</span> {finvernoBankDetails.bank_name || '—'}</p>
+                  <p><span className="text-primary">A/C Number:</span> {finvernoBankDetails.account_number || '—'}</p>
+                  <p><span className="text-primary">A/C Type:</span> {finvernoBankDetails.account_type || '—'}</p>
+                  <p><span className="text-primary">IFSC:</span> {finvernoBankDetails.ifsc_code || '—'}</p>
+                  <p><span className="text-primary">UPI:</span> {finvernoBankDetails.upi_id || '—'}</p>
+                </div>
+              </div>
+
+              <div className="md:col-span-2 space-y-4">
+                <div className="grid md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="text-xs uppercase tracking-wide text-secondary">Repayment Amount</label>
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      value={repaymentForm.amount}
+                      onChange={(e) => setRepaymentForm((prev) => ({ ...prev, amount: e.target.value }))}
+                      className="mt-2 w-full rounded-lg border border-neutral-medium bg-neutral-darker px-3 py-2 text-sm text-primary"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs uppercase tracking-wide text-secondary">Payment Date</label>
+                    <input
+                      type="date"
+                      value={repaymentForm.paymentDate}
+                      onChange={(e) => setRepaymentForm((prev) => ({ ...prev, paymentDate: e.target.value }))}
+                      className="mt-2 w-full rounded-lg border border-neutral-medium bg-neutral-darker px-3 py-2 text-sm text-primary"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="text-xs uppercase tracking-wide text-secondary">Payment Reference (UTR / Txn ID)</label>
+                  <input
+                    type="text"
+                    value={repaymentForm.paymentReference}
+                    onChange={(e) => setRepaymentForm((prev) => ({ ...prev, paymentReference: e.target.value }))}
+                    className="mt-2 w-full rounded-lg border border-neutral-medium bg-neutral-darker px-3 py-2 text-sm text-primary"
+                    placeholder="Enter UTR or transaction ID"
+                  />
+                </div>
+
+                <div>
+                  <label className="text-xs uppercase tracking-wide text-secondary">Proof of Transfer (Optional)</label>
+                  <input
+                    type="file"
+                    accept=".pdf,.png,.jpg,.jpeg"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0] || null;
+                      setRepaymentProofFile(file);
+                      setRepaymentProofName(file?.name || '');
+                    }}
+                    className="mt-2 text-xs text-secondary"
+                  />
+                  {repaymentProofName && <p className="mt-1 text-xs text-secondary">Selected: {repaymentProofName}</p>}
+                </div>
+
+                <div>
+                  <label className="text-xs uppercase tracking-wide text-secondary">Notes (Optional)</label>
+                  <textarea
+                    value={repaymentForm.notes}
+                    onChange={(e) => setRepaymentForm((prev) => ({ ...prev, notes: e.target.value }))}
+                    rows={2}
+                    className="mt-2 w-full rounded-lg border border-neutral-medium bg-neutral-darker px-3 py-2 text-sm text-primary"
+                    placeholder="Any context for admin review"
+                  />
+                </div>
+
+                <div className="flex justify-end gap-3">
+                  <button
+                    type="button"
+                    onClick={closeRepaymentModal}
+                    className="px-4 py-2 text-sm text-secondary hover:text-primary"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={submitRepayment}
+                    disabled={submittingRepayment}
+                    className="px-4 py-2 text-sm rounded bg-accent-amber text-neutral-darker hover:bg-accent-amber/90 disabled:opacity-50"
+                  >
+                    {submittingRepayment ? 'Submitting...' : 'Submit Repayment'}
+                  </button>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       )}

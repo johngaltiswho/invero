@@ -5,7 +5,7 @@
  */
 
 import { jsPDF } from 'jspdf';
-import { createClient } from '@supabase/supabase-js';
+import { supabaseAdmin } from '@/lib/supabase';
 
 export interface InvoiceLineItem {
   material_name: string;
@@ -36,6 +36,7 @@ export interface InvoiceGenerationParams {
   subtotal: number;
   totalTax: number;
   grandTotal: number;
+  footerNoteLines?: string[];
 }
 
 /**
@@ -278,21 +279,21 @@ export function generateInvoicePDF(params: InvoiceGenerationParams): Buffer {
 
   y += 30;
 
-  // Deemed delivery note
+  const footerNoteLines =
+    params.footerNoteLines && params.footerNoteLines.length > 0
+      ? params.footerNoteLines
+      : [
+          'This invoice was auto-generated under the Deemed Delivery policy. Goods are considered delivered if no dispute',
+          'was raised within the dispute window. For queries, contact support@finverno.com.',
+        ];
+
+  // Footer note
   doc.setFont('helvetica', 'italic');
   doc.setFontSize(7);
   doc.setTextColor(120, 120, 120);
-  doc.text(
-    'This invoice was auto-generated under the Deemed Delivery policy. Goods are considered delivered if no dispute',
-    MARGIN,
-    y
-  );
-  y += 4;
-  doc.text(
-    'was raised within the dispute window. For queries, contact support@finverno.com.',
-    MARGIN,
-    y
-  );
+  footerNoteLines.forEach((line, index) => {
+    doc.text(line, MARGIN, y + index * 4);
+  });
 
   // Footer
   doc.setFont('helvetica', 'normal');
@@ -313,14 +314,9 @@ export async function uploadInvoicePDF(
   contractorId: string,
   invoiceId: string
 ): Promise<string> {
-  const supabase = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!
-  );
-
   const storagePath = `${contractorId}/invoices/${invoiceId}.pdf`;
 
-  const { error } = await supabase.storage
+  const { error } = await supabaseAdmin.storage
     .from('contractor-documents')
     .upload(storagePath, pdfBuffer, {
       contentType: 'application/pdf',
@@ -331,7 +327,7 @@ export async function uploadInvoicePDF(
     throw new Error(`Failed to upload invoice PDF: ${error.message}`);
   }
 
-  const { data: urlData } = supabase.storage
+  const { data: urlData } = supabaseAdmin.storage
     .from('contractor-documents')
     .getPublicUrl(storagePath);
 

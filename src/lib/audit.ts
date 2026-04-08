@@ -3,8 +3,8 @@
  * Logs all critical user actions for compliance and debugging
  */
 
-import { createClient } from '@supabase/supabase-js';
 import { NextRequest } from 'next/server';
+import { supabaseAdmin } from '@/lib/supabase';
 
 export type AuditAction =
   | 'create'
@@ -65,18 +65,7 @@ export interface AuditLogEntry {
  */
 export async function createAuditLog(entry: AuditLogEntry): Promise<void> {
   try {
-    const supabase = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.SUPABASE_SERVICE_ROLE_KEY!,
-      {
-        auth: {
-          autoRefreshToken: false,
-          persistSession: false
-        }
-      }
-    );
-
-    const { error } = await supabase
+    const { error } = await supabaseAdmin
       .from('audit_logs')
       .insert({
         user_id: entry.userId,
@@ -310,18 +299,7 @@ export async function getAuditTrail(
   entityId: string
 ): Promise<any[]> {
   try {
-    const supabase = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.SUPABASE_SERVICE_ROLE_KEY!,
-      {
-        auth: {
-          autoRefreshToken: false,
-          persistSession: false
-        }
-      }
-    );
-
-    const { data, error } = await supabase
+    const { data, error } = await supabaseAdmin
       .rpc('get_entity_audit_trail', {
         p_entity_type: entityType,
         p_entity_id: entityId

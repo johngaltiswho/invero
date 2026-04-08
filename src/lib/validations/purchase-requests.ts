@@ -19,6 +19,7 @@ export const purchaseRequestStatuses = [
 export const deliveryStatuses = [
   'not_dispatched',
   'dispatched',
+  'backfill_pending_confirmation',
   'disputed',
   'delivered'
 ] as const;
