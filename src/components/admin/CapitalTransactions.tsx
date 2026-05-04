@@ -403,13 +403,13 @@ const CapitalTransactions: React.FC = () => {
         }
         if (formData.transaction_type === 'return') {
           const remainingDue = getRemainingDue(selectedRequest);
-          return remainingDue !== null ? remainingDue.toString() : prev.amount || '';
+          return remainingDue !== null ? Number(remainingDue).toFixed(2) : prev.amount || '';
         }
         if (hasRemaining && remainingAmount !== null) {
-          return remainingAmount.toString();
+          return Number(remainingAmount).toFixed(2);
         }
         if (selectedRequest.estimated_total) {
-          return selectedRequest.estimated_total.toString();
+          return Number(selectedRequest.estimated_total).toFixed(2);
         }
         return prev.amount || '';
       })(),

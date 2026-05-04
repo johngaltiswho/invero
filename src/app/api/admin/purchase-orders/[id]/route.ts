@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { currentUser } from '@clerk/nextjs/server';
 import { createClient } from '@supabase/supabase-js';
 import { requireAdmin } from '@/lib/admin-auth';
+import { fetchPurchaseRequestAdditionalChargesByRequestIds } from '@/lib/purchase-request-additional-charges';
 import {
   generatePOPDF,
   type POLineItem,
@@ -37,6 +38,12 @@ type PurchaseRequestRow = {
   remarks?: string | null;
   shipping_location?: string | null;
   purchase_request_items?: PurchaseRequestItem[] | null;
+  purchase_request_additional_charges?: Array<{
+    description: string;
+    hsn_code?: string | null;
+    amount?: number | string | null;
+    tax_percent?: number | string | null;
+  }> | null;
   projects?: {
     project_name?: string;
   } | null;
@@ -237,6 +244,9 @@ export async function POST(_request: NextRequest, context: RouteContext) {
       projects: project ? { project_name: project.project_name } : null
     } as unknown as PurchaseRequestRow;
 
+    const { chargesByRequestId } = await fetchPurchaseRequestAdditionalChargesByRequestIds(supabase, [typedPR.id]);
+    typedPR.purchase_request_additional_charges = chargesByRequestId.get(typedPR.id) || [];
+
     // Validate status - can generate PO for approved, funded, or po_generated (regenerate)
     const validStatuses = ['approved', 'funded', 'po_generated'];
     if (!validStatuses.includes(typedPR.status)) {
@@ -319,6 +329,24 @@ export async function POST(_request: NextRequest, context: RouteContext) {
         tax_amount: taxAmount,
         total: amount + taxAmount,
       };
+    });
+
+    (typedPR.purchase_request_additional_charges || []).forEach((charge) => {
+      const amount = Number(charge.amount) || 0;
+      const taxPct = Number(charge.tax_percent) || 0;
+      const taxAmount = amount * (taxPct / 100);
+      lineItems.push({
+        material_name: charge.description || 'Additional Charge',
+        hsn_code: charge.hsn_code || null,
+        item_description: 'Additional charge',
+        unit: 'service',
+        quantity: 1,
+        unit_rate: amount,
+        tax_percent: taxPct,
+        amount,
+        tax_amount: taxAmount,
+        total: amount + taxAmount,
+      });
     });
 
     const subtotal = lineItems.reduce((s, i) => s + i.amount, 0);

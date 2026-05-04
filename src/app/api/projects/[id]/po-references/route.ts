@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
+import { fetchPurchaseRequestAdditionalChargesByRequestIds } from '@/lib/purchase-request-additional-charges';
+import { calculatePurchaseRequestTotals } from '@/lib/purchase-request-totals';
 import { supabaseAdmin } from '@/lib/supabase';
 import { createProjectPOReference, getDefaultPOReference, listProjectPOReferences } from '@/lib/project-po-references';
 
@@ -53,17 +55,16 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
       return NextResponse.json({ success: false, error: 'Failed to fetch PO summaries' }, { status: 500 });
     }
 
+    const requestIds = (requestRows || []).map((row: any) => row.id);
+    const { chargesByRequestId } = await fetchPurchaseRequestAdditionalChargesByRequestIds(supabaseAdmin, requestIds);
     const summaryMap = new Map<string, { request_count: number; linked_value: number }>();
     (requestRows || []).forEach((row: any) => {
       if (!row.project_po_reference_id) return;
       const current = summaryMap.get(row.project_po_reference_id) || { request_count: 0, linked_value: 0 };
-      const lineValue = (row.purchase_request_items || []).reduce((sum: number, item: any) => {
-        const qty = Number(item.purchase_qty ?? item.requested_qty ?? 0) || 0;
-        const rate = Number(item.unit_rate ?? 0) || 0;
-        const taxPercent = Number(item.tax_percent ?? 0) || 0;
-        const base = qty * rate;
-        return sum + base + (base * taxPercent) / 100;
-      }, 0);
+      const lineValue = calculatePurchaseRequestTotals({
+        items: row.purchase_request_items || [],
+        additionalCharges: chargesByRequestId.get(row.id) || []
+      }).grand_total;
       current.request_count += 1;
       current.linked_value += lineValue;
       summaryMap.set(row.project_po_reference_id, current);

@@ -1,4 +1,5 @@
 import { NextRequest } from 'next/server';
+import { fetchPurchaseRequestAdditionalChargesByRequestIds } from '@/lib/purchase-request-additional-charges';
 import {
   generateInvoicePDF,
   uploadInvoicePDF,
@@ -35,6 +36,12 @@ type PurchaseRequestRow = {
   contractor_id: string;
   dispatched_at?: string | null;
   purchase_request_items?: PurchaseRequestItem[] | null;
+  purchase_request_additional_charges?: Array<{
+    description: string;
+    hsn_code?: string | null;
+    amount?: number | string | null;
+    tax_percent?: number | string | null;
+  }> | null;
 };
 
 type ExistingInvoiceRow = {
@@ -196,6 +203,9 @@ export async function generateInvoiceForPurchaseRequest(input: {
     throw new Error('Purchase request not found');
   }
 
+  const { chargesByRequestId } = await fetchPurchaseRequestAdditionalChargesByRequestIds(supabase, [pr.id]);
+  pr.purchase_request_additional_charges = chargesByRequestId.get(pr.id) || [];
+
   const { data: contractor } = await supabase
     .from('contractors')
     .select('id, company_name, gstin, email, platform_fee_rate, platform_fee_cap, business_address, city, state, pincode')
@@ -243,6 +253,24 @@ export async function generateInvoiceForPurchaseRequest(input: {
       tax_amount: taxAmount,
       total: amount + taxAmount,
     };
+  });
+
+  (pr.purchase_request_additional_charges || []).forEach((charge) => {
+    const amount = Number(charge.amount) || 0;
+    const taxPct = Number(charge.tax_percent) || 0;
+    const taxAmount = amount * (taxPct / 100);
+    lineItems.push({
+      material_name: charge.description || 'Additional Charge',
+      hsn_code: charge.hsn_code || null,
+      item_description: 'Additional charge',
+      unit: 'service',
+      quantity: 1,
+      unit_rate: amount,
+      tax_percent: taxPct,
+      amount,
+      tax_amount: taxAmount,
+      total: amount + taxAmount,
+    });
   });
 
   const platformFeeRate = Number(contractor.platform_fee_rate ?? 0.0025);

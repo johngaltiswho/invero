@@ -19,6 +19,17 @@ export interface PurchaseRequest {
   approval_notes?: string;
 }
 
+export interface PurchaseRequestAdditionalCharge {
+  id: string;
+  purchase_request_id: string;
+  description: string;
+  hsn_code?: string | null;
+  amount: number;
+  tax_percent?: number | null;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface PurchaseRequestItem {
   id: string;
   purchase_request_id: string;
@@ -73,6 +84,12 @@ export interface CreatePurchaseRequestPayload {
   project_po_reference_id?: string | null;
   shipping_location?: string;
   remarks?: string;
+  additional_charges?: Array<{
+    description: string;
+    hsn_code?: string | null;
+    amount: number;
+    tax_percent?: number | null;
+  }>;
   items: Array<{
     project_material_id: string;
     hsn_code?: string;
@@ -106,6 +123,7 @@ export interface ProjectPOReferenceSummary {
 
 export interface PurchaseRequestWithItems extends PurchaseRequest {
   items: PurchaseRequestItem[];
+  additional_charges?: PurchaseRequestAdditionalCharge[];
   total_items: number;
   total_requested_qty: number;
 }

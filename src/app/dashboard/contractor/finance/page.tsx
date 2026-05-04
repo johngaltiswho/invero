@@ -77,12 +77,21 @@ type EditablePurchaseRequestItem = {
   unit: string;
 };
 
+type EditablePurchaseRequestAdditionalCharge = {
+  id: string;
+  description: string;
+  hsn_code: string | null;
+  amount: number;
+  tax_percent: number | null;
+};
+
 type EditablePurchaseRequest = {
   id: string;
   status: string;
   remarks: string | null;
   editable: boolean;
   items: EditablePurchaseRequestItem[];
+  additional_charges: EditablePurchaseRequestAdditionalCharge[];
 };
 
 type ContractorTerms = {
@@ -277,7 +286,10 @@ export default function ContractorFinancePage(): React.ReactElement {
       if (!response.ok || !result.success) {
         throw new Error(result.error || 'Failed to load purchase request');
       }
-      setEditingRequest(result.data);
+      setEditingRequest({
+        ...result.data,
+        additional_charges: result.data.additional_charges || []
+      });
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load purchase request');
     } finally {
@@ -307,12 +319,63 @@ export default function ContractorFinancePage(): React.ReactElement {
     setEditingRequest({ ...editingRequest, items: nextItems });
   };
 
+  const updateEditCharge = (chargeId: string, field: keyof EditablePurchaseRequestAdditionalCharge, value: string) => {
+    if (!editingRequest) return;
+    const nextCharges = editingRequest.additional_charges.map((charge) => {
+      if (charge.id !== chargeId) return charge;
+      if (field === 'description') {
+        return { ...charge, description: value };
+      }
+      if (field === 'hsn_code') {
+        return { ...charge, hsn_code: value.toUpperCase().slice(0, 20) || null };
+      }
+      if (field === 'amount' || field === 'tax_percent') {
+        const parsed = value === '' ? 0 : Number(value);
+        return { ...charge, [field]: Number.isFinite(parsed) ? parsed : 0 };
+      }
+      return charge;
+    });
+    setEditingRequest({ ...editingRequest, additional_charges: nextCharges });
+  };
+
+  const addEditCharge = () => {
+    if (!editingRequest) return;
+    setEditingRequest({
+      ...editingRequest,
+      additional_charges: [
+        ...editingRequest.additional_charges,
+        {
+          id: `new-charge-${Date.now()}`,
+          description: '',
+          hsn_code: null,
+          amount: 0,
+          tax_percent: 0
+        }
+      ]
+    });
+  };
+
+  const removeEditCharge = (chargeId: string) => {
+    if (!editingRequest) return;
+    setEditingRequest({
+      ...editingRequest,
+      additional_charges: editingRequest.additional_charges.filter((charge) => charge.id !== chargeId)
+    });
+  };
+
   const saveEditedRequest = async () => {
     if (!editingRequest) return;
 
     const invalidItem = editingRequest.items.find((item) => !Number.isFinite(item.requested_qty) || item.requested_qty <= 0);
     if (invalidItem) {
       setError('Requested quantity must be greater than zero for all items');
+      return;
+    }
+    const invalidCharge = editingRequest.additional_charges.find(
+      (charge) => !charge.description.trim() || !Number.isFinite(Number(charge.amount)) || Number(charge.amount) < 0
+    );
+    if (invalidCharge) {
+      setError('Each additional charge needs a description and a non-negative amount');
       return;
     }
 
@@ -330,6 +393,13 @@ export default function ContractorFinancePage(): React.ReactElement {
             unit_rate: item.unit_rate,
             tax_percent: item.tax_percent,
             hsn_code: item.hsn_code
+          })),
+          additional_charges: editingRequest.additional_charges.map((charge) => ({
+            ...(charge.id.startsWith('new-charge-') ? {} : { id: charge.id }),
+            description: charge.description,
+            hsn_code: charge.hsn_code,
+            amount: charge.amount,
+            tax_percent: charge.tax_percent
           }))
         })
       });
@@ -735,6 +805,88 @@ export default function ContractorFinancePage(): React.ReactElement {
                       ))}
                     </tbody>
                   </table>
+                </div>
+
+                <div className="border border-neutral-medium rounded-lg p-4 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <h3 className="text-sm font-medium text-primary">Additional Charges</h3>
+                    {editingRequest.editable && (
+                      <button
+                        type="button"
+                        onClick={addEditCharge}
+                        className="px-3 py-1 text-xs rounded border border-neutral-medium text-primary hover:bg-neutral-medium/20"
+                      >
+                        Add Charge
+                      </button>
+                    )}
+                  </div>
+
+                  {editingRequest.additional_charges.length === 0 ? (
+                    <div className="text-sm text-secondary">No additional charges added.</div>
+                  ) : (
+                    <div className="space-y-3">
+                      {editingRequest.additional_charges.map((charge) => (
+                        <div key={charge.id} className="grid grid-cols-1 md:grid-cols-5 gap-3 items-end border border-neutral-medium rounded-lg p-3">
+                          <div className="md:col-span-2">
+                            <label className="block text-xs font-medium text-secondary mb-1">Description</label>
+                            <input
+                              type="text"
+                              value={charge.description}
+                              disabled={!editingRequest.editable}
+                              onChange={(e) => updateEditCharge(charge.id, 'description', e.target.value)}
+                              className="w-full px-2 py-1 rounded bg-neutral-darker border border-neutral-medium text-primary focus:outline-none focus:border-accent-amber disabled:opacity-60"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-xs font-medium text-secondary mb-1">HSN / SAC</label>
+                            <input
+                              type="text"
+                              value={charge.hsn_code ?? ''}
+                              disabled={!editingRequest.editable}
+                              onChange={(e) => updateEditCharge(charge.id, 'hsn_code', e.target.value)}
+                              className="w-full px-2 py-1 rounded bg-neutral-darker border border-neutral-medium text-primary focus:outline-none focus:border-accent-amber disabled:opacity-60"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-xs font-medium text-secondary mb-1">Amount</label>
+                            <input
+                              type="number"
+                              min="0"
+                              step="0.01"
+                              value={charge.amount ?? 0}
+                              disabled={!editingRequest.editable}
+                              onChange={(e) => updateEditCharge(charge.id, 'amount', e.target.value)}
+                              className="w-full px-2 py-1 rounded bg-neutral-darker border border-neutral-medium text-primary focus:outline-none focus:border-accent-amber disabled:opacity-60"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-xs font-medium text-secondary mb-1">Tax %</label>
+                            <div className="flex gap-2">
+                              <input
+                                type="number"
+                                min="0"
+                                max="100"
+                                step="0.01"
+                                value={charge.tax_percent ?? 0}
+                                disabled={!editingRequest.editable}
+                                onChange={(e) => updateEditCharge(charge.id, 'tax_percent', e.target.value)}
+                                className="w-full px-2 py-1 rounded bg-neutral-darker border border-neutral-medium text-primary focus:outline-none focus:border-accent-amber disabled:opacity-60"
+                              />
+                              {editingRequest.editable && (
+                                <button
+                                  type="button"
+                                  onClick={() => removeEditCharge(charge.id)}
+                                  className="px-2 py-1 text-xs rounded border border-red-500/50 text-red-300 hover:bg-red-500/10"
+                                >
+                                  Remove
+                                </button>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
 
                 <div className="flex justify-end gap-3">

@@ -263,7 +263,7 @@ export async function PATCH(request: NextRequest) {
       );
     }
 
-    // Mark as delivered — the invoices API/cron will pick this up
+    // Mark as delivered before generating the invoice so the invoice service sees the final delivery state.
     const { error: updateError } = await supabase
       .from('purchase_requests')
       .update({
@@ -289,9 +289,10 @@ export async function PATCH(request: NextRequest) {
       request
     });
 
-    // Generate invoice inline and fail loudly if it cannot be created.
+    // Generate invoice inline so contractor-confirmed deliveries immediately receive an invoice.
+    let invoiceResult: Awaited<ReturnType<typeof generateInvoiceForPurchaseRequest>>;
     try {
-      await generateInvoiceForPurchaseRequest({
+      invoiceResult = await generateInvoiceForPurchaseRequest({
         purchaseRequestId: purchase_request_id,
         request,
       });
@@ -310,6 +311,7 @@ export async function PATCH(request: NextRequest) {
     return NextResponse.json({
       success: true,
       message: 'Delivery confirmed and invoice generated.',
+      invoice: invoiceResult,
     });
   } catch (err) {
     console.error('Delivery tracker PATCH error:', err);

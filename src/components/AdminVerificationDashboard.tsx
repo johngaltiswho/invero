@@ -178,6 +178,14 @@ interface PurchaseRequestItemUI {
   unit?: string;
 }
 
+interface PurchaseRequestAdditionalChargeUI {
+  id: string;
+  description: string;
+  hsn_code?: string | null;
+  amount: number;
+  tax_percent?: number | null;
+}
+
 interface PurchaseRequest {
   id: string;
   project_id: string;
@@ -222,6 +230,7 @@ interface PurchaseRequest {
     project_address?: string | null;
   };
   purchase_request_items: PurchaseRequestItemUI[];
+  additional_charges?: PurchaseRequestAdditionalChargeUI[];
   total_items: number;
   total_requested_qty: number;
   estimated_total: number;
@@ -3935,6 +3944,38 @@ export default function AdminVerificationDashboard(): React.ReactElement {
                   </tbody>
                 </table>
               </div>
+
+              {(selectedPurchaseRequest.additional_charges || []).length > 0 && (
+                <div className="overflow-x-auto border border-neutral-medium rounded-lg mt-4">
+                  <table className="w-full text-xs">
+                    <thead className="bg-neutral-darker">
+                      <tr className="border-b border-neutral-medium">
+                        <th className="text-left p-2 font-medium text-primary">Additional Charge</th>
+                        <th className="text-center p-2 font-medium text-primary">HSN / SAC</th>
+                        <th className="text-center p-2 font-medium text-primary">Amount</th>
+                        <th className="text-center p-2 font-medium text-primary">Tax %</th>
+                        <th className="text-center p-2 font-medium text-primary">Total</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {(selectedPurchaseRequest.additional_charges || []).map((charge) => {
+                        const amount = Number(charge.amount || 0);
+                        const taxPercent = Number(charge.tax_percent || 0);
+                        const total = amount + (amount * taxPercent) / 100;
+                        return (
+                          <tr key={charge.id} className="border-b border-neutral-medium">
+                            <td className="p-2 text-primary">{charge.description}</td>
+                            <td className="p-2 text-center text-primary font-mono">{charge.hsn_code || '-'}</td>
+                            <td className="p-2 text-center text-primary">₹{amount.toLocaleString(undefined, { maximumFractionDigits: 2 })}</td>
+                            <td className="p-2 text-center text-primary">{taxPercent.toLocaleString(undefined, { maximumFractionDigits: 2 })}%</td>
+                            <td className="p-2 text-center text-primary">₹{total.toLocaleString(undefined, { maximumFractionDigits: 2 })}</td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
 
               {selectedPurchaseRequest.status === 'submitted' && (
                 <div className="bg-accent-amber/5 border border-accent-amber/20 rounded-lg p-4">

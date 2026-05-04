@@ -2,11 +2,24 @@ import { NextRequest, NextResponse } from 'next/server';
 import { currentUser } from '@clerk/nextjs/server';
 import { createClient } from '@supabase/supabase-js';
 import type { CreatePurchaseRequestPayload } from '@/types/purchase-requests';
+import { fetchPurchaseRequestAdditionalChargesByRequestIds } from '@/lib/purchase-request-additional-charges';
 import { sendEmail } from '@/lib/email';
 import { purchaseRequestSubmittedEmail } from '@/lib/notifications/email-templates';
 import { rateLimit, RateLimitPresets } from '@/lib/rate-limit';
 import { createSignedUrlWithFallback } from '@/lib/storage-url';
 import { calculateCapitalAccrualMetrics, groupTransactionsByPurchaseRequest } from '@/lib/capital-accrual';
+import { calculatePurchaseRequestTotals } from '@/lib/purchase-request-totals';
+import { createPurchaseRequestSchema } from '@/lib/validations/purchase-requests';
+import { validateRequestBody } from '@/lib/validations';
+
+type PurchaseRequestListItemRow = {
+  purchase_request_id: string;
+  requested_qty: number | null;
+  purchase_qty: number | null;
+  unit_rate: number | null;
+  tax_percent: number | null;
+  round_off_amount?: number | null;
+};
 
 async function resolveShippingLocation(
   supabase: any,
@@ -195,6 +208,25 @@ export async function GET(request: NextRequest) {
     }
 
     const requestIds = (purchaseRequests || []).map((row: any) => row.id);
+    const itemsByRequestId = new Map<string, PurchaseRequestListItemRow[]>();
+    if (requestIds.length > 0) {
+      const { data: itemRows, error: itemRowsError } = await supabase
+        .from('purchase_request_items')
+        .select('purchase_request_id, requested_qty, purchase_qty, unit_rate, tax_percent, round_off_amount')
+        .in('purchase_request_id', requestIds);
+
+      if (itemRowsError) {
+        console.error('Failed to fetch purchase request items for list response:', itemRowsError);
+      } else {
+        ((itemRows || []) as PurchaseRequestListItemRow[]).forEach((item) => {
+          const current = itemsByRequestId.get(item.purchase_request_id) || [];
+          current.push(item);
+          itemsByRequestId.set(item.purchase_request_id, current);
+        });
+      }
+    }
+
+    const { chargesByRequestId } = await fetchPurchaseRequestAdditionalChargesByRequestIds(supabase, requestIds);
     const transactionsByRequest = new Map<string, Array<{ purchase_request_id: string; amount: number; transaction_type: string; created_at?: string | null }>>();
     const latestRepaymentSubmissionByRequest = new Map<string, string>();
 
@@ -238,6 +270,11 @@ export async function GET(request: NextRequest) {
     const invoiceBucket = process.env.INVOICE_STORAGE_BUCKET || 'contractor-documents';
     const enriched = await Promise.all(
       (purchaseRequests || []).map(async (requestRow: any) => {
+        const itemRows = itemsByRequestId.get(requestRow.id) || [];
+        const totals = calculatePurchaseRequestTotals({
+          items: itemRows,
+          additionalCharges: chargesByRequestId.get(requestRow.id) || []
+        });
         const fallbackPath = `${contractor.id}/invoices/${requestRow.id}.pdf`;
         const signedUrl = await createSignedUrlWithFallback(supabase, {
           sourceUrl: requestRow.invoice_url,
@@ -252,11 +289,16 @@ export async function GET(request: NextRequest) {
             platform_fee_cap: contractor.platform_fee_cap,
             participation_fee_rate_daily: contractor.participation_fee_rate_daily
           },
-          purchaseRequestTotal: 0
+          purchaseRequestTotal: totals.grand_total
         });
 
         return {
           ...requestRow,
+          additional_charges: chargesByRequestId.get(requestRow.id) || [],
+          total_items: itemRows.length,
+          estimated_total: totals.grand_total,
+          material_total: totals.material_total,
+          additional_charge_total: totals.additional_charge_total,
           invoice_download_url: signedUrl || requestRow.invoice_url || null,
           funded_amount: metrics.fundedAmount,
           returned_amount: metrics.returnedAmount,
@@ -295,14 +337,23 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
     }
 
-    const body: CreatePurchaseRequestPayload = await request.json();
-    const { project_id, contractor_id, project_po_reference_id, remarks, items, shipping_location } = body;
-
-    if (!project_id || !items || !Array.isArray(items) || items.length === 0) {
-      return NextResponse.json({ 
-        error: 'Missing required fields: project_id, items' 
-      }, { status: 400 });
+    const body = await request.json();
+    const validation = await validateRequestBody(createPurchaseRequestSchema, body);
+    if (!validation.success) {
+      return 'response' in validation
+        ? validation.response
+        : NextResponse.json({ error: 'Invalid request body' }, { status: 400 });
     }
+
+    const {
+      project_id,
+      contractor_id,
+      project_po_reference_id,
+      remarks,
+      items,
+      shipping_location,
+      additional_charges = []
+    } = validation.data as CreatePurchaseRequestPayload;
 
     const supabase = createClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -344,7 +395,7 @@ export async function POST(request: NextRequest) {
     );
 
     console.log('🚀 Creating purchase request for contractor:', contractor.id);
-    console.log('📄 Request details:', { project_id, items: items.length, remarks });
+      console.log('📄 Request details:', { project_id, items: items.length, additional_charges: additional_charges.length, remarks });
 
     // Create purchase request with normalized schema
     const now = new Date().toISOString();
@@ -443,20 +494,57 @@ export async function POST(request: NextRequest) {
     const persistedItems = createdItems || [];
     console.log('✅ Purchase request items created:', persistedItems.length);
 
+    let persistedCharges: any[] = [];
+    let additionalChargesSkipped = false;
+    if (additional_charges.length > 0) {
+      const nowIso = new Date().toISOString();
+      const chargeRows = additional_charges.map((charge) => ({
+        purchase_request_id: purchaseRequest.id,
+        description: charge.description.trim(),
+        hsn_code: charge.hsn_code?.trim() || null,
+        amount: Number(charge.amount) || 0,
+        tax_percent: charge.tax_percent ?? 0,
+        created_at: nowIso,
+        updated_at: nowIso
+      }));
+
+      const { data: createdCharges, error: chargesError } = await supabase
+        .from('purchase_request_additional_charges')
+        .insert(chargeRows)
+        .select();
+
+      if (chargesError) {
+        const missingChargesTable = String(chargesError.message || '').includes('purchase_request_additional_charges');
+        if (missingChargesTable) {
+          additionalChargesSkipped = true;
+          console.warn('⚠️ Skipping additional charges because table is not available yet:', chargesError.message);
+        } else {
+          console.error('❌ Failed to create purchase request additional charges:', chargesError);
+          await supabase
+            .from('purchase_requests')
+            .delete()
+            .eq('id', purchaseRequest.id);
+
+          return NextResponse.json({
+            error: 'Failed to create purchase request additional charges',
+            details: chargesError.message
+          }, { status: 500 });
+        }
+      }
+
+      persistedCharges = createdCharges || [];
+    }
+
     const { data: projectNameRow } = await supabase
       .from('projects')
       .select('project_name')
       .eq('id', project_id)
       .single();
 
-    const estimatedTotal = persistedItems.reduce((sum, item) => {
-      const billableQty = Number((item as any).purchase_qty ?? item.requested_qty) || 0;
-      const rate = Number(item.unit_rate) || 0;
-      const taxPercent = Number(item.tax_percent) || 0;
-      const roundOffAmount = Number((item as any).round_off_amount) || 0;
-      const subtotal = billableQty * rate;
-      return sum + subtotal + (subtotal * taxPercent) / 100 + roundOffAmount;
-    }, 0);
+    const totals = calculatePurchaseRequestTotals({
+      items: persistedItems,
+      additionalCharges: persistedCharges
+    });
 
     if (contractor?.email) {
       try {
@@ -466,7 +554,7 @@ export async function POST(request: NextRequest) {
             recipientName: contractor.contact_person || contractor.company_name || 'there',
             projectName: projectNameRow?.project_name || project_id,
             itemCount: persistedItems.length,
-            estimatedValue: estimatedTotal,
+            estimatedValue: totals.grand_total,
           }),
         });
       } catch (emailError) {
@@ -477,11 +565,18 @@ export async function POST(request: NextRequest) {
     // Return the full purchase request with items
     return NextResponse.json({
       success: true,
+      warning: additionalChargesSkipped
+        ? 'Additional charges were skipped because migration for purchase_request_additional_charges is not applied yet.'
+        : undefined,
       data: {
         ...purchaseRequest,
         items: persistedItems,
+        additional_charges: persistedCharges,
         total_items: persistedItems.length,
-        total_requested_qty: persistedItems.reduce((sum, item) => sum + (Number(item.requested_qty) || 0), 0)
+        total_requested_qty: persistedItems.reduce((sum, item) => sum + (Number(item.requested_qty) || 0), 0),
+        estimated_total: totals.grand_total,
+        material_total: totals.material_total,
+        additional_charge_total: totals.additional_charge_total
       }
     });
 

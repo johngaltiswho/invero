@@ -1,5 +1,7 @@
 import { NextResponse } from 'next/server';
 import { requireAdmin } from '@/lib/admin-auth';
+import { fetchPurchaseRequestAdditionalChargesByRequestIds } from '@/lib/purchase-request-additional-charges';
+import { calculatePurchaseRequestTotals } from '@/lib/purchase-request-totals';
 import { supabaseAdmin } from '@/lib/supabase';
 import { calculateCapitalAccrualMetrics, groupTransactionsByPurchaseRequest } from '@/lib/capital-accrual';
 import { calculateSoftPoolValuation } from '@/lib/pool-valuation';
@@ -310,15 +312,23 @@ export async function GET() {
       return NextResponse.json({ error: 'Failed to load capital transactions' }, { status: 500 });
     }
 
+    const { chargesByRequestId } = await fetchPurchaseRequestAdditionalChargesByRequestIds(supabaseAdmin, requestIds);
+    const itemsByRequestId = new Map<string, PurchaseRequestItemRow[]>();
+    (requestItems || []).forEach((item) => {
+      const current = itemsByRequestId.get(item.purchase_request_id) || [];
+      current.push(item);
+      itemsByRequestId.set(item.purchase_request_id, current);
+    });
+
     const requestTotals = new Map<string, number>();
-    requestItems?.forEach((item) => {
-      const qty = Number(item.purchase_qty ?? item.requested_qty ?? 0);
-      const rate = Number(item.unit_rate ?? 0);
-      const taxPercent = Number(item.tax_percent ?? 0);
-      const base = qty * rate;
-      const tax = base * (taxPercent / 100);
-      const current = requestTotals.get(item.purchase_request_id) || 0;
-      requestTotals.set(item.purchase_request_id, current + base + tax);
+    requestIds.forEach((requestId) => {
+      requestTotals.set(
+        requestId,
+        calculatePurchaseRequestTotals({
+          items: itemsByRequestId.get(requestId) || [],
+          additionalCharges: chargesByRequestId.get(requestId) || []
+        }).grand_total
+      );
     });
 
     const transactionsByRequest = groupTransactionsByPurchaseRequest((capitalTransactions as CapitalTransactionRow[] | null) || []);

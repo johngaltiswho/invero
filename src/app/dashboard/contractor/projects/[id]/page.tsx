@@ -40,6 +40,14 @@ type EditableProjectPurchaseRequestItem = {
   unit: string;
 };
 
+type EditableProjectPurchaseRequestAdditionalCharge = {
+  id: string;
+  description: string;
+  hsn_code: string | null;
+  amount: number;
+  tax_percent: number | null;
+};
+
 type EditableProjectPurchaseRequest = {
   id: string;
   status: string;
@@ -49,14 +57,17 @@ type EditableProjectPurchaseRequest = {
   project_po_reference?: Pick<ProjectPOReferenceSummary, 'id' | 'po_number' | 'po_type' | 'status' | 'is_default'> | null;
   editable: boolean;
   items: EditableProjectPurchaseRequestItem[];
+  additional_charges: EditableProjectPurchaseRequestAdditionalCharge[];
 };
 
 type ProjectPurchaseRequestSummary = {
   id: string;
   status: string;
   created_at: string;
-  line_items: number;
+  total_items: number;
   estimated_total: number;
+  material_total: number;
+  additional_charge_total: number;
   project_po_reference_id: string | null;
   po_number: string | null;
 };
@@ -147,6 +158,13 @@ function IndividualProjectContent(): React.ReactElement {
   const [purchaseUnits, setPurchaseUnits] = useState<{[key: string]: string}>({});
   const [purchaseConversions, setPurchaseConversions] = useState<{[key: string]: string}>({});
   const [purchaseShippingLocation, setPurchaseShippingLocation] = useState('');
+  const [purchaseAdditionalCharges, setPurchaseAdditionalCharges] = useState<Array<{
+    id: string;
+    description: string;
+    hsn_code: string;
+    amount: string;
+    tax_percent: string;
+  }>>([]);
   const [editingPurchaseRequest, setEditingPurchaseRequest] = useState<EditableProjectPurchaseRequest | null>(null);
   const [editRequestLoading, setEditRequestLoading] = useState(false);
   const [savingRequestEdit, setSavingRequestEdit] = useState(false);
@@ -172,6 +190,7 @@ function IndividualProjectContent(): React.ReactElement {
   const [poRemarks, setPoRemarks] = useState<{[key: string]: string}>({});
   const [poQuantities, setPoQuantities] = useState<{[key: string]: string}>({});
   const [poVendor, setPoVendor] = useState<string>('');
+  const [projectPurchaseRequests, setProjectPurchaseRequests] = useState<ProjectPurchaseRequestSummary[]>([]);
   
   // Material Form state
   const [materialForm, setMaterialForm] = useState({
@@ -308,6 +327,7 @@ function IndividualProjectContent(): React.ReactElement {
           // Load project materials, files, etc.
           await Promise.all([
             fetchProjectMaterials(projectId),
+            fetchProjectPurchaseRequests(projectId),
             fetchProjectPOReferences(projectId),
             fetchProjectFiles(projectId),
             checkDocumentStatus(data.data),
@@ -384,6 +404,34 @@ function IndividualProjectContent(): React.ReactElement {
     } catch (error) {
       console.error('Error fetching project materials:', error);
       setProjectMaterials([]);
+    }
+  };
+
+  const fetchProjectPurchaseRequests = async (targetProjectId: string) => {
+    try {
+      const response = await fetch(`/api/purchase-requests?project_id=${targetProjectId}`);
+      const result = await response.json();
+      if (!response.ok || !result.success) {
+        console.error('Failed to fetch project purchase requests:', result.error);
+        setProjectPurchaseRequests([]);
+        return;
+      }
+
+      const summaries = (result.data || []).map((request: any) => ({
+        id: request.id,
+        status: request.status,
+        created_at: request.created_at,
+        total_items: Number(request.total_items || 0),
+        estimated_total: Number(request.estimated_total || 0),
+        material_total: Number(request.material_total || 0),
+        additional_charge_total: Number(request.additional_charge_total || 0),
+        project_po_reference_id: request.project_po_reference_id || null,
+        po_number: request.project_po_references?.po_number || null
+      }));
+      setProjectPurchaseRequests(summaries);
+    } catch (error) {
+      console.error('Error fetching project purchase requests:', error);
+      setProjectPurchaseRequests([]);
     }
   };
 
@@ -1037,6 +1085,20 @@ function IndividualProjectContent(): React.ReactElement {
     return withTax + roundOff;
   };
 
+  const createEmptyAdditionalCharge = () => ({
+    id: `charge-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    description: '',
+    hsn_code: '',
+    amount: '',
+    tax_percent: '0'
+  });
+
+  const getAdditionalChargeTotal = (charge: { amount: string | number; tax_percent: string | number }) => {
+    const amount = typeof charge.amount === 'string' ? parseFloat(charge.amount || '0') || 0 : charge.amount || 0;
+    const taxPercent = typeof charge.tax_percent === 'string' ? parseFloat(charge.tax_percent || '0') || 0 : charge.tax_percent || 0;
+    return amount + (amount * taxPercent) / 100;
+  };
+
   const getStatusColor = (status: string) => {
     switch (status) {
       case 'draft': return 'bg-yellow-500/20 text-yellow-400';
@@ -1162,7 +1224,7 @@ function IndividualProjectContent(): React.ReactElement {
       if (!response.ok || !result.success) {
         throw new Error(result.error || 'Failed to reassign open purchase requests');
       }
-      await Promise.all([fetchProjectMaterials(project.id), fetchProjectPOReferences(project.id)]);
+      await Promise.all([fetchProjectMaterials(project.id), fetchProjectPurchaseRequests(project.id), fetchProjectPOReferences(project.id)]);
       alert(`Reassigned ${result.data?.updated_count || 0} open purchase requests to ${poNumber}.`);
     } catch (error) {
       console.error('Failed to reassign open purchase requests:', error);
@@ -1171,58 +1233,6 @@ function IndividualProjectContent(): React.ReactElement {
       setBulkReassigningPOId(null);
     }
   };
-
-  const projectPurchaseRequests = React.useMemo<ProjectPurchaseRequestSummary[]>(() => {
-    const map = new Map<
-      string,
-      ProjectPurchaseRequestSummary
-    >();
-
-    projectMaterials.forEach((material) => {
-      (material.request_history || []).forEach((item) => {
-        if (!item.purchase_request_id) return;
-        const existing = map.get(item.purchase_request_id);
-        const qty = Number((item as any).purchase_qty ?? item.requested_qty ?? 0) || 0;
-        const rate = Number(item.unit_rate ?? 0) || 0;
-        const taxPercent = Number(item.tax_percent ?? 0) || 0;
-        const roundOffAmount = Number((item as any).round_off_amount ?? 0) || 0;
-        const base = qty * rate;
-        const total = base + (base * taxPercent) / 100 + roundOffAmount;
-
-        if (!existing) {
-          map.set(item.purchase_request_id, {
-            id: item.purchase_request_id,
-            status: item.purchase_request?.status || item.status || 'submitted',
-            created_at: item.purchase_request?.created_at || item.created_at,
-            line_items: 1,
-            estimated_total: total,
-            project_po_reference_id: item.purchase_request?.project_po_reference_id || null,
-            po_number: item.purchase_request?.project_po_reference?.po_number || null
-          });
-          return;
-        }
-
-        existing.line_items += 1;
-        existing.estimated_total += total;
-        if (item.purchase_request?.status) {
-          existing.status = item.purchase_request.status;
-        }
-        const nextCreatedAt = item.purchase_request?.created_at || item.created_at;
-        if (nextCreatedAt && new Date(nextCreatedAt).getTime() < new Date(existing.created_at).getTime()) {
-          existing.created_at = nextCreatedAt;
-        }
-        if (item.purchase_request?.project_po_reference_id) {
-          existing.project_po_reference_id = item.purchase_request.project_po_reference_id;
-          existing.po_number = item.purchase_request.project_po_reference?.po_number || existing.po_number;
-        }
-        map.set(item.purchase_request_id, existing);
-      });
-    });
-
-    return Array.from(map.values()).sort(
-      (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
-    );
-  }, [projectMaterials]);
 
   const addableMaterialsForEdit = React.useMemo(() => {
     if (!editingPurchaseRequest) return [];
@@ -1243,6 +1253,7 @@ function IndividualProjectContent(): React.ReactElement {
       setEditingPurchaseRequest({
         ...result.data,
         project_po_reference: result.data.project_po_references || result.data.project_po_reference || null,
+        additional_charges: result.data.additional_charges || [],
       });
       setNewMaterialIdForRequest('');
     } catch (error) {
@@ -1280,6 +1291,54 @@ function IndividualProjectContent(): React.ReactElement {
       return item;
     });
     setEditingPurchaseRequest({ ...editingPurchaseRequest, items: nextItems });
+  };
+
+  const updateRequestEditCharge = (
+    chargeId: string,
+    field: keyof EditableProjectPurchaseRequestAdditionalCharge,
+    value: string
+  ) => {
+    if (!editingPurchaseRequest) return;
+    const nextCharges = editingPurchaseRequest.additional_charges.map((charge) => {
+      if (charge.id !== chargeId) return charge;
+      if (field === 'hsn_code') {
+        return { ...charge, hsn_code: value.toUpperCase().slice(0, 20) || null };
+      }
+      if (field === 'description') {
+        return { ...charge, description: value };
+      }
+      if (field === 'amount' || field === 'tax_percent') {
+        const parsed = value === '' ? 0 : Number(value);
+        return { ...charge, [field]: Number.isFinite(parsed) ? parsed : 0 };
+      }
+      return charge;
+    });
+    setEditingPurchaseRequest({ ...editingPurchaseRequest, additional_charges: nextCharges });
+  };
+
+  const addChargeToEditingRequest = () => {
+    if (!editingPurchaseRequest) return;
+    setEditingPurchaseRequest({
+      ...editingPurchaseRequest,
+      additional_charges: [
+        ...editingPurchaseRequest.additional_charges,
+        {
+          id: `new-charge-${Date.now()}`,
+          description: '',
+          hsn_code: null,
+          amount: 0,
+          tax_percent: 0
+        }
+      ]
+    });
+  };
+
+  const removeChargeFromEditingRequest = (chargeId: string) => {
+    if (!editingPurchaseRequest) return;
+    setEditingPurchaseRequest({
+      ...editingPurchaseRequest,
+      additional_charges: editingPurchaseRequest.additional_charges.filter((charge) => charge.id !== chargeId)
+    });
   };
 
   const addMaterialToEditingRequest = () => {
@@ -1330,6 +1389,13 @@ function IndividualProjectContent(): React.ReactElement {
       alert('Requested quantity must be greater than zero for all items');
       return;
     }
+    const invalidCharge = editingPurchaseRequest.additional_charges.find(
+      (charge) => !charge.description.trim() || !Number.isFinite(Number(charge.amount)) || Number(charge.amount) < 0
+    );
+    if (invalidCharge) {
+      alert('Each additional charge needs a description and a non-negative amount');
+      return;
+    }
 
     try {
       setSavingRequestEdit(true);
@@ -1356,6 +1422,13 @@ function IndividualProjectContent(): React.ReactElement {
             tax_percent: item.tax_percent,
             round_off_amount: item.round_off_amount,
             hsn_code: item.hsn_code
+          })),
+          additional_charges: editingPurchaseRequest.additional_charges.map((charge) => ({
+            ...(charge.id.startsWith('new-charge-') ? {} : { id: charge.id }),
+            description: charge.description,
+            hsn_code: charge.hsn_code,
+            amount: charge.amount,
+            tax_percent: charge.tax_percent
           }))
         })
       });
@@ -1366,7 +1439,7 @@ function IndividualProjectContent(): React.ReactElement {
       }
 
       setEditingPurchaseRequest(null);
-      await Promise.all([fetchProjectMaterials(projectId), fetchProjectPOReferences(projectId)]);
+      await Promise.all([fetchProjectMaterials(projectId), fetchProjectPurchaseRequests(projectId), fetchProjectPOReferences(projectId)]);
     } catch (error) {
       console.error('Failed to update purchase request:', error);
       alert(error instanceof Error ? error.message : 'Failed to update purchase request');
@@ -1388,7 +1461,7 @@ function IndividualProjectContent(): React.ReactElement {
       if (!response.ok || !result.success) {
         throw new Error(result.error || 'Failed to delete purchase request');
       }
-      await Promise.all([fetchProjectMaterials(projectId), fetchProjectPOReferences(projectId)]);
+      await Promise.all([fetchProjectMaterials(projectId), fetchProjectPurchaseRequests(projectId), fetchProjectPOReferences(projectId)]);
     } catch (error) {
       console.error('Failed to delete purchase request:', error);
       alert(error instanceof Error ? error.message : 'Failed to delete purchase request');
@@ -2260,8 +2333,22 @@ function IndividualProjectContent(): React.ReactElement {
                                   {request.status.replace(/_/g, ' ')}
                                 </span>
                               </td>
-                              <td className="p-3 text-secondary">{request.line_items}</td>
-                              <td className="p-3 text-primary">{formatCurrency(request.estimated_total)}</td>
+                              <td className="p-3 text-secondary">
+                                {request.total_items}
+                                {request.additional_charge_total > 0 && (
+                                  <div className="text-xs text-secondary mt-1">
+                                    Charges: {formatCurrency(request.additional_charge_total)}
+                                  </div>
+                                )}
+                              </td>
+                              <td className="p-3 text-primary">
+                                <div>{formatCurrency(request.estimated_total)}</div>
+                                {request.additional_charge_total > 0 && (
+                                  <div className="text-xs text-secondary mt-1">
+                                    Materials {formatCurrency(request.material_total)}
+                                  </div>
+                                )}
+                              </td>
                               <td className="p-3 text-secondary">{formatDate(request.created_at)}</td>
                               <td className="p-3">
                                 <div className="flex items-center gap-2">
@@ -3069,6 +3156,87 @@ function IndividualProjectContent(): React.ReactElement {
                       ))}
                   </div>
                 </div>
+
+                <div className="bg-neutral-darker p-4 rounded-lg border border-neutral-medium">
+                  <div className="flex items-center justify-between mb-3">
+                    <h4 className="text-md font-semibold text-primary">Additional Charges</h4>
+                    <button
+                      type="button"
+                      onClick={() => setPurchaseAdditionalCharges((prev) => [...prev, createEmptyAdditionalCharge()])}
+                      className="px-3 py-1 rounded border border-neutral-medium text-xs text-primary hover:bg-neutral-medium/20"
+                    >
+                      Add Charge
+                    </button>
+                  </div>
+
+                  {purchaseAdditionalCharges.length === 0 ? (
+                    <div className="text-sm text-secondary">No extra charges added.</div>
+                  ) : (
+                    <div className="space-y-3">
+                      {purchaseAdditionalCharges.map((charge) => (
+                        <div key={charge.id} className="grid grid-cols-1 md:grid-cols-5 gap-3 items-end border border-neutral-medium rounded-lg p-3">
+                          <div className="md:col-span-2">
+                            <label className="block text-xs font-medium text-secondary mb-1">Description *</label>
+                            <input
+                              type="text"
+                              value={charge.description}
+                              onChange={(e) => setPurchaseAdditionalCharges((prev) => prev.map((row) => row.id === charge.id ? { ...row, description: e.target.value } : row))}
+                              className="w-full px-2 py-1 bg-neutral-dark border border-neutral-medium rounded text-primary text-sm focus:border-accent-amber focus:outline-none"
+                              placeholder="Transport / loading / unloading"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-xs font-medium text-secondary mb-1">HSN / SAC</label>
+                            <input
+                              type="text"
+                              value={charge.hsn_code}
+                              onChange={(e) => setPurchaseAdditionalCharges((prev) => prev.map((row) => row.id === charge.id ? { ...row, hsn_code: e.target.value.toUpperCase().slice(0, 20) } : row))}
+                              className="w-full px-2 py-1 bg-neutral-dark border border-neutral-medium rounded text-primary text-sm focus:border-accent-amber focus:outline-none"
+                              placeholder="996511"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-xs font-medium text-secondary mb-1">Amount (₹) *</label>
+                            <input
+                              type="number"
+                              min="0"
+                              step="0.01"
+                              value={charge.amount}
+                              onChange={(e) => setPurchaseAdditionalCharges((prev) => prev.map((row) => row.id === charge.id ? { ...row, amount: e.target.value } : row))}
+                              className="w-full px-2 py-1 bg-neutral-dark border border-neutral-medium rounded text-primary text-sm focus:border-accent-amber focus:outline-none"
+                              placeholder="0.00"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-xs font-medium text-secondary mb-1">Tax (%)</label>
+                            <div className="flex gap-2">
+                              <input
+                                type="number"
+                                min="0"
+                                max="100"
+                                step="0.01"
+                                value={charge.tax_percent}
+                                onChange={(e) => setPurchaseAdditionalCharges((prev) => prev.map((row) => row.id === charge.id ? { ...row, tax_percent: e.target.value } : row))}
+                                className="w-full px-2 py-1 bg-neutral-dark border border-neutral-medium rounded text-primary text-sm focus:border-accent-amber focus:outline-none"
+                                placeholder="0"
+                              />
+                              <button
+                                type="button"
+                                onClick={() => setPurchaseAdditionalCharges((prev) => prev.filter((row) => row.id !== charge.id))}
+                                className="px-3 py-1 rounded border border-red-500/50 text-red-300 text-xs hover:bg-red-500/10"
+                              >
+                                Remove
+                              </button>
+                            </div>
+                            <div className="text-[11px] text-secondary mt-1">
+                              Total: {formatCurrency(getAdditionalChargeTotal(charge))}
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
                 
                 {/* Note: File upload will be handled separately after request creation */}
                 
@@ -3096,14 +3264,20 @@ function IndividualProjectContent(): React.ReactElement {
                       <span className="text-primary">{Array.from(selectedMaterials).length}</span>
                     </div>
                     <div>
-                      <span className="text-secondary">Total Amount: </span>
+                      <span className="text-secondary">Material Total: </span>
+                      <span className="text-primary">{formatCurrency(Array.from(selectedMaterials).reduce((sum, materialId) => sum + getLineTotal(materialId), 0))}</span>
+                    </div>
+                    <div>
+                      <span className="text-secondary">Charge Total: </span>
+                      <span className="text-primary">{formatCurrency(purchaseAdditionalCharges.reduce((sum, charge) => sum + getAdditionalChargeTotal(charge), 0))}</span>
+                    </div>
+                    <div>
+                      <span className="text-secondary">Grand Total: </span>
                       <span className="text-primary">
-                        {(() => {
-                          const total = Array.from(selectedMaterials).reduce((sum, materialId) => {
-                            return sum + getLineTotal(materialId);
-                          }, 0);
-                          return formatCurrency(total);
-                        })()}
+                        {formatCurrency(
+                          Array.from(selectedMaterials).reduce((sum, materialId) => sum + getLineTotal(materialId), 0) +
+                          purchaseAdditionalCharges.reduce((sum, charge) => sum + getAdditionalChargeTotal(charge), 0)
+                        )}
                       </span>
                     </div>
                   </div>
@@ -3123,6 +3297,7 @@ function IndividualProjectContent(): React.ReactElement {
                     setPurchaseUnits({});
                     setPurchaseConversions({});
                     setPurchaseShippingLocation('');
+                    setPurchaseAdditionalCharges([]);
                     setSelectedPOForRequest('');
                     setSelectedVendor(null);
                   }}
@@ -3165,6 +3340,17 @@ function IndividualProjectContent(): React.ReactElement {
                       alert(`Requested quantity exceeds available quantity for: ${invalidMaterials}`);
                       return;
                     }
+
+                    const invalidCharges = purchaseAdditionalCharges.filter((charge) =>
+                      !charge.description.trim() ||
+                      (charge.amount !== '' && (parseFloat(charge.amount) < 0 || Number.isNaN(parseFloat(charge.amount)))) ||
+                      (charge.tax_percent !== '' && (parseFloat(charge.tax_percent) < 0 || parseFloat(charge.tax_percent) > 100 || Number.isNaN(parseFloat(charge.tax_percent))))
+                    );
+
+                    if (invalidCharges.length > 0) {
+                      alert('Each additional charge needs a description, non-negative amount, and tax between 0 and 100.');
+                      return;
+                    }
                     
                     try {
                       console.log('🚀 Creating purchase request with normalized schema');
@@ -3185,6 +3371,14 @@ function IndividualProjectContent(): React.ReactElement {
                           purchaseRemarks[materialId] || ''
                         ).filter(remark => remark).join('; ') || null,
                         shipping_location: purchaseShippingLocation.trim() || null,
+                        additional_charges: purchaseAdditionalCharges
+                          .filter((charge) => charge.description.trim() && charge.amount !== '')
+                          .map((charge) => ({
+                            description: charge.description.trim(),
+                            hsn_code: charge.hsn_code.trim() || null,
+                            amount: parseFloat(charge.amount) || 0,
+                            tax_percent: charge.tax_percent === '' ? 0 : parseFloat(charge.tax_percent) || 0
+                          })),
                         items: Array.from(selectedMaterials).map(materialId => ({
                           ...(() => {
                             const material = projectMaterials.find(m => m.id === materialId);
@@ -3228,9 +3422,12 @@ function IndividualProjectContent(): React.ReactElement {
                         alert(`Purchase request created successfully! Request ID: ${result.data.id}`);
                         console.log('✅ Purchase request created:', result.data);
                         
-                        // Refresh project materials to reflect the new purchase request
-                        await fetchProjectMaterials(project.id);
-                        await fetchProjectPOReferences(project.id);
+                        // Refresh project materials and request summaries to reflect the new purchase request
+                        await Promise.all([
+                          fetchProjectMaterials(project.id),
+                          fetchProjectPurchaseRequests(project.id),
+                          fetchProjectPOReferences(project.id)
+                        ]);
                         
                         // Clear states and close dialog
                         setShowBatchPurchaseDialog(false);
@@ -3244,6 +3441,7 @@ function IndividualProjectContent(): React.ReactElement {
                         setPurchaseUnits({});
                         setPurchaseConversions({});
                         setPurchaseShippingLocation('');
+                        setPurchaseAdditionalCharges([]);
                         setSelectedPOForRequest('');
                         setSelectedVendor(null);
                       } else {
@@ -3510,6 +3708,91 @@ function IndividualProjectContent(): React.ReactElement {
                         })}
                       </tbody>
                     </table>
+                  </div>
+
+                  <div className="bg-neutral-darker rounded-lg border border-neutral-medium p-4 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <h4 className="text-sm font-medium text-primary">Additional Charges</h4>
+                      {editingPurchaseRequest.editable && (
+                        <button
+                          type="button"
+                          onClick={addChargeToEditingRequest}
+                          className="px-3 py-1 rounded border border-neutral-medium text-xs text-primary hover:bg-neutral-medium/20"
+                        >
+                          Add Charge
+                        </button>
+                      )}
+                    </div>
+
+                    {editingPurchaseRequest.additional_charges.length === 0 ? (
+                      <div className="text-sm text-secondary">No additional charges added.</div>
+                    ) : (
+                      <div className="space-y-3">
+                        {editingPurchaseRequest.additional_charges.map((charge) => (
+                          <div key={charge.id} className="grid grid-cols-1 md:grid-cols-5 gap-3 items-end border border-neutral-medium rounded-lg p-3">
+                            <div className="md:col-span-2">
+                              <label className="block text-xs font-medium text-secondary mb-1">Description</label>
+                              <input
+                                type="text"
+                                value={charge.description}
+                                disabled={!editingPurchaseRequest.editable}
+                                onChange={(e) => updateRequestEditCharge(charge.id, 'description', e.target.value)}
+                                className="w-full px-2 py-1 rounded border border-neutral-medium bg-neutral-darker text-primary focus:outline-none focus:ring-2 focus:ring-accent-amber disabled:opacity-50"
+                              />
+                            </div>
+                            <div>
+                              <label className="block text-xs font-medium text-secondary mb-1">HSN / SAC</label>
+                              <input
+                                type="text"
+                                value={charge.hsn_code || ''}
+                                disabled={!editingPurchaseRequest.editable}
+                                onChange={(e) => updateRequestEditCharge(charge.id, 'hsn_code', e.target.value)}
+                                className="w-full px-2 py-1 rounded border border-neutral-medium bg-neutral-darker text-primary focus:outline-none focus:ring-2 focus:ring-accent-amber disabled:opacity-50"
+                              />
+                            </div>
+                            <div>
+                              <label className="block text-xs font-medium text-secondary mb-1">Amount</label>
+                              <input
+                                type="number"
+                                min="0"
+                                step="0.01"
+                                value={charge.amount ?? 0}
+                                disabled={!editingPurchaseRequest.editable}
+                                onChange={(e) => updateRequestEditCharge(charge.id, 'amount', e.target.value)}
+                                className="w-full px-2 py-1 rounded border border-neutral-medium bg-neutral-darker text-primary focus:outline-none focus:ring-2 focus:ring-accent-amber disabled:opacity-50"
+                              />
+                            </div>
+                            <div>
+                              <label className="block text-xs font-medium text-secondary mb-1">Tax %</label>
+                              <div className="flex gap-2">
+                                <input
+                                  type="number"
+                                  min="0"
+                                  max="100"
+                                  step="0.01"
+                                  value={charge.tax_percent ?? 0}
+                                  disabled={!editingPurchaseRequest.editable}
+                                  onChange={(e) => updateRequestEditCharge(charge.id, 'tax_percent', e.target.value)}
+                                  className="w-full px-2 py-1 rounded border border-neutral-medium bg-neutral-darker text-primary focus:outline-none focus:ring-2 focus:ring-accent-amber disabled:opacity-50"
+                                />
+                                {editingPurchaseRequest.editable ? (
+                                  <button
+                                    type="button"
+                                    onClick={() => removeChargeFromEditingRequest(charge.id)}
+                                    className="text-xs px-2 py-1 rounded border border-red-500/50 text-red-300 hover:bg-red-500/10"
+                                  >
+                                    Remove
+                                  </button>
+                                ) : null}
+                              </div>
+                              <div className="text-[11px] text-secondary mt-1">
+                                Total: {formatCurrency(getAdditionalChargeTotal({ amount: charge.amount, tax_percent: charge.tax_percent ?? 0 }))}
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
 
                   <div className="flex justify-end gap-3">

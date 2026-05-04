@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { requireAdmin, getAdminUser } from '@/lib/admin-auth';
 import { sendEmail } from '@/lib/email';
 import { calculateSoftPoolValuation } from '@/lib/pool-valuation';
+import { fetchPurchaseRequestAdditionalChargesByRequestIds } from '@/lib/purchase-request-additional-charges';
+import { calculatePurchaseRequestTotals } from '@/lib/purchase-request-totals';
 import { applyLenderCapitalAllocations, normalizeLenderCapitalAllocations } from '@/lib/lender-sleeves';
 import { selectDirectInflowAllocationIntent } from '@/lib/direct-inflow-allocation';
 import { recordCapitalReturn } from '@/lib/capital-returns';
@@ -342,7 +344,8 @@ export async function POST(request: NextRequest) {
             requested_qty,
             purchase_qty,
             unit_rate,
-            tax_percent
+            tax_percent,
+            round_off_amount
           )
         `)
         .eq('id', normalizedPurchaseRequestId)
@@ -360,7 +363,8 @@ export async function POST(request: NextRequest) {
             purchase_request_items (
               requested_qty,
               unit_rate,
-              tax_percent
+              tax_percent,
+              round_off_amount
             )
           `)
           .eq('id', normalizedPurchaseRequestId)
@@ -391,10 +395,23 @@ export async function POST(request: NextRequest) {
         const qty = Number((item as any).purchase_qty ?? item.requested_qty) || 0;
         const rate = Number(item.unit_rate) || 0;
         const taxPercent = Number(item.tax_percent) || 0;
+        const roundOff = Number((item as any).round_off_amount ?? 0) || 0;
         const base = qty * rate;
         const tax = base * (taxPercent / 100);
-        return sum + base + tax;
+        return sum + base + tax + roundOff;
       }, 0);
+
+      // Include request-level additional charges (transport/loading/etc).
+      try {
+        const { chargesByRequestId } = await fetchPurchaseRequestAdditionalChargesByRequestIds(db, [normalizedPurchaseRequestId]);
+        const totals = calculatePurchaseRequestTotals({
+          items: purchaseRequest.purchase_request_items || [],
+          additionalCharges: chargesByRequestId.get(normalizedPurchaseRequestId) || []
+        });
+        purchaseRequestTotal = totals.grand_total;
+      } catch (error) {
+        console.warn('Failed to load additional charges for purchase request total; falling back to item-only total.', error);
+      }
 
       if (purchaseRequestTotal > 0) {
         const { data: fundingRows, error: existingFundingError } = await db
@@ -413,7 +430,7 @@ export async function POST(request: NextRequest) {
           );
         }
 
-        const remainingAmount = Math.max(purchaseRequestTotal - existingFundedAmount, 0);
+        const remainingAmount = Math.max(Number((purchaseRequestTotal - existingFundedAmount).toFixed(2)), 0);
         if (remainingAmount <= 0) {
           return NextResponse.json(
             { error: 'This purchase request has already been fully funded' },
@@ -421,11 +438,12 @@ export async function POST(request: NextRequest) {
           );
         }
 
-        if (numAmount - remainingAmount > 1e-2) {
+        if (Number((numAmount - remainingAmount).toFixed(2)) > 0) {
           const formattedRemaining = new Intl.NumberFormat('en-IN', {
             style: 'currency',
             currency: 'INR',
-            minimumFractionDigits: 0
+            minimumFractionDigits: 2,
+            maximumFractionDigits: 2
           }).format(remainingAmount);
 
           return NextResponse.json(
@@ -434,7 +452,8 @@ export async function POST(request: NextRequest) {
           );
         }
 
-        shouldMarkRequestFunded = existingFundedAmount + numAmount >= purchaseRequestTotal - 1e-2;
+        shouldMarkRequestFunded =
+          Number((existingFundedAmount + numAmount).toFixed(2)) >= Number(purchaseRequestTotal.toFixed(2));
       } else {
         shouldMarkRequestFunded = true;
       }

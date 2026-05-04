@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAdmin } from '@/lib/admin-auth';
+import { fetchPurchaseRequestAdditionalChargesByRequestIds } from '@/lib/purchase-request-additional-charges';
+import { calculatePurchaseRequestTotals } from '@/lib/purchase-request-totals';
 import { getDefaultPOReference } from '@/lib/project-po-references';
 import { supabaseAdmin } from '@/lib/supabase';
 
@@ -66,16 +68,6 @@ type ProjectFileRow = {
   created_at: string | null;
   category: string | null;
 };
-
-function computeRequestValue(items: PurchaseRequestItemRow[]) {
-  return items.reduce((sum, item) => {
-    const qty = Number(item.purchase_qty ?? item.requested_qty ?? 0) || 0;
-    const rate = Number(item.unit_rate ?? 0) || 0;
-    const taxPercent = Number(item.tax_percent ?? 0) || 0;
-    const base = qty * rate;
-    return sum + base + (base * taxPercent) / 100;
-  }, 0);
-}
 
 export async function GET(request: NextRequest) {
   try {
@@ -177,9 +169,16 @@ export async function GET(request: NextRequest) {
       requestItemsByRequestId.set(item.purchase_request_id, existing);
     });
 
+    const { chargesByRequestId } = await fetchPurchaseRequestAdditionalChargesByRequestIds(db, requestIds);
     const requestValueById = new Map<string, number>();
     ((purchaseRequests || []) as PurchaseRequestRow[]).forEach((requestRow) => {
-      requestValueById.set(requestRow.id, computeRequestValue(requestItemsByRequestId.get(requestRow.id) || []));
+      requestValueById.set(
+        requestRow.id,
+        calculatePurchaseRequestTotals({
+          items: requestItemsByRequestId.get(requestRow.id) || [],
+          additionalCharges: chargesByRequestId.get(requestRow.id) || []
+        }).grand_total
+      );
     });
 
     const contractorMap = new Map(((contractors || []) as ContractorRow[]).map((row) => [row.id, row]));

@@ -1,6 +1,7 @@
 import {
   updatePurchaseRequestSchema,
   purchaseRequestItemSchema,
+  purchaseRequestAdditionalChargeSchema,
   createPurchaseRequestSchema,
   assignVendorSchema,
   purchaseRequestActions,
@@ -317,6 +318,38 @@ describe('Purchase Request Validation Schemas', () => {
 
       const result = purchaseRequestItemSchema.safeParse(validData);
       expect(result.success).toBe(true);
+    });
+  });
+
+  describe('purchaseRequestAdditionalChargeSchema', () => {
+    it('should accept valid additional charge', () => {
+      const validData = {
+        description: 'Transportation',
+        hsn_code: '996511',
+        amount: 2500,
+        tax_percent: 18,
+      };
+
+      const result = purchaseRequestAdditionalChargeSchema.safeParse(validData);
+      expect(result.success).toBe(true);
+    });
+
+    it('should reject blank description', () => {
+      const result = purchaseRequestAdditionalChargeSchema.safeParse({
+        description: '   ',
+        amount: 1000,
+        tax_percent: 18,
+      });
+      expect(result.success).toBe(false);
+    });
+
+    it('should reject negative amount', () => {
+      const result = purchaseRequestAdditionalChargeSchema.safeParse({
+        description: 'Loading',
+        amount: -100,
+        tax_percent: 18,
+      });
+      expect(result.success).toBe(false);
     });
   });
 

@@ -1,10 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase';
+import { fetchPurchaseRequestAdditionalChargesByRequestIds } from '@/lib/purchase-request-additional-charges';
 import { sendEmail } from '@/lib/email';
 import { purchaseRequestStatusEmail } from '@/lib/notifications/email-templates';
 import { createSignedUrlWithFallback } from '@/lib/storage-url';
 import { auditPurchaseRequest, auditVendorAssignment } from '@/lib/audit';
 import { calculateCapitalAccrualMetrics, groupTransactionsByPurchaseRequest } from '@/lib/capital-accrual';
+import { calculatePurchaseRequestTotals } from '@/lib/purchase-request-totals';
 import { currentUser } from '@clerk/nextjs/server';
 import { validateRequestBody, updatePurchaseRequestSchema } from '@/lib/validations';
 import { rateLimit, RateLimitPresets } from '@/lib/rate-limit';
@@ -34,6 +36,7 @@ type PurchaseRequestItemRow = {
   approved_qty?: number | null;
   unit_rate?: number | null;
   tax_percent?: number | null;
+  round_off_amount?: number | null;
   status: string;
   project_materials?: {
     unit?: string | null;
@@ -161,6 +164,8 @@ async function fetchPurchaseRequests(options: FetchOptions = {}) {
 
   const requestIds = requestRows?.map((row: { id: string }) => row.id) ?? [];
   const itemsByRequest = new Map<string, PurchaseRequestItemRow[]>();
+  const { chargesByRequestId, missingTable: missingChargesTable } =
+    await fetchPurchaseRequestAdditionalChargesByRequestIds(supabaseAdmin, requestIds);
 
   if (requestIds.length > 0) {
     let itemRows: PurchaseRequestItemRow[] | null = null;
@@ -184,6 +189,7 @@ async function fetchPurchaseRequests(options: FetchOptions = {}) {
           approved_qty,
           unit_rate,
           tax_percent,
+          round_off_amount,
           status,
           created_at,
           project_materials:project_material_id (
@@ -216,6 +222,7 @@ async function fetchPurchaseRequests(options: FetchOptions = {}) {
             approved_qty,
             unit_rate,
             tax_percent,
+            round_off_amount,
             status,
             created_at,
             project_materials:project_material_id (
@@ -298,6 +305,7 @@ async function fetchPurchaseRequests(options: FetchOptions = {}) {
       approved_qty: item.approved_qty,
       unit_rate: item.unit_rate,
       tax_percent: item.tax_percent,
+      round_off_amount: item.round_off_amount ?? 0,
       status: item.status,
       material_name: item.project_materials?.materials?.name || 'Unknown Material',
       material_description: item.project_materials?.materials?.description || item.project_materials?.notes || null,
@@ -305,14 +313,11 @@ async function fetchPurchaseRequests(options: FetchOptions = {}) {
     }));
 
     const totalRequestedQty = items.reduce((sum, item) => sum + (item.requested_qty || 0), 0);
-    const estimatedTotal = items.reduce((sum, item) => {
-      const qty = Number(item.purchase_qty ?? item.requested_qty) || 0;
-      const rate = Number(item.unit_rate) || 0;
-      const taxPercent = Number(item.tax_percent) || 0;
-      const base = qty * rate;
-      const tax = base * (taxPercent / 100);
-      return sum + base + tax;
-    }, 0);
+    const additionalCharges = chargesByRequestId.get(request.id) || [];
+    const totals = calculatePurchaseRequestTotals({
+      items,
+      additionalCharges
+    });
 
     const vendor = request.vendor_id ? vendorMap.get(request.vendor_id) : null;
     const fallbackPath = `${request.contractor_id}/invoices/${request.id}.pdf`;
@@ -353,9 +358,12 @@ async function fetchPurchaseRequests(options: FetchOptions = {}) {
       contractors: request.contractors,
       project: projectMap.get(request.project_id) || null,
       purchase_request_items: items,
+      additional_charges: additionalCharges,
       total_items: items.length,
       total_requested_qty: totalRequestedQty,
-      estimated_total: estimatedTotal
+      material_total: totals.material_total,
+      additional_charge_total: totals.additional_charge_total,
+      estimated_total: totals.grand_total
     };
   }));
 
@@ -429,7 +437,10 @@ async function fetchPurchaseRequests(options: FetchOptions = {}) {
 
   return {
     requests: enrichedRequests,
-    total: typeof count === 'number' ? count : enrichedRequests.length
+    total: typeof count === 'number' ? count : enrichedRequests.length,
+    warning: missingChargesTable
+      ? 'Supabase schema cache has not loaded purchase_request_additional_charges yet; totals may exclude charges until cache refresh.'
+      : null
   };
 }
 
@@ -444,7 +455,7 @@ export async function GET(request: NextRequest) {
     const limit = parseInt(searchParams.get('limit') || '50', 10);
     const offset = parseInt(searchParams.get('offset') || '0', 10);
 
-    const [{ requests, total }, summary] = await Promise.all([
+    const [{ requests, total, warning }, summary] = await Promise.all([
       fetchPurchaseRequests({ status, limit, offset }),
       fetchPurchaseSummary()
     ]);
@@ -458,7 +469,8 @@ export async function GET(request: NextRequest) {
           limit,
           offset,
           total
-        }
+        },
+        warning: warning || null
       }
     });
   } catch (error) {

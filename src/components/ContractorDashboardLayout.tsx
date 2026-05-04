@@ -166,13 +166,13 @@ export function ContractorDashboardLayout({ children, activeTab }: ContractorDas
         </div>
       </header>
 
-      <div className="flex">
+      <div className="flex w-full">
         {/* Sidebar */}
         <nav className={`${
           isSidebarOpen ? 'translate-x-0' : '-translate-x-full'
         } lg:translate-x-0 fixed lg:static inset-y-0 left-0 z-30 ${
           isSidebarCollapsed ? 'w-16' : 'w-64'
-        } bg-neutral-dark border-r border-neutral-medium transform transition-all duration-200 ease-in-out`}>
+        } flex-shrink-0 bg-neutral-dark border-r border-neutral-medium transform transition-all duration-200 ease-in-out`}>
           <div className={`${isSidebarCollapsed ? 'p-2' : 'p-6'}`}>
             <div className="space-y-2">
               {navigationItems.map((item) => (
@@ -219,7 +219,7 @@ export function ContractorDashboardLayout({ children, activeTab }: ContractorDas
         )}
 
         {/* Main Content */}
-        <main className="flex-1 lg:ml-0">
+        <main className="flex-1 min-w-0 lg:ml-0">
           {children}
         </main>
       </div>

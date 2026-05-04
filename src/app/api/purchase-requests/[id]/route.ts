@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { currentUser } from '@clerk/nextjs/server';
 import { createClient } from '@supabase/supabase-js';
+import { fetchPurchaseRequestAdditionalChargesByRequestIds } from '@/lib/purchase-request-additional-charges';
+import { calculatePurchaseRequestTotals } from '@/lib/purchase-request-totals';
 
 const EDITABLE_STATUSES = new Set(['draft', 'submitted', 'approved']);
 
@@ -44,6 +46,17 @@ type PurchaseRequestItemWithMaterial = {
       name: string | null;
     } | null;
   } | null;
+};
+
+type PurchaseRequestAdditionalChargeRow = {
+  id: string;
+  purchase_request_id: string;
+  description: string;
+  hsn_code: string | null;
+  amount: number;
+  tax_percent: number | null;
+  created_at: string;
+  updated_at: string;
 };
 
 function getSupabase() {
@@ -237,11 +250,22 @@ export async function GET(_request: NextRequest, context: RouteContext) {
       };
     });
 
+    const { chargesByRequestId } = await fetchPurchaseRequestAdditionalChargesByRequestIds(supabase, [requestId]);
+    const additionalCharges = (chargesByRequestId.get(requestId) || []) as PurchaseRequestAdditionalChargeRow[];
+    const totals = calculatePurchaseRequestTotals({
+      items: transformedItems,
+      additionalCharges
+    });
+
     return NextResponse.json({
       success: true,
       data: {
         ...requestRow,
         items: transformedItems,
+        additional_charges: additionalCharges,
+        estimated_total: totals.grand_total,
+        material_total: totals.material_total,
+        additional_charge_total: totals.additional_charge_total,
         editable: EDITABLE_STATUSES.has((requestRow.status || '').toLowerCase())
       }
     });
@@ -276,6 +300,7 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
           ? null
           : undefined;
     const items = Array.isArray(body.items) ? body.items : [];
+    const additionalCharges = Array.isArray(body.additional_charges) ? body.additional_charges : [];
 
     const contractorId = await getContractorIdForUser(user.id);
     if (!contractorId) {
@@ -450,6 +475,53 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
       }
     }
 
+    let nextCharges: Array<{
+      id: string;
+      purchase_request_id: string;
+      description: string;
+      hsn_code: string | null;
+      amount: number;
+      tax_percent: number;
+      created_at: string;
+      updated_at: string;
+    }> = [];
+
+    try {
+      nextCharges = additionalCharges.map((charge, index) => {
+        const description = charge?.description?.toString().trim() || '';
+        if (!description) {
+          throw new Error(`Additional charge description is required for row ${index + 1}`);
+        }
+        const amount = Number(charge?.amount);
+        if (!Number.isFinite(amount) || amount < 0) {
+          throw new Error(`Additional charge amount must be zero or greater for row ${index + 1}`);
+        }
+        const taxPercent =
+          charge?.tax_percent === null || charge?.tax_percent === undefined || charge?.tax_percent === ''
+            ? 0
+            : Number(charge.tax_percent);
+        if (!Number.isFinite(taxPercent) || taxPercent < 0 || taxPercent > 100) {
+          throw new Error(`Additional charge tax percent must be between 0 and 100 for row ${index + 1}`);
+        }
+
+        return {
+          id: charge?.id?.toString().trim() || '',
+          purchase_request_id: requestId,
+          description,
+          hsn_code: charge?.hsn_code?.toString().trim() || null,
+          amount,
+          tax_percent: taxPercent,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        };
+      });
+    } catch (error) {
+      return NextResponse.json(
+        { error: error instanceof Error ? error.message : 'Invalid additional charges payload' },
+        { status: 400 }
+      );
+    }
+
     if (newItems.length > 0) {
       const newProjectMaterialIds = Array.from(new Set(newItems.map((item) => item.project_material_id)));
 
@@ -526,6 +598,31 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
     if (requestUpdateError || !updatedRequest) {
       console.error('Failed to update purchase request:', requestUpdateError);
       return NextResponse.json({ error: 'Failed to update purchase request' }, { status: 500 });
+    }
+
+    const { error: deleteChargesError } = await supabase
+      .from('purchase_request_additional_charges')
+      .delete()
+      .eq('purchase_request_id', requestId);
+
+    if (deleteChargesError && !String(deleteChargesError.message || '').includes('purchase_request_additional_charges')) {
+      console.error('Failed to replace purchase request additional charges:', deleteChargesError);
+      return NextResponse.json({ error: 'Failed to update additional charges' }, { status: 500 });
+    }
+
+    if (nextCharges.length > 0) {
+      const { error: insertChargesError } = await supabase
+        .from('purchase_request_additional_charges')
+        .insert(nextCharges.map(({ id, ...charge }) => charge));
+
+      if (insertChargesError) {
+        const missingChargesTable = String(insertChargesError.message || '').includes('purchase_request_additional_charges');
+        if (!missingChargesTable) {
+          console.error('Failed to insert purchase request additional charges:', insertChargesError);
+          return NextResponse.json({ error: 'Failed to update additional charges' }, { status: 500 });
+        }
+        console.warn('Skipping additional charge updates because table is not available yet:', insertChargesError.message);
+      }
     }
 
     return NextResponse.json({

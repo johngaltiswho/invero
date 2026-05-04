@@ -429,7 +429,7 @@ export default function MaterialsPage() {
 
   return (
     <ContractorDashboardLayout>
-      <div className="p-6">
+      <div className="min-w-0 p-6">
         {/* Header */}
         <div className="mb-8">
           <div className="flex justify-between items-start mb-4">
@@ -438,15 +438,6 @@ export default function MaterialsPage() {
               <p className="text-secondary text-lg mb-3">
                 Request and manage materials for your construction projects
               </p>
-              <div className="bg-accent-orange/10 border border-accent-orange/20 rounded-lg p-4 max-w-2xl">
-                <div className="flex items-center space-x-2 mb-2">
-                  <h3 className="font-semibold text-primary">Coming Soon: AI-Powered BOQ Analysis</h3>
-                </div>
-                <p className="text-sm text-secondary">
-                  We're developing AI technology to automatically extract material lists from your BOQ documents. 
-                  For now, you can manually request materials needed for your projects.
-                </p>
-              </div>
             </div>
             <Button
               variant="primary"
@@ -505,7 +496,7 @@ export default function MaterialsPage() {
         </div>
 
         {activeTab === 'materials' ? (
-          <div>
+          <div className="min-w-0">
             {/* Search and Filters */}
             <div className="flex gap-4 mb-4">
               <div className="flex-1">
@@ -746,7 +737,7 @@ export default function MaterialsPage() {
           </div>
         ) : activeTab === 'purchase' ? (
           /* Purchase & Delivery Tab */
-          <div>
+          <div className="min-w-0">
             <div className="mb-4 bg-blue-50 border border-blue-200 rounded-lg p-4">
               <h3 className="font-semibold text-blue-900 mb-2">Purchases & Delivery Summary</h3>
               <p className="text-sm text-blue-700">
@@ -754,19 +745,22 @@ export default function MaterialsPage() {
               </p>
             </div>
 
+            {/* Match the same table container structure as "My Material Requests":
+                no forced min-width; allow horizontal scroll only inside the card when needed. */}
             <div className="bg-neutral-dark border border-neutral-medium rounded-lg overflow-hidden">
-              <table className="w-full">
+              <div className="w-full overflow-x-auto [scrollbar-gutter:stable]">
+                <table className="w-full min-w-max">
                 <thead className="bg-neutral-medium border-b border-neutral-medium">
                   <tr>
                     <th className="px-4 py-3 text-left text-sm font-medium text-primary">Request</th>
-                    <th className="px-4 py-3 text-left text-sm font-medium text-primary">Project</th>
-                    <th className="px-4 py-3 text-left text-sm font-medium text-primary">PO</th>
-                    <th className="px-4 py-3 text-left text-sm font-medium text-primary">Display State</th>
-                    <th className="px-4 py-3 text-left text-sm font-medium text-primary">Purchase Status</th>
+                    <th className="px-4 py-3 text-left text-sm font-medium text-primary w-40">Project</th>
+                    <th className="px-4 py-3 text-left text-sm font-medium text-primary w-32">PO</th>
+                    <th className="px-4 py-3 text-left text-sm font-medium text-primary hidden lg:table-cell">Display State</th>
+                    <th className="px-4 py-3 text-left text-sm font-medium text-primary hidden lg:table-cell">Purchase Status</th>
                     <th className="px-4 py-3 text-left text-sm font-medium text-primary">Delivery Status</th>
-                    <th className="px-4 py-3 text-left text-sm font-medium text-primary">Vendor</th>
-                    <th className="px-4 py-3 text-left text-sm font-medium text-primary">Dates</th>
-                    <th className="px-4 py-3 text-left text-sm font-medium text-primary">Notes</th>
+                    <th className="px-4 py-3 text-left text-sm font-medium text-primary hidden xl:table-cell">Vendor</th>
+                    <th className="px-4 py-3 text-left text-sm font-medium text-primary w-36">Dates</th>
+                    <th className="px-4 py-3 text-left text-sm font-medium text-primary hidden xl:table-cell">Notes</th>
                     <th className="px-4 py-3 text-left text-sm font-medium text-primary">Actions</th>
                   </tr>
                 </thead>
@@ -784,18 +778,18 @@ export default function MaterialsPage() {
                         <td className="px-4 py-3 text-sm font-medium text-primary">
                           #{purchaseRequest.id.slice(0, 8).toUpperCase()}
                         </td>
-                        <td className="px-4 py-3 text-sm text-secondary">
+                        <td className="px-4 py-3 text-sm text-secondary w-40 max-w-40 whitespace-normal break-words leading-snug">
                           {getProjectName(purchaseRequest.project_id)}
                         </td>
-                        <td className="px-4 py-3 text-sm text-secondary">
+                        <td className="px-4 py-3 text-sm text-secondary w-32 max-w-32 whitespace-normal break-words leading-snug">
                           {purchaseRequest.project_po_references?.po_number || '-'}
                         </td>
-                        <td className="px-4 py-3">
+                        <td className="px-4 py-3 hidden lg:table-cell">
                           <span className={`text-xs px-2 py-1 rounded border ${displayState.classes}`}>
                             {displayState.label}
                           </span>
                         </td>
-                        <td className="px-4 py-3">
+                        <td className="px-4 py-3 hidden lg:table-cell">
                           <span className={`text-xs px-2 py-1 rounded border ${getPurchaseStatusStyle(purchaseRequest.status)}`}>
                             {purchaseRequest.status?.replace(/_/g, ' ').toUpperCase()}
                           </span>
@@ -820,10 +814,10 @@ export default function MaterialsPage() {
                             )}
                           </div>
                         </td>
-                        <td className="px-4 py-3 text-sm text-secondary">
+                        <td className="px-4 py-3 text-sm text-secondary hidden xl:table-cell">
                           {purchaseRequest.status === 'rejected' ? '-' : 'Assigned in admin'}
                         </td>
-                        <td className="px-4 py-3 text-xs text-secondary space-y-1">
+                        <td className="px-4 py-3 text-[11px] text-secondary space-y-1 leading-tight w-36 [&_p]:text-[11px] [&_p]:leading-tight">
                           <p>Created: {new Date(purchaseRequest.created_at).toLocaleDateString('en-IN')}</p>
                           {purchaseRequest.dispatched_at && (
                             <p>Dispatched: {new Date(purchaseRequest.dispatched_at).toLocaleDateString('en-IN')}</p>
@@ -832,9 +826,9 @@ export default function MaterialsPage() {
                             <p>Delivered: {new Date(purchaseRequest.delivered_at).toLocaleDateString('en-IN')}</p>
                           )}
                         </td>
-                        <td className="px-4 py-3 text-sm text-secondary max-w-xs">
+                        <td className="px-4 py-3 text-[11px] text-secondary max-w-48 hidden xl:table-cell leading-tight [&_p]:text-[11px] [&_p]:leading-tight">
                           <div className="space-y-1">
-                            <p className="truncate">{purchaseRequest.remarks || '-'}</p>
+                            <p className="whitespace-normal break-words">{purchaseRequest.remarks || '-'}</p>
                           </div>
                         </td>
                         <td className="px-4 py-3">
@@ -854,7 +848,12 @@ export default function MaterialsPage() {
                                       setPurchaseRequests(prev =>
                                         prev.map(r =>
                                           r.id === purchaseRequest.id
-                                            ? { ...r, delivery_status: 'delivered', delivered_at: new Date().toISOString() }
+                                            ? {
+                                                ...r,
+                                                delivery_status: 'delivered',
+                                                delivered_at: new Date().toISOString(),
+                                                invoice_generated_at: data.invoice ? new Date().toISOString() : r.invoice_generated_at,
+                                              }
                                             : r
                                         )
                                       );
@@ -898,6 +897,7 @@ export default function MaterialsPage() {
                   })}
                 </tbody>
               </table>
+              </div>
 
               {purchaseRequests.length === 0 && (
                 <div className="p-8 text-center">

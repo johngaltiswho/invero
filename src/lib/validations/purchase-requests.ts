@@ -62,6 +62,13 @@ export const purchaseRequestItemSchema = z.object({
   round_off_amount: z.number().finite('Round off amount must be a valid number').optional().nullable(),
 });
 
+export const purchaseRequestAdditionalChargeSchema = z.object({
+  description: z.string().trim().min(1, 'Charge description is required').max(200, 'Charge description cannot exceed 200 characters'),
+  hsn_code: z.string().max(20, 'HSN code cannot exceed 20 characters').optional().nullable(),
+  amount: z.number().min(0, 'Charge amount cannot be negative'),
+  tax_percent: z.number().min(0, 'Tax percent cannot be negative').max(100, 'Tax percent cannot exceed 100').optional().nullable(),
+});
+
 /**
  * Schema for creating a purchase request
  */
@@ -69,6 +76,7 @@ export const createPurchaseRequestSchema = z.object({
   project_id: z.string().uuid('Invalid project ID format'),
   contractor_id: z.string().uuid('Invalid contractor ID format'),
   remarks: z.string().max(1000, 'Remarks cannot exceed 1000 characters').optional().nullable(),
+  additional_charges: z.array(purchaseRequestAdditionalChargeSchema).optional().default([]),
   items: z.array(purchaseRequestItemSchema).min(1, 'At least one item is required'),
 });
 
@@ -85,5 +93,6 @@ export const assignVendorSchema = z.object({
  */
 export type UpdatePurchaseRequestInput = z.infer<typeof updatePurchaseRequestSchema>;
 export type PurchaseRequestItemInput = z.infer<typeof purchaseRequestItemSchema>;
+export type PurchaseRequestAdditionalChargeInput = z.infer<typeof purchaseRequestAdditionalChargeSchema>;
 export type CreatePurchaseRequestInput = z.infer<typeof createPurchaseRequestSchema>;
 export type AssignVendorInput = z.infer<typeof assignVendorSchema>;
